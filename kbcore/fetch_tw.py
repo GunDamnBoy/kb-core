@@ -58,17 +58,19 @@ ROUTES = {
                  "那是「當日訊息」不是「行事曆」，0 筆是正常狀態不是故障。"),
     },
     "SPDR:GLD": {
-        "url": "https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv",
-        "kind": "csv", "unit": "噸／美元",
-        "note": ("GLD 歷史持倉序列。**這條路徑未經實測** —— 舊規格記載 2026-08-16 "
-                 "四路徑皆 404、結論是「官網沒有歷史序列 API」，因而改用「讀前一日的"
-                 "保底卡相減」。這條若通，那個跨檔相減的 workaround 就不需要了。"
-                 "第一次 Actions 實跑就是它的驗證。"),
+        "url": ("https://api.spdrgoldshares.com/api/v1/historical-archive"
+                "?product=gld&exchange=NYSE&lang=en"),
+        "kind": "auto", "unit": "噸／美元",
+        "note": ("GLD 歷史持倉序列。網址由使用者 2026-08-19 從官網的 Historical "
+                 "Archive 下載連結取得——**我先前猜的 /assets/dynamic/ 路徑是錯的**，"
+                 "它回了東西只是巧合（而且不是 UTF-8）。舊規格記載的 "
+                 "`api.spdrgoldshares.com` 才是對的。"),
     },
     "SPDR:GLDM": {
-        "url": "https://www.spdrgoldshares.com/assets/dynamic/GLDM/GLDM_US_archive_EN.csv",
-        "kind": "csv", "unit": "噸／美元",
-        "note": "同上，GLDM。**未經實測。**",
+        "url": ("https://api.spdrgoldshares.com/api/v1/historical-archive"
+                "?product=gldm&exchange=NYSE&lang=en"),
+        "kind": "auto", "unit": "噸／美元",
+        "note": "同上，GLDM。",
     },
 }
 
@@ -114,6 +116,22 @@ def parse_csv(raw: bytes, ident: str) -> Dict:
     if text is None:
         raise ParseFailed(f"{ident} 用 {'、'.join(ENCODINGS)} 都解不開；"
                           f"開頭 32 bytes：{raw[:32].hex(' ')}")
+    # **解得開不等於是 CSV。** cp1252 幾乎吃得下任何 byte，所以二進位檔（XLSX、
+    # ZIP、PDF）會「成功」解成一行亂碼欄名然後回傳 —— 於是底下的失敗分支永遠打不到。
+    #
+    # 這是同一個錯誤的第三次（前兩次：latin-1 讓 ParseFailed 變死碼、sniff 的
+    # raise 打不到）。共通形狀是：**我做的退讓太寬鬆，寬鬆到失敗分支不存在。**
+    # 一條永遠不會執行的錯誤處理，比沒有錯誤處理更糟——它讓人以為處理過了。
+    head = text[:2000]
+    ctrl = sum(1 for c in head if ord(c) < 32 and c not in "\t\r\n")
+    if "\x00" in head or ctrl > len(head) * 0.01:
+        raise ParseFailed(
+            f"{ident} 解得開但不是文字（前 2000 字裡有 {ctrl} 個控制字元）"
+            f"—— 可能是二進位格式；開頭 32 bytes：{raw[:32].hex(' ')}")
+    first = head.splitlines()[0] if head.splitlines() else ""
+    if "," not in first and "\t" not in first:
+        raise ParseFailed(f"{ident} 第一行沒有分隔符號，不是 CSV：{first[:60]!r}")
+
     r = csv.DictReader(io.StringIO(text))
     rows = list(r)
     if r.fieldnames is None:
@@ -135,11 +153,33 @@ def get_tw(ident: str, ymd: str) -> Dict:
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             raw = r.read()
+            ctype = r.headers.get("Content-Type", "")
     except urllib.error.HTTPError as e:
         raise UpstreamError(f"{ident} 回 {e.code}") from e
     except Exception as e:
         raise UpstreamError(f"連不到 {ident}：{e}") from e
 
-    data = parse_json(raw, ident) if spec["kind"] == "json" else parse_csv(raw, ident)
+    if spec["kind"] == "auto":
+        data, kind = sniff(raw, ident, ctype)
+    else:
+        kind = spec["kind"]
+        data = parse_json(raw, ident) if kind == "json" else parse_csv(raw, ident)
     return {"ident": ident, "url": url, "unit": spec["unit"],
-            "note": spec["note"], "kind": spec["kind"], "data": data}
+            "note": spec["note"], "kind": kind, "content_type": ctype, "data": data}
+
+
+def sniff(raw: bytes, ident: str, ctype: str):
+    """格式未知時，**讓程式報它拿到什麼**，不要由我猜。
+
+    第一次接一個端點卻要先宣告它回 JSON 還是 CSV，就是在猜。猜錯的症狀是
+    ParseFailed，而 ParseFailed 跟「路徑錯了」在「黃金卡出不來」那一層長得一樣。
+    這裡把 content-type 與開頭的 bytes 一起寫進失敗訊息，下一輪就不用再猜。
+    """
+    for kind, fn in (("json", parse_json), ("csv", parse_csv)):
+        try:
+            return fn(raw, ident), kind
+        except ParseFailed:
+            continue
+    raise ParseFailed(
+        f"{ident} 既不是 JSON 也不是 CSV。content-type={ctype!r}、"
+        f"{len(raw)} bytes、開頭 48 bytes：{raw[:48].hex(' ')}")
