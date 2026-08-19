@@ -1,0 +1,5 @@
+{
+  "date": "19/08/2026",
+  "items": [],
+  "note": "這一筆刻意讓 date 與 items 兩條都 FAIL，note 正常"
+}
