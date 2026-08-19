@@ -495,3 +495,126 @@ register(Check(
     no_boundary="它刻意只回 WARN／PASS，邊界的意義在印出來的分布而不在門檻",
     suite="advisory",
 ))
+
+
+# ── 13. index entry 的來源欄位 ───────────────────────────────────────
+def _index_source(p):
+    """index.json 是系統的跨日記憶；這條檢查看的是「當日的 doc 供不供得出它」。
+
+    2026-08-19 首日 publish 只把 date 與 file 寫進 index，那五個跨日欄位全空，
+    而**當天沒有任何檢查會叫**——`watch_review` 在沒有前一版時是 SKIPPED，
+    其餘檢查都只看 doc 不看 index。洞要到第二天讀不到前一版的 watch 才會爆。
+
+    所以這條檢查刻意擺在「來源」而不是「產物」：index 由 publish 寫，
+    但它寫得出什麼完全取決於 doc 帶不帶得動。**擋在來源比擋在產物早一步。**
+    """
+    doc = p["doc"]
+    bad = []
+    for k in ("weekday", "stamp", "headline"):
+        if not (doc.get(k) or "").strip():
+            bad.append(f"{k} 空白")
+    if not isinstance(doc.get("cards"), int) or doc.get("cards", 0) <= 0:
+        bad.append(f"cards 不是正整數：{doc.get('cards')!r}")
+
+    threaded = [c for _, c in _cards(doc) if c.get("thread")]
+    lo, hi = _A(p, "lengths", "threaded_cards_per_day")
+    if not threaded:
+        bad.append("沒有任何卡帶 thread —— 明天沒有 thread 可沿用")
+    elif not (lo <= len(threaded) <= hi):
+        bad.append(f"帶 thread 的卡 {len(threaded)} 張，不在 {lo}–{hi}")
+
+    for k in ("watch", "pulse", "snap"):
+        if not ((doc.get("overview") or {}).get(k) or []):
+            bad.append(f"overview.{k} 是空的")
+    if bad:
+        return fail("；".join(bad))
+    return ok(f"index 可帶齊 11 欄；thread {len(threaded)} 張")
+
+
+register(Check(
+    id="advisory.index_entry_source",
+    covers="當日 doc 供得出完整 index entry 的所有欄位（weekday／stamp／headline／"
+           "cards／thermo／threads／watch／pulse／snap），且帶 thread 的卡片數在 anchors 區間內",
+    blind_to=[
+        "publish 實際寫進 index.json 的內容（這條只看來源，不看產物）",
+        "欄位有值但值是錯的（headline 與當天實況無關、thread 名稱亂取）",
+        "thread 名稱與前幾天不一致，導致跨日串不起來",
+        "index.json 裡既有的舊 entry 是否也完整",
+    ],
+    run=_index_source,
+    fixture={"anchors": {"lengths": {"threaded_cards_per_day": [3, 6]}},
+             "doc": {"weekday": "", "stamp": "s", "headline": "h", "cards": 1,
+                     "overview": {"watch": [1], "pulse": [1], "snap": [1]},
+                     "sections": [{"groups": [{"label": "x", "cards": [
+                         {"thread": "t"}, {"thread": "t"}, {"thread": "t"}]}]}]}},
+    near_miss={"anchors": {"lengths": {"threaded_cards_per_day": [3, 6]}},
+               "doc": {"weekday": "星期三", "stamp": "s", "headline": "h", "cards": 1,
+                       "overview": {"watch": [1], "pulse": [1], "snap": [1]},
+                       "sections": [{"groups": [{"label": "x", "cards": [
+                           {"thread": "t"}, {"thread": "t"}, {"thread": "t"}]}]}]}},
+    suite="advisory",
+))
+
+
+# ── 14. 卡片值域與形狀 ───────────────────────────────────────────────
+def _card_vocab(p):
+    """tone／tagcls 的值域，以及 body 必須是字串。
+
+    2026-08-19 把舊站 18 天歷史接進 index 時才發現這件事：舊站的 tone 存的是
+    CSS class（`t-red`／`t-orange`）、tagcls 存 `hot`／`warn`，而重寫版存語意值。
+    **兩種形狀在同一個 index 底下並存，外殼一定會有一邊渲染不出來。**
+
+    `body` 那一項是其中最危險的：舊站深度卡的 body 是字串陣列、一般卡是字串。
+    照著其中一種寫的渲染邏輯，碰到另一種不會報錯，只會**安靜地整段掉**——
+    這正是 anchors 裡「可以被算出來的數字不要存」同一個家族的錯誤：
+    可以被推導的呈現方式不要存進資料。
+    """
+    tones = set(_A(p, "card_vocab", "tone"))
+    clss = set(_A(p, "card_vocab", "tagcls"))
+    bad_tone, bad_cls, bad_body, bad_src = [], [], [], []
+    for _, c in _cards(p["doc"]):
+        t = c.get("title", "?")[:10]
+        if c.get("tone") not in tones:
+            bad_tone.append(f"{t}={c.get('tone')!r}")
+        if c.get("tagcls") not in clss:
+            bad_cls.append(f"{t}={c.get('tagcls')!r}")
+        if not isinstance(c.get("body"), str):
+            bad_body.append(f"{t}={type(c.get('body')).__name__}")
+        if not (c.get("src") or "").strip():
+            bad_src.append(t)
+    msgs = []
+    if bad_tone:
+        msgs.append(f"{len(bad_tone)} 張 tone 不在值域：{'、'.join(bad_tone[:3])}")
+    if bad_cls:
+        msgs.append(f"{len(bad_cls)} 張 tagcls 不在值域：{'、'.join(bad_cls[:3])}")
+    if bad_body:
+        msgs.append(f"{len(bad_body)} 張 body 不是字串：{'、'.join(bad_body[:3])}")
+    if bad_src:
+        msgs.append(f"{len(bad_src)} 張 src 空白：{'、'.join(bad_src[:3])}")
+    if msgs:
+        return fail("；".join(msgs))
+    return ok()
+
+
+register(Check(
+    id="advisory.card_vocab",
+    covers="每張卡的 tone 與 tagcls 落在 anchors.card_vocab 的值域內、body 是字串（不是陣列）、src 非空",
+    blind_to=[
+        "值在值域內但用錯了（一則利多的卡標成偏空）",
+        "src 非空但寫的是除名來源——來源清單的家在 preamble，這裡刻意不抄第二份",
+        "已發布的舊日期檔（檢查只跑當日的 doc）",
+        "外殼實際怎麼把語意映射成顏色",
+    ],
+    run=_card_vocab,
+    fixture={"anchors": {"card_vocab": {"tone": ["偏多", "中性", "偏空"],
+                                        "tagcls": ["t-mkt"]}},
+             "doc": {"sections": [{"groups": [{"label": "x", "cards": [
+                 {"title": "舊站樣式", "tone": "t-red", "tagcls": "hot",
+                  "body": ["段一", "段二"], "src": "bbg"}]}]}]}},
+    near_miss={"anchors": {"card_vocab": {"tone": ["偏多", "中性", "偏空"],
+                                          "tagcls": ["t-mkt"]}},
+               "doc": {"sections": [{"groups": [{"label": "x", "cards": [
+                   {"title": "新版樣式", "tone": "偏空", "tagcls": "t-mkt",
+                    "body": "字串", "src": "Bloomberg"}]}]}]}},
+    suite="advisory",
+))

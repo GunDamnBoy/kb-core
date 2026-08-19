@@ -39,6 +39,50 @@ FRED_IDENTS = ["FRED:BAMLC0A0CM", "FRED:BAMLH0A0HYM2"]
 TW_IDENTS = list(ROUTES)
 
 
+# 會把日期塞進網址的那幾個台股端點。其餘是固定網址的 OpenAPI 清單，不吃日期。
+DATED_TW = [i for i, s in ROUTES.items()
+            if "{ymd}" in s["url"] or "{y}" in s["url"]]
+LOOKBACK_DAYS = 10
+
+
+def stat_ok(data) -> bool:
+    """TWSE／TPEX 用回應體裡的 `stat` 說有沒有資料，而 HTTP 一律回 200。
+
+    「很抱歉，沒有符合條件的資料」是一個 **200 OK 的正常回應**——這正是它危險的
+    地方：不看 `stat` 就會把「今天還沒收盤」記成抓取成功。2026-08-19 首輪的 raw
+    就是 `status: ok` 而 `data.stat` 是那句道歉，三大法人與融資融券整組是空的，
+    靠採集端的人工比對才發現。**HTTP 狀態碼與資料有效性是兩件事。**
+    """
+    if not isinstance(data, dict) or "stat" not in data:
+        return True  # 沒有 stat 欄的端點（OpenAPI 清單、CSV）不適用這條
+    return str(data["stat"]).strip().upper() == "OK"
+
+
+def fetch_tw_backdated(ident: str, ymd: str) -> dict:
+    """從前一日往回走，直到端點回出真的有資料的那一天。
+
+    **為什麼不是「今天」**：三大法人與融資融券是*盤後*數據。這一輪排在台北 07:30、
+    保底層更早在 06:43，問今天等於問一個還沒發生的收盤，而窗口本來就是前一日
+    07:00 起——要的本來就是前一日的盤後數字。舊行為連規格都對不上。
+
+    **為什麼不是固定「昨天」**：昨天可能是週末或國定假日。與其自己維護一份台股
+    行事曆——那會是第二份會漂移的副本，而且每年都要改——不如讓端點自己回答
+    哪一天有資料。往回走的天數會記在 `looked_back` 裡，連假就是會大於 1。
+    """
+    start = dt.date.fromisoformat(f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}")
+    tried = []
+    for back in range(1, LOOKBACK_DAYS + 1):
+        d = start - dt.timedelta(days=back)
+        r = get_tw(ident, d.strftime("%Y%m%d"))
+        if stat_ok(r["data"]):
+            r["session_date"] = d.isoformat()
+            r["looked_back"] = back
+            return r
+        tried.append(d.isoformat())
+    raise UpstreamError(
+        f"{ident} 自 {tried[0]} 往回 {LOOKBACK_DAYS} 天都回「沒有符合條件的資料」")
+
+
 def fetch_one(ident: str, ymd: str) -> dict:
     try:
         if ident.startswith("FRED:"):
@@ -46,15 +90,22 @@ def fetch_one(ident: str, ymd: str) -> dict:
                      - dt.timedelta(days=30)).isoformat()
             return {"status": "ok", "unit": "bps 或 %", "note": "ICE BofA OAS",
                     "data": get(ident, start)}
-        r = get_tw(ident, ymd)
+        r = fetch_tw_backdated(ident, ymd) if ident in DATED_TW else get_tw(ident, ymd)
         rows = (r["data"].get("rows") if isinstance(r["data"], dict) else None)
         empty = rows is not None and len(rows) == 0
         if empty and not ROUTES[ident].get("empty_ok"):
             return {"status": "failed", "reason": "EmptyResult",
                     "detail": f"{ident} 回了零列，而它沒有宣告 empty_ok"}
+        # 不吃日期的端點也要驗 stat——它們一樣可能回 200 ＋ 一句道歉。
+        if not stat_ok(r["data"]) and not ROUTES[ident].get("empty_ok"):
+            return {"status": "failed", "reason": "NoDataForDate",
+                    "detail": f"{ident} 回 200 但 stat 是 {r['data'].get('stat')!r}"}
         enc = r["data"].get("encoding") if isinstance(r["data"], dict) else None
         return {"status": "ok", "unit": r["unit"], "note": r["note"],
-                "url": r["url"], **({"encoding": enc} if enc else {}),
+                "url": r["url"],
+                **({"session_date": r["session_date"],
+                    "looked_back": r["looked_back"]} if "session_date" in r else {}),
+                **({"encoding": enc} if enc else {}),
                 "data": r["data"]}
     except FetchError as e:
         return {"status": "failed", "reason": type(e).__name__, "detail": str(e)}

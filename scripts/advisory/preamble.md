@@ -67,18 +67,13 @@
 
 ## 五、合規
 
-- **付費內容從已登入的訂閱讀。** 不用 archive 鏡像站、快取、CAPTCHA 破解或任何繞牆手段。
 - **新聞頁一律用 Chrome 工具。** WebFetch／curl／Python 用在官方 JSON 與 CSV 端點。
-- **偵測到繞牆擴充套件的注入痕跡**（`archive.ph`／`archive.today`／`12ft`／`freedium` 字串、
-  「已為你移除付費牆」提示、自動跳轉鏡像站）→ **當這篇被擋、換篇**，並在回報裡具名記錄。
-  這類擴充在 Bloomberg、WSJ、Barron's、FT 上若生效**不會留痕跡**，
-  會讓「完整取得」的判定無法分辨內容來自訂閱還是外掛。**它污染的是資料可信度。**
 - **需要另建帳號才拿得到的數據，就不拿。**
 - **來源限定在下方清單。** 內容農場與聚合站（Motley Fool、ETtoday、Intellectia 等）不在清單上。
 
 ## 六、來源
 
-**付費訂閱（從已登入的 Chrome 讀）**：Bloomberg、WSJ、NYT、FT、Nikkei Asia、
+**付費訂閱（從已登入的 Chrome 讀）**：Bloomberg、WSJ、NYT、Nikkei Asia、
 Washington Post、Barron's、IBD、Politico、The Hill、SemiAnalysis、The Economist。
 
 **免費公開**：CNBC、MarketWatch、Tom's Hardware、Oil & Gas Journal、華爾街見聞、
@@ -88,7 +83,13 @@ TrendForce 集邦（以中文站 `trendforce.com.tw` 為主）。
 **已除名，不要讀**：Reuters（八個版本只有一天拿到素材，命中率 1/8）、
 KED Global（已由 Korea Herald 取代）、COMEX 黃金庫存（連三輪確認取不到）、
 CME FedWatch 官網（跨網域 iframe ＋ reCAPTCHA，改用 Investing.com Fed Rate Monitor）、
-WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續三輪被重導）。
+WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續三輪被重導）、
+**FT（2026-08-19 開場測試：文章頁標題 "Subscribe to read"、內文 0 段 ——
+沒有有效訂閱，屬「訂閱範圍外」而不是「被擋」）**。
+
+**FT 那一則的分類要看清楚。** 內文 0 段很容易被記成「被付費牆擋」，但被擋的前提是
+**有訂閱卻讀不到**；沒有訂閱就讀不到是預期行為，不是故障。兩者記錯會污染來源健康度：
+前者該去查選擇器與登入狀態，後者該做的只有除名或去買訂閱。
 
 **除名清單比來源清單更重要。** 2026-08-10 有兩組各自讀到已移除三天的 Reuters，
 4 則素材全數捨棄 —— 因為當時只從清單裡刪掉，沒有寫進黑名單。

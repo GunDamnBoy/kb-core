@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# macOS Finder 的副產物。它會出現在每一個被 Finder 開過的資料夾，
+# 而它跟這個 repo 的內容毫無關係——不擋掉就會一直出現在 git status 裡，
+# 讓「有沒有該提交的東西」這個判斷每次都要多繞一層。
+.DS_Store

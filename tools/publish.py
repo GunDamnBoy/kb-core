@@ -78,6 +78,56 @@ def atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+# index.json 的每日 entry 必備欄位。前六個是識別與導覽，後五個是**跨日記憶**。
+#
+# BRIEF 第二節：「寫今天的 entry 之前先讀前幾天的 entry —— thread 沿用、
+# pulse 比對翻轉、watch 寫回顧，全部不用打開任何舊日檔。這是設計，不是巧合：
+# 跨日推理的成本被壓在一個索引檔裡。」
+#
+# 2026-08-19 首日這裡只寫了 date 與 file，那五欄全空，而當天沒有任何訊號報警——
+# 因為 `advisory.watch_review` 在沒有前一版時是 SKIPPED。**第一天的 SKIPPED
+# 掩蓋了一個第二天才會爆的洞**，這正是那條檢查自己 blind_to 裡寫的
+# 「第一天整條檢查跳過——那天的 watchReview 品質沒有任何機制看著」。
+INDEX_FIELDS = ("date", "weekday", "stamp", "headline", "cards", "file",
+                "thermo", "threads", "watch", "pulse", "snap")
+
+
+def index_entry(doc: dict) -> dict:
+    """從當日的 doc 組出 index entry。
+
+    **只取跨日推理需要的欄位，不整份塞進去。** index 要能每天被便宜地讀完，
+    塞進完整 overview 會讓它隨天數線性膨脹，那就違背了「把跨日成本壓在一個
+    索引檔裡」的初衷。pulse 只留 k/dir、snap 只留 k/num/chgPct 就是這個理由。
+    """
+    ov = doc.get("overview") or {}
+    threads = sorted({c["thread"]
+                      for sec in doc.get("sections") or []
+                      for g in sec.get("groups") or []
+                      for c in g.get("cards") or []
+                      if c.get("thread")})
+    entry = {
+        "date": doc["date"],
+        "weekday": doc.get("weekday", ""),
+        "stamp": doc.get("stamp", ""),
+        "headline": doc.get("headline", ""),
+        "cards": doc.get("cards", 0),
+        "file": f"data/{doc['date']}.json",
+        "thermo": (ov.get("thermo") or {}).get("level"),
+        "threads": threads,
+        "watch": ov.get("watch") or [],
+        "pulse": [{"k": p.get("k"), "dir": p.get("dir")}
+                  for p in (ov.get("pulse") or [])],
+        "snap": [{"k": s.get("k"), "num": s.get("num"), "chgPct": s.get("chgPct")}
+                 for s in (ov.get("snap") or [])],
+    }
+    # 大聲失敗，而不是安靜寫出殘缺的 entry。**寫出一個看起來正常、但少了跨日
+    # 記憶的 index，比寫不出來更糟**——它會讓隔天的推理靜靜地建立在空集合上。
+    missing = [k for k in INDEX_FIELDS if k not in entry]
+    if missing:
+        raise KeyError(f"index entry 缺欄位：{'、'.join(missing)}")
+    return entry
+
+
 def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     name = draft_path.name
     try:
@@ -125,14 +175,21 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(target, body)
 
-        idx_path = repo / "data" / "index.json"
-        idx = json.loads(idx_path.read_text()) if idx_path.exists() else {"days": []}
-        idx["days"] = [d for d in idx.get("days", []) if d.get("date") != date]
-        idx["days"].insert(0, {"date": date, "file": f"data/{date}.json"})
-        idx["days"].sort(key=lambda d: d["date"], reverse=True)
-        idx["updated"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-        idx["count"] = len(idx["days"])
-        atomic_write(idx_path, json.dumps(idx, ensure_ascii=False, indent=1))
+    # index 是**衍生狀態**，每一輪都重建，即使日期檔沒動。
+    #
+    # 原本這一段被關在 `if not already:` 裡面。那會造成一個無法自我修復的洞：
+    # 一旦某輪寫進了不完整的 entry，之後拿相同內容重跑並不會修好它，因為
+    # 「內容相同」直接跳過整段。日期檔是不可改寫的，index 不是——它是可以、
+    # 也應該被重算的。2026-08-19 首日就是這樣留下一個只有 date 與 file 的
+    # entry，而隔天的跨日推理全部要靠它。
+    idx_path = repo / "data" / "index.json"
+    idx = json.loads(idx_path.read_text()) if idx_path.exists() else {"days": []}
+    idx["days"] = [d for d in idx.get("days", []) if d.get("date") != date]
+    idx["days"].insert(0, index_entry(draft))
+    idx["days"].sort(key=lambda d: d["date"], reverse=True)
+    idx["updated"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    idx["count"] = len(idx["days"])
+    atomic_write(idx_path, json.dumps(idx, ensure_ascii=False, indent=1))
 
     # 4. commit → rebase → push
     git(repo, "add", "data")
@@ -187,7 +244,20 @@ def main(argv) -> int:
               " —— 不知道該跑哪一組檢查就沒有資格發布", file=sys.stderr)
         return Exit.BAD_INPUT
 
-    drafts = sorted(outbox.glob("*.draft.json"))
+    # **剛寫好的草稿先放過一輪。** 這裡每 60 秒掃一次，而寫草稿的是另一個行程；
+    # 撞上一個寫到一半的檔，讀出來是 JSONDecodeError → exit 12 的回執，看起來像
+    # 內容壞掉，其實只是早了兩秒。2026-08-19 首輪更糟：檔案是完整的 JSON、但還
+    # 不是定稿，於是被當成成品發布，之後每一次重寫都撞不可改寫守衛。
+    #
+    # 正解是產出端原子寫入（寫 .tmp 再 rename），這裡的靜置只是第二層防線——
+    # **兩層都要有，因為產出端是模型在跑，而模型會忘記。**
+    QUIET = 10
+    now = dt.datetime.now().timestamp()
+    drafts, warming = [], []
+    for d in sorted(outbox.glob("*.draft.json")):
+        (warming if now - d.stat().st_mtime < QUIET else drafts).append(d)
+    for d in warming:
+        print(f"{d.name} 剛寫入不到 {QUIET} 秒，這一輪先跳過")
     if not drafts:
         print("outbox 沒有 draft —— 空輪次，不是失敗")
         return Exit.EMPTY_ROUND
