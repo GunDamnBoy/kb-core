@@ -2,3 +2,10 @@ demo.date_present
 demo.items_nonempty
 demo.note_length
 demo.upstream_fresh
+sentinel.data_fresh
+sentinel.ledger_overdue
+sentinel.no_data_loss
+sentinel.no_future_date
+sentinel.updated_fresh
+watch.sentinel_alive
+watch.sentinel_verdict

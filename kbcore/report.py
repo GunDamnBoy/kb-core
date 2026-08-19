@@ -15,8 +15,13 @@ from .result import Exit, Level
 SKIPPED_LIMIT = 3  # SKIPPED 超過這個數量就視同 FAIL
 
 
-def run_all(payload: Any) -> List[Tuple[Check, Outcome]]:
-    return [(c, c.run(payload)) for c in REGISTRY.values()]
+def run_all(payload: Any, suite: str = "draft") -> List[Tuple[Check, Outcome]]:
+    rows = [c for c in REGISTRY.values() if c.suite == suite]
+    if not rows:
+        raise ValueError(
+            f"suite {suite!r} 一條檢查都沒有 —— "
+            "空的 suite 會安靜地回傳全綠，那比沒有這個 suite 更糟")
+    return [(c, c.run(payload)) for c in rows]
 
 
 def selftest() -> List[str]:
@@ -41,9 +46,14 @@ def check_lock(lock_path: Path) -> Tuple[List[str], List[str]]:
     return sorted(known - current), sorted(current - known)
 
 
-def _print_blind_spots() -> None:
+def _print_blind_spots(results: List[Tuple[Check, Outcome]]) -> None:
+    """只印**這一輪實際跑過**的檢查的盲區。
+
+    原本印的是整個 REGISTRY。有 suite 之後那會變成謊話——把哨兵的盲區印在草稿
+    報告底下，看起來像「這些我們也看過了」，其實這一輪一條都沒跑。
+    """
     seen = []
-    for c in REGISTRY.values():
+    for c, _ in results:
         for b in c.blind_to:
             if b not in seen:
                 seen.append(b)
@@ -77,7 +87,7 @@ def report(results: List[Tuple[Check, Outcome]]) -> int:
         f"{counts[Level.ENV]} ENV"
     )
 
-    _print_blind_spots()
+    _print_blind_spots(results)
 
     if counts[Level.FAIL]:
         return Exit.CONTENT

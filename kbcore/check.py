@@ -52,6 +52,17 @@ class Check:
     機制。舊系統修過至少五處這類靜默，每一處都是「寫了但從沒被觸發過」。
     """
 
+    suite: str = "draft"
+    """這條檢查看的是哪一種 payload。
+
+    草稿、哨兵、看門狗吃的東西形狀完全不同，但**檢查的契約只有一份**——
+    covers／blind_to／fixture／自檢／lock 全部共用。分組只是讓 run_all 跑對得上
+    的那一組，不是長出第二套機制。
+
+    替代方案是「每個 suite 一個 REGISTRY」，那會讓自檢與 lock 也分裂成三份，
+    於是「有沒有哪條檢查永遠 PASS」要問三次——**分裂的機制就是會漂移的機制**。
+    """
+
 
 REGISTRY: "dict[str, Check]" = {}
 
