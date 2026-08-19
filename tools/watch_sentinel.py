@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import checks  # noqa: F401,E402
+from kbcore.env import survey  # noqa: E402
 from kbcore.repo import check_destination  # noqa: E402
 from kbcore.report import report, run_all  # noqa: E402
 from kbcore.result import Exit  # noqa: E402
@@ -29,7 +30,11 @@ from kbcore.result import Exit  # noqa: E402
 HEARTBEAT = "sentinel/heartbeat.json"
 
 # 只看真的會被執行的東西。README 改了沒 commit 不是事故。
-CODE_DIRS = ("kbcore", "checks", "tools")
+#
+# `scripts` 是 2026-08-19 補的：podfetch 那天進版控，而它**正是最可能被就地手改
+# 的一支**（半夜跑、出問題時人會直接去改那個檔）。漏掉它等於這條檢查對最需要
+# 它的地方是瞎的 —— 檢查的涵蓋範圍要跟著版控範圍走，而那是兩件會各自變動的事。
+CODE_DIRS = ("kbcore", "checks", "tools", "scripts", "systems")
 
 
 def code_drift():
@@ -78,6 +83,7 @@ def main(argv) -> int:
         "now": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "heartbeat": hb,
         "drift": code_drift(),
+        "env": survey(),
     }
     return report(run_all(payload, suite="watch"))
 

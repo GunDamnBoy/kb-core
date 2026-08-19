@@ -24,6 +24,7 @@ payload 形狀：{"now": ISO8601, "heartbeat": {...}|None}
 import datetime as dt
 
 from kbcore.check import Check, fail, ok, register, skipped, warn
+from kbcore.env import OPTIONAL_BY_LABEL, REQUIRED_BINARIES
 
 MAX_HEARTBEAT_AGE_H = 30
 
@@ -121,5 +122,64 @@ register(Check(
     run=_no_code_drift,
     fixture={"drift": ["tools/publish.py"]},
     no_boundary="一致或不一致，沒有中間狀態",
+    suite="watch",
+))
+
+
+def _external_binaries(p):
+    """排程跑得到的外部指令 —— 對**每一支 plist 實際宣告的 PATH** 解析。
+
+    「在終端機測得到」與「排程跑得到」是兩件事，而它們的差別只有在半夜才會顯現。
+    更細一層：「我以為排程看得到什麼」與「plist 實際寫了什麼」也是兩件事，
+    所以這裡讀 plist，不讀常數。
+    """
+    env = p.get("env")
+    if env is None:
+        return skipped("payload 沒有 env 區塊")
+    plists = env.get("plists") or {}
+    if not plists:
+        return skipped("找不到任何 com.kenny.* 的 plist —— 無法判定，"
+                       "這不是「沒問題」")
+
+    bad = []
+    for label, info in sorted(plists.items()):
+        if info.get("error"):
+            bad.append(f"{label} 讀不開（{info['error']}）")
+        elif not info.get("declared"):
+            bad.append(f"{label} 的 EnvironmentVariables 沒有宣告 PATH "
+                       f"—— 它會拿到 launchd 的預設值")
+        elif info.get("requires") is None:
+            bad.append(f"{label} 不在 REQUIRED_BY_LABEL 裡 —— "
+                       "不知道它需要什麼就不算檢查過")
+        else:
+            miss = [n for n, v in (info["found"] or {}).items() if v is None]
+            if miss:
+                bad.append(f"{label} 的 PATH（{info['path']}）找不到 "
+                           + "、".join(miss))
+    if bad:
+        return fail("；".join(bad))
+
+    # 選配缺席是**降級**，要看得見但不擋。
+    degraded = [f"{label} 缺 {n}（{OPTIONAL_BY_LABEL[label][n].split('。')[0]}）"
+                for label, info in sorted(plists.items())
+                for n, v in (info.get("optional") or {}).items() if v is None]
+    if degraded:
+        return warn("；".join(degraded))
+    return ok(f"{len(plists)} 支 plist 各自需要的指令都解析得到")
+
+
+register(Check(
+    id="watch.external_binaries",
+    covers="REQUIRED_BINARIES 全部能在 launchd 的 PATH 裡解析到",
+    blind_to=[
+        "指令存在但版本不對或壞掉",
+        "plist 的 EnvironmentVariables 實際寫的 PATH 與這裡宣告的不一致",
+        "程式用的是別的外部指令而沒有登記進 REQUIRED_BY_LABEL",
+        "plist 存在但沒被 launchctl 載入 —— 這條看檔案不看 launchctl",
+    ],
+    run=_external_binaries,
+    fixture={"env": {"plists": {"com.kenny.x": {
+        "path": "/nowhere", "declared": True, "found": {"ffmpeg": None}}}}},
+    no_boundary="找得到或找不到，沒有中間狀態",
     suite="watch",
 ))
