@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """節目探針 —— 「該不該收這檔」變成可量測的問題。
 
-用法：probe_show.py <輸出 json> <ident>...
+用法：probe_show.py <輸出 json> "<ident>,<ident>,..."
       ident 是 AppleID（純數字），或 `search:<節目名>`
+      **用逗號分隔，整串當一個參數傳。**
+
+第一版用空白分隔，於是 workflow 展開 `${{ inputs.idents }}` 時被 shell 切開：
+`search:Sharp Tech` → `search:Sharp` ＋ `Tech`，前者搜到一檔美式足球節目、
+後者被當成 AppleID 送出去。**而表格照樣印出五行真數字** ——
+失敗沒有長得像失敗。節目名裡有空白是常態，所以分隔符不能是空白。
 
 跑在 GitHub Actions（雲端容器連不到 iTunes，Actions 連得到 —— 2026-08-19 實測）。
 
@@ -115,6 +121,9 @@ def probe(ident: str, cb: str, now: dt.datetime) -> dict:
         "minutes": {"min": mins[0], "median": statistics.median(mins),
                     "max": mins[-1]} if mins else None,
         "sampled": len(eps),
+        # 取樣被 LIMIT 切斷時，30 天與 90 天會變成同一個數字而看起來像真的。
+        # 截斷要具名 —— 跟 XLSX 只留最後 N 列同一條。
+        "capped": len(eps) >= LIMIT,
         "show_level_releaseDate": show_date[:10] if show_date else None,
         "show_level_lag_days": lag,
     }
@@ -124,7 +133,8 @@ def main(argv) -> int:
     if len(argv) < 3:
         print(__doc__)
         return Exit.BAD_INPUT
-    out_path, idents = Path(argv[1]), argv[2:]
+    out_path = Path(argv[1])
+    idents = [x.strip() for x in ",".join(argv[2:]).split(",") if x.strip()]
     now = dt.datetime.now(UTC)
     cb = now.strftime("%Y%m%d%H%M%S")
 
@@ -144,9 +154,17 @@ def main(argv) -> int:
     for r in sorted(rows, key=lambda x: x["days_since_latest"]):
         m = r["minutes"]
         mm = f"{m['min']}/{m['median']:.0f}/{m['max']}" if m else "—"
+        cap = " ⚠取樣被截斷" if r["capped"] else ""
         print(f"{(r['name'] or '?')[:36]:38} {r['latest']:>11} "
               f"{r['days_since_latest']:>5} {r['eps_30d']:>5} {r['eps_90d']:>5} "
-              f"{str(r['per_week']):>5} {mm:>20}")
+              f"{str(r['per_week']):>5} {mm:>20}{cap}")
+
+    capped = [r for r in rows if r["capped"]]
+    if capped:
+        print(f"\n⚠ 取樣被 LIMIT={LIMIT} 截斷 {len(capped)} 檔："
+              f"{'、'.join(r['name'][:24] for r in capped)}")
+        print("  它們的 30天／90天集數是下限不是實數，每週值也偏低。"
+              "高頻節目要單獨用更大的 limit 再探一次。")
 
     stale = [r for r in rows if r["show_level_lag_days"] and r["show_level_lag_days"] > 30]
     if stale:

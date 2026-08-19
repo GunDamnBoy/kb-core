@@ -1,10 +1,14 @@
 # 節目探針 —— 手動觸發，回答「該不該收這檔」。
 #
-# 它跑在 Actions 而不是雲端，理由跟保底層一樣：**雲端容器連不到 iTunes**
-# （2026-08-19 實測 403 Tunnel，跟五個金融端點同一個封鎖），Actions 連得到。
+# 跑在 Actions 而不是雲端：雲端容器連不到 iTunes（2026-08-19 實測 403 Tunnel，
+# 跟五個金融端點同一個封鎖），Actions 連得到。
 #
-# 這支不寫任何資料，只印表格 —— 它是研究工具不是管線。
-# permissions 只給 contents: read。
+# **輸入用逗號分隔，而且一定要加引號。** 第一版沒加引號、用空白分隔，於是
+# `search:Sharp Tech` 被 shell 切成兩個參數：前者搜到一檔美式足球節目、後者被當成
+# AppleID。而表格照樣印出五行真數字——**失敗沒有長得像失敗**。
+#
+# 結果寫進 job summary 而不是 artifact：artifact 要點三層才看得到，
+# 而這支的產出就是要給人看的。順帶拿掉了會固定響的 Node 20 警告。
 
 name: probe-show
 
@@ -12,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       idents:
-        description: "AppleID 或 search:<節目名>，用空白分隔"
+        description: "AppleID 或 search:<節目名>，用逗號分隔"
         required: true
-        default: "296237493 search:BG2 search:Sharp Tech 1592743188 search:Top Traders Unplugged"
+        default: "296237493,search:BG2Pod,search:Sharp Tech Ben Thompson,1592743188,search:Top Traders Unplugged"
 
 permissions:
   contents: read
@@ -29,10 +33,13 @@ jobs:
           python-version: "3.12"
 
       - name: 探
-        run: python tools/probe_show.py /tmp/probe.json ${{ inputs.idents }}
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: probe-result
-          path: /tmp/probe.json
+        env:
+          IDENTS: ${{ inputs.idents }}
+        run: |
+          python tools/probe_show.py /tmp/probe.json "$IDENTS" | tee /tmp/out.txt
+          {
+            echo '## 節目探針'
+            echo '```'
+            cat /tmp/out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
