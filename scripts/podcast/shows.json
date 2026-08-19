@@ -1,0 +1,120 @@
+{
+ "allin": {
+  "appleId": "1502871393",
+  "name": "All-In Podcast",
+  "hosts": "Chamath Palihapitiya, Jason Calacanis, David Sacks, David Friedberg (not all appear in every episode)"
+ },
+ "profg": {
+  "appleId": "1744631325",
+  "name": "Prof G Markets",
+  "hosts": "Ed Elson, Scott Galloway (平日多為 Ed Elson 與來賓對談；Scott 主要出現在週一的 Bulls vs. Bears 與部分專訪)"
+ },
+ "hardfork": {
+  "appleId": "1528594034",
+  "name": "Hard Fork",
+  "hosts": "Kevin Roose, Casey Newton"
+ },
+ "unhedged": {
+  "appleId": "1691284824",
+  "name": "Unhedged (FT)",
+  "hosts": "Robert Armstrong, Aiden Reiter",
+  "wpm": 175
+ },
+ "acquired": {
+  "appleId": "1050462261",
+  "name": "Acquired",
+  "hosts": "Ben Gilbert, David Rosenthal"
+ },
+ "twentyvc": {
+  "appleId": "958230465",
+  "name": "20VC",
+  "hosts": "Harry Stebbings"
+ },
+ "iltb": {
+  "appleId": "1154105909",
+  "name": "Invest Like the Best",
+  "hosts": "Patrick O'Shaughnessy",
+  "wpm": 140
+ },
+ "tip": {
+  "appleId": "928933489",
+  "name": "We Study Billionaires (TIP)",
+  "hosts": "Stig Brodersen, Clay Finck, Kyle Grieve, Shawn O'Malley, Daniel Mahncke（週日的 RWH 系列由 William Green 主持，訪談知名投資人）"
+ },
+ "moneystuff": {
+  "appleId": "1739582836",
+  "name": "Money Stuff: The Podcast",
+  "hosts": "Matt Levine, Katie Greifeld (Bloomberg Opinion; 偶有代班共同主持人)"
+ },
+ "ingoodcompany": {
+  "appleId": "1614211565",
+  "name": "In Good Company",
+  "hosts": "Nicolai Tangen (CEO of Norges Bank Investment Management; guests are CEOs of major listed companies)",
+  "wpm": 160
+ },
+ "compound": {
+  "appleId": "1456467014",
+  "name": "The Compound and Friends",
+  "hosts": "Josh Brown, Michael Batnick (weekly rotating guest)"
+ },
+ "mib": {
+  "appleId": "730188152",
+  "name": "Masters in Business",
+  "hosts": "Barry Ritholtz"
+ },
+ "nopriors": {
+  "appleId": "1668002688",
+  "name": "No Priors",
+  "hosts": "Sarah Guo, Elad Gil"
+ },
+ "dwarkesh": {
+  "appleId": "1516093381",
+  "name": "Dwarkesh Podcast",
+  "hosts": "Dwarkesh Patel"
+ },
+ "latentspace": {
+  "appleId": "1674008350",
+  "name": "Latent Space",
+  "hosts": "Shawn Wang (swyx), Alessio Fanelli"
+ },
+ "oddlots": {
+  "appleId": "1056200096",
+  "name": "Odd Lots",
+  "hosts": "Joe Weisenthal, Tracy Alloway",
+  "wpm": 185
+ },
+ "macrovoices": {
+  "appleId": "1079172742",
+  "name": "MacroVoices",
+  "hosts": "Erik Townsend, Patrick Ceresna",
+  "wpm": 160
+ },
+ "markethuddle": {
+  "appleId": "1444520320",
+  "name": "The Market Huddle",
+  "hosts": "Kevin Muir, Patrick Ceresna",
+  "wpm": 175
+ },
+ "bloomberg": {
+  "appleId": "296237493",
+  "name": "Bloomberg Surveillance",
+  "hosts": "Tom Keene, Jonathan Ferro, Lisa Abramowicz, Paul Sweeney",
+  "limit": 20
+ },
+ "gsx": {
+  "appleId": "948913991",
+  "name": "Exchanges at Goldman Sachs",
+  "hosts": "Allison Nathan",
+  "wpm": 180
+ },
+ "sharptech": {
+  "appleId": "1646152812",
+  "name": "Sharp Tech with Ben Thompson",
+  "hosts": "Ben Thompson"
+ },
+ "fwdguidance": {
+  "appleId": "1592743188",
+  "name": "Forward Guidance",
+  "hosts": ""
+ }
+}
