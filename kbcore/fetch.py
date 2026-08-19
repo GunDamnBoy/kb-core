@@ -47,7 +47,10 @@ def route_of(ident: str) -> str:
     """代號樣式明確時樣式優先，不做啟發式猜測。"""
     if ident.startswith("FRED:"):
         return "fred"
-    raise UnknownIdent(f"無法路由的代號：{ident!r}（目前只支援 FRED: 前綴）")
+    if ident.split(":", 1)[0] in ("TWSE", "TPEX", "SPDR"):
+        return "tw"
+    raise UnknownIdent(
+        f"無法路由的代號：{ident!r}（支援的前綴：FRED、TWSE、TPEX、SPDR）")
 
 
 def _fred_key() -> str:

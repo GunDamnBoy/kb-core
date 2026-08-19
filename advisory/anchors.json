@@ -1,0 +1,339 @@
+{
+  "_": "投顧知識庫的每一個數字，唯一的家。三個讀者共用：檢查程式驗它、SKILL 的派工步驟分派它、採集 preamble 告訴 subagent 交幾則。任何文件引用這裡的數字都用指路，不抄值 —— 抄一次就是下一次漂移。",
+  "_source_rule": "每一組數字都帶 source。沒有出處的數字不算量測過；估算值標 ~；更正舊量測要留痕；禁止在兩個實測點之間內插。",
+  "window": {
+    "from_hour_taipei": 7,
+    "from_day_offset": -1,
+    "to": "本次寫入檔案的時刻",
+    "overlap_hours": [
+      2,
+      5
+    ],
+    "source": "2026-08 起沿用。起點固定為前一日台北 07:00，因為儀表板在台北上午產出，前一晚美股收盤是當天最重要的素材（美東前一日 16:00 ＝ 台北當日 04:00，報導多半掛前一日日期）。浮動起點會把美股盤後報導整批切掉。相鄰兩天重疊 2–5 小時是刻意的容錯，配套是跨版連結去重。"
+  },
+  "weekend_rule": {
+    "decide_by": "window.from",
+    "source": "看起點不看終點，因為窗口主體是前一日。實務上受影響的是週日與週一這兩輪。"
+  },
+  "groups": [
+    {
+      "name": "美股與財報",
+      "tier": "core",
+      "floor": {
+        "weekday": 10,
+        "weekend": 10
+      },
+      "quota": {
+        "weekday": 12,
+        "weekend": 11
+      },
+      "section": "macro"
+    },
+    {
+      "name": "AI 與半導體",
+      "tier": "core",
+      "floor": {
+        "weekday": 10,
+        "weekend": 10
+      },
+      "quota": {
+        "weekday": 11,
+        "weekend": 10
+      },
+      "section": "industry"
+    },
+    {
+      "name": "台灣",
+      "tier": "core",
+      "floor": {
+        "weekday": 10,
+        "weekend": 10
+      },
+      "quota": {
+        "weekday": 12,
+        "weekend": 11
+      },
+      "section": "macro"
+    },
+    {
+      "name": "央行、利率與匯率",
+      "tier": "core_tuned",
+      "floor": {
+        "weekday": 8,
+        "weekend": 8
+      },
+      "quota": {
+        "weekday": 9,
+        "weekend": 9
+      },
+      "section": "macro"
+    },
+    {
+      "name": "中國",
+      "tier": "second",
+      "floor": {
+        "weekday": 6,
+        "weekend": 4
+      },
+      "quota": {
+        "weekday": 7,
+        "weekend": 5
+      },
+      "section": "macro"
+    },
+    {
+      "name": "日本",
+      "tier": "second",
+      "floor": {
+        "weekday": 6,
+        "weekend": 4
+      },
+      "quota": {
+        "weekday": 8,
+        "weekend": 5
+      },
+      "section": "macro"
+    },
+    {
+      "name": "能源與原物料",
+      "tier": "second",
+      "floor": {
+        "weekday": 6,
+        "weekend": 4
+      },
+      "quota": {
+        "weekday": 7,
+        "weekend": 5
+      },
+      "section": "industry"
+    },
+    {
+      "name": "金融、併購與企業",
+      "tier": "second",
+      "floor": {
+        "weekday": 6,
+        "weekend": 4
+      },
+      "quota": {
+        "weekday": 7,
+        "weekend": 5
+      },
+      "section": "industry"
+    },
+    {
+      "name": "地緣政治（中東與戰事）",
+      "tier": "second",
+      "floor": {
+        "weekday": 6,
+        "weekend": 4
+      },
+      "quota": {
+        "weekday": 8,
+        "weekend": 6
+      },
+      "section": "politics"
+    },
+    {
+      "name": "美國政治與政策",
+      "tier": "second",
+      "floor": {
+        "weekday": 6,
+        "weekend": 4
+      },
+      "quota": {
+        "weekday": 9,
+        "weekend": 7
+      },
+      "section": "politics"
+    },
+    {
+      "name": "歐洲",
+      "tier": "satellite",
+      "floor": {
+        "weekday": 3,
+        "weekend": 2
+      },
+      "quota": {
+        "weekday": 5,
+        "weekend": 3
+      },
+      "section": "macro"
+    },
+    {
+      "name": "亞太（韓國、印度、東南亞）",
+      "tier": "satellite",
+      "floor": {
+        "weekday": 3,
+        "weekend": 2
+      },
+      "quota": {
+        "weekday": 6,
+        "weekend": 4
+      },
+      "section": "macro"
+    },
+    {
+      "name": "生技健護",
+      "tier": "satellite",
+      "floor": {
+        "weekday": 3,
+        "weekend": 2
+      },
+      "quota": {
+        "weekday": 6,
+        "weekend": 3
+      },
+      "section": "industry"
+    },
+    {
+      "name": "信用債",
+      "tier": "satellite",
+      "floor": {
+        "weekday": 3,
+        "weekend": 2
+      },
+      "quota": {
+        "weekday": 4,
+        "weekend": 3
+      },
+      "section": "industry"
+    },
+    {
+      "name": "黃金",
+      "tier": "satellite",
+      "floor": {
+        "weekday": 3,
+        "weekend": 2
+      },
+      "quota": {
+        "weekday": 3,
+        "weekend": 2
+      },
+      "section": "industry"
+    }
+  ],
+  "_groups_source": "分級是拿 2026-08-04 的實際素材校準出來的：那天全站 91 則，台灣 9、日本 7、中國 3、韓印東南亞 3、歐洲 3、生技健護 3、黃金 1、信用債 0。衛星組若訂 ≥10 甚至 ≥6，第一天就會有五組達不到。核心四組週末不放寬是刻意的（8/09、8/10 都達標），代價是週末幾乎必然跑一輪補位。配額一律高於下限，差額就是汰除餘裕（去重、一事一卡合併、品質汰除之後會縮水）；配額等於下限就是不留餘裕。配額對齊各組歷史實交量：平日 114、週末 89，落在 8/13–8/16 實交 118／123／122／110 之內。",
+  "_groups_zero_slack": "黃金是唯一配額等於下限的組（3 → 3、週末 2 → 2），違反本檔自述的「配額一律高於下限」。原值照抄未改 —— 舊規格就是這樣寫的，而重寫不重訂數字。待決：黃金的下限有一則是保底數據卡（每天必定拿得到），若視為確定性素材則零餘裕合理；若不是，配額該提到 4。第一週實跑後回頭判。",
+  "_groups_naming": "2026-08-19 重寫時發現舊規格的兩處組名不一致：下限表寫「金融併購與企業」「亞太（韓印東南亞）」，QUOTA 表寫「金融、併購與企業」「亞太（韓國、印度、東南亞）」。舊系統明文警告「分組名必須與 QUOTA 的鍵逐字相符，全形括號與頓號差一個字就會被判分組名不在表內」——而它自己的兩張表就對不上。此處以 QUOTA 版為準（舊規格自述權威值在 QUOTA），十五個 name 是全系統唯一的組名來源。",
+  "site_total": {
+    "weekday": [
+      95,
+      125
+    ],
+    "weekend": [
+      80,
+      125
+    ],
+    "_no_sums": "下限合計與配額合計刻意不寫在這裡 —— 它們可以從 groups 加總出來，手寫就是第二份副本。2026-08-19 寫這個檔時第一版真的手寫了，而且週末下限寫成 71（實際 72）。可以被算出來的數字不要存。",
+    "source": "全站卡片數 ＝ 當日新卡數，恆為 100%（跨版去重使然）。24 小時窗口制下 cards 約 80–95。"
+  },
+  "lengths": {
+    "regular_card": [
+      550,
+      900
+    ],
+    "deep_card": [
+      900,
+      1300
+    ],
+    "degraded_card": [
+      350,
+      450
+    ],
+    "deep_card_count": [
+      6,
+      8
+    ],
+    "essay_chars": 1000,
+    "essay_paras": [
+      5,
+      6
+    ],
+    "thread_label_chars": [
+      2,
+      16
+    ],
+    "threaded_cards_per_day": [
+      3,
+      6
+    ],
+    "pulse_note_max": 30,
+    "measure": "全卡 ＝ len(body) + sum(len(b) for b in bullets)。bullet 算在區間裡面。",
+    "source": "2026-08-16 傍晚由 650–800 放寬為 550–900。深度卡總量固定 6–8 張、不是每組一張：15 組各 1 張＝15 張，撰寫量翻倍、時間預算內做不完。寧可 8 張紮實的深度卡配 100 則中長摘要，也不要 15 張注水的。實測 2026-08-18：深度卡 8 張全部落在 900–1300 內、範圍僅 926–1078（它的數字在全系統只有一個家）；同輪一般卡中位 441、90/104 低於下限（它的數字當時有四份副本）。",
+    "enforcement": "字數是品質指標不是正確性指標，檢查印中位數與直方圖並警告，不計入退出碼 —— 為了湊字數注水比超標更糟。"
+  },
+  "fixed_structure": {
+    "snap_cells": 6,
+    "focus_cards": 4,
+    "takeaways": 7,
+    "pulse_entries": 5,
+    "pulse_keys": [
+      "美股",
+      "美債",
+      "美元",
+      "黃金",
+      "原油"
+    ],
+    "pulse_dir_values": [
+      "偏多",
+      "中性",
+      "偏空"
+    ],
+    "watch_review_verdicts": [
+      "應驗",
+      "落空",
+      "未決"
+    ],
+    "thermo_level": "0–100 的整數字串",
+    "source": "三分鐘總覽的固定結構。thermo 自 2026-08-11 起強制整數字串：8/11 前有幾天寫成散文，導致時間序列斷點（07-30、08-02、08-03、08-07、08-08 五個斷點不回填 —— 事後轉成數字等於編造）。"
+  },
+  "paywall_verdict": {
+    "complete": {
+      "paras_min": 8,
+      "chars_min": 1500
+    },
+    "blocked": {
+      "paras_max": 3,
+      "chars_max": 800,
+      "requires_intercept_string": true
+    },
+    "retry_selectors_before_verdict": 1,
+    "source": "付費牆判定用內文量，不用導覽列。Barron's 連續三次以不同形式製造誤判：8/03 用導覽列 Sign In 判斷、8/05 選擇器沒對上（2 段/419 字）、8/06 等待 4 秒不足（2 段/318 字 vs 補等 5 秒的 10 段/2,563 字）。先懷疑選擇器沒對上，再懷疑被擋。"
+  },
+  "collect_limits": {
+    "tool_fail_streak_breaker": 5,
+    "article_retry_max": 3,
+    "articles_per_source_max": 15,
+    "backfill_rounds_max": 2,
+    "roundup_split_max": 3,
+    "source": "單來源 15 篇：8/09 A 組對 Bloomberg 連發約 35 次預篩請求觸發風控，當日該來源成卡 0 篇，而開場可用性測試原本是通過的 —— 是採集方式把來源惹毛的。補位上限 2 輪：8/10 跑了四輪，合計約 585 萬有效 token、佔全輪 22.6%，換來 23 則；其中 J 組單則成本 91 萬，是 F 組 16 萬的 5.7 倍。"
+  },
+  "base_card_groups": [
+    "信用債",
+    "黃金"
+  ],
+  "_base_card_groups_source": "這兩組每天都有卡，即使當天零相關新聞——那是 House View 講 CSP 債務與利差時的那條曲線，值在跨期序列不在當日新聞性。資料上標 base: true。",
+  "dedup_exempt": [
+    "https://fred.stlouisfed.org/series/BAMLC0A0CM",
+    "https://fred.stlouisfed.org/series/BAMLH0A0HYM2"
+  ],
+  "_dedup_exempt_source": "跨版去重的唯一豁免：每日更新但網址固定的官方數據頁。保底卡靠它才能天天出現。新增豁免要能說出「這個網址的內容每天會變」——說不出來就不是豁免，是重複。",
+  "sections": [
+    {
+      "id": "macro",
+      "title": "市場總經",
+      "en": "Macro"
+    },
+    {
+      "id": "industry",
+      "title": "產業與主題",
+      "en": "Industry & Themes"
+    },
+    {
+      "id": "politics",
+      "title": "政經",
+      "en": "Politics"
+    }
+  ],
+  "_sections_source": "舊規格記載三區塊的組數為 macro 7、industry 6、politics 2，但**沒有寫哪一組歸哪一區** ——2026-08-19 照著 SKILL 紙上演練時才發現：撰寫端要自己決定，而檢查驗不到。依組數與語意還原後三區各為 7／6／2，與舊規格記載相符。"
+}
