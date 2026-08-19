@@ -22,17 +22,14 @@ import shutil
 import sys
 from pathlib import Path
 
-REMOVE = ["pivot", "lennys", "lex"]
+# sharptech 於 2026-08-20 除名。加入時只看了節目影響力，沒有看 feed 內容：
+# Apple 公開 feed 的每一集標題都帶 "(Preview)"，完整集在訂閱者的私有 RSS。
+# **它不會報錯** —— 預告片會被完整轉寫、completeness 算出來還是 100%，
+# 因為那個指標量的是「轉寫得完不完整」，不是「這是不是那一集」。
+# 要留它就得走私有 feed（憑證，不能進 repo），那是 fetch 層的改動，不是清單的事。
+REMOVE = ["pivot", "lennys", "lex", "sharptech"]
 
 ADD = {
-    "sharptech": {
-        "appleId": "1646152812",
-        "name": "Sharp Tech with Ben Thompson",
-        # **hosts 待確認。** 節目名帶 Ben Thompson，另一位共同主持人的姓名
-        # 我沒有可靠來源，所以不寫。錯的名字會變成對真實人物的不實陳述，
-        # 比沒有名字糟得多（保守講者標記原則）。
-        "hosts": "Ben Thompson",
-    },
     "fwdguidance": {
         "appleId": "1592743188",
         "name": "Forward Guidance",
@@ -44,7 +41,7 @@ ADD = {
 
 # 插在誰後面。理由：show_priority 決定①額度不足時的處理順序②同源去重保留哪一集，
 # 所以位置要對齊題材鄰居，不是接在最後面。
-INSERT_AFTER = {"fwdguidance": "oddlots", "sharptech": "latentspace"}
+INSERT_AFTER = {"fwdguidance": "oddlots"}
 
 
 def main(argv) -> int:
@@ -100,7 +97,7 @@ def main(argv) -> int:
     for i, k in enumerate(prio, 1):
         mark = "  ←新增" if k in ADD else ""
         print(f"  {i:2}. {k}{mark}")
-    print("\n**沒有 wpm 的節目沿用全域 200** —— sharptech 與 fwdguidance 剛加，"
+    print("\n**沒有 wpm 的節目沿用全域 200** —— fwdguidance 剛加，"
           "頭幾次的完整度可能偏低，那是分母問題不是缺字。")
     return 0
 

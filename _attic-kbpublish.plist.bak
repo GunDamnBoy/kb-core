@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.kenny.kbpublish</string>
+
+  <!-- 全部絕對路徑。launchd 的 PATH 只有 /usr/bin:/bin:/usr/sbin:/sbin，
+       不含 /usr/local/bin 也不含 venv；cwd 是 / 不是家目錄。（2026-08-19 實測） -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/publish.py</string>
+    <string>/Users/macmini/outbox</string>
+    <string>/Users/macmini/chart-of-the-day</string>
+  </array>
+
+  <!-- tracer bullet 用 60 秒好觀察。正式運作的間隔是另一個決定，不要沿用這個值。 -->
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><false/>
+
+  <key>StandardOutPath</key><string>/Users/macmini/outbox/publish.log</string>
+  <key>StandardErrorPath</key><string>/Users/macmini/outbox/publish.err.log</string>
+</dict>
+</plist>
