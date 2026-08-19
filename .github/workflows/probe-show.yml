@@ -1,0 +1,38 @@
+# 節目探針 —— 手動觸發，回答「該不該收這檔」。
+#
+# 它跑在 Actions 而不是雲端，理由跟保底層一樣：**雲端容器連不到 iTunes**
+# （2026-08-19 實測 403 Tunnel，跟五個金融端點同一個封鎖），Actions 連得到。
+#
+# 這支不寫任何資料，只印表格 —— 它是研究工具不是管線。
+# permissions 只給 contents: read。
+
+name: probe-show
+
+on:
+  workflow_dispatch:
+    inputs:
+      idents:
+        description: "AppleID 或 search:<節目名>，用空白分隔"
+        required: true
+        default: "296237493 search:BG2 search:Sharp Tech 1592743188 search:Top Traders Unplugged"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: 探
+        run: python tools/probe_show.py /tmp/probe.json ${{ inputs.idents }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-result
+          path: /tmp/probe.json
