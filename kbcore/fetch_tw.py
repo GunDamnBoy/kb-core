@@ -94,16 +94,42 @@ def parse_xlsx(raw: bytes, ident: str) -> Dict:
         raise ParseFailed(f"{ident} 是 XLSX，但這個環境沒有 openpyxl：{e}") from e
     try:
         wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-        ws = wb[wb.sheetnames[0]]
-        rows = [[c.isoformat() if hasattr(c, "isoformat") else c for c in r]
-                for r in ws.iter_rows(values_only=True)]
     except Exception as e:
         raise ParseFailed(f"{ident} XLSX 讀不開：{type(e).__name__}: {e}") from e
-    if not rows:
-        raise ParseFailed(f"{ident} XLSX 是空的")
-    header, body = rows[0], rows[1:]
+
+    # **「讀得開」不等於「有資料」。** 2026-08-19 第一版直接取 sheetnames[0]，
+    # 拿到的是免責聲明頁：78 列全是 None，而狀態是 ok、必要項失敗是空的 ——
+    # 每一個訊號都說成功，資料根本不存在。
+    #
+    # 這是同一個錯誤的第四次。前三次是「解得開」太寬鬆（latin-1、sniff、CSV 結構），
+    # 這次是**「解析成功」太寬鬆**。共通的問法：我剛才那個 ok，是憑什麼判的？
+    best, scored = None, []
+    for name in wb.sheetnames:
+        rows = [list(r) for r in wb[name].iter_rows(values_only=True)]
+        n = sum(1 for r in rows for c in r if c is not None and str(c).strip())
+        scored.append((name, len(rows), n))
+        if best is None or n > best[2]:
+            best = (name, rows, n)
+    if best is None or best[2] == 0:
+        raise ParseFailed(f"{ident} 每一個工作表都是空的：{scored}")
+
+    name, rows, _ = best
+    # 表頭是第一列**有三格以上非空**的列。免責聲明那種單格長文不算表頭。
+    hi = next((i for i, r in enumerate(rows)
+               if sum(1 for c in r if c is not None and str(c).strip()) >= 3), None)
+    if hi is None:
+        raise ParseFailed(f"{ident} 工作表 {name!r} 找不到表頭"
+                          f"（沒有任何一列有三格以上非空）；各表：{scored}")
+    header = [str(c).strip() if c is not None else "" for c in rows[hi]]
+    body = [[c.isoformat() if hasattr(c, "isoformat") else c for c in r]
+            for r in rows[hi + 1:]
+            if any(c is not None and str(c).strip() for c in r)]
+    if not body:
+        raise ParseFailed(f"{ident} 工作表 {name!r} 表頭之後沒有任何資料列")
+
     kept = body[-XLSX_KEEP_LAST:]
-    return {"sheet": wb.sheetnames[0], "columns": [str(h) for h in header],
+    return {"sheet": name, "sheets": [x[0] for x in scored],
+            "header_row": hi, "columns": header,
             "total_rows": len(body), "kept_last": len(kept),
             "dropped": len(body) - len(kept), "rows": kept}
 
