@@ -75,6 +75,39 @@ ROUTES = {
 }
 
 
+# 一天保留幾列。**截斷要看得見** —— raw 每天一個檔進 git，
+# 完整歷史每天存一次會讓 repo 爆掉；但安靜的截斷比檔案大更危險。
+XLSX_KEEP_LAST = 120
+
+
+def parse_xlsx(raw: bytes, ident: str) -> Dict:
+    """XLSX。**格式是實測出來的，不是從網頁文案推的。**
+
+    2026-08-19：SPDR 的 historical-archive 端點回 content-type
+    `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`、
+    537KB、開頭 `50 4b 03 04`（ZIP）。這個結論來自 `sniff` 把 content-type 與
+    開頭 bytes 印進失敗訊息——**猜格式的代價是症狀會指向錯的方向**。
+    """
+    try:
+        import openpyxl
+    except ImportError as e:
+        raise ParseFailed(f"{ident} 是 XLSX，但這個環境沒有 openpyxl：{e}") from e
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+        rows = [[c.isoformat() if hasattr(c, "isoformat") else c for c in r]
+                for r in ws.iter_rows(values_only=True)]
+    except Exception as e:
+        raise ParseFailed(f"{ident} XLSX 讀不開：{type(e).__name__}: {e}") from e
+    if not rows:
+        raise ParseFailed(f"{ident} XLSX 是空的")
+    header, body = rows[0], rows[1:]
+    kept = body[-XLSX_KEEP_LAST:]
+    return {"sheet": wb.sheetnames[0], "columns": [str(h) for h in header],
+            "total_rows": len(body), "kept_last": len(kept),
+            "dropped": len(body) - len(kept), "rows": kept}
+
+
 def parse_json(raw: bytes, ident: str) -> Dict:
     try:
         return json.loads(raw.decode("utf-8-sig"))
@@ -175,6 +208,8 @@ def sniff(raw: bytes, ident: str, ctype: str):
     ParseFailed，而 ParseFailed 跟「路徑錯了」在「黃金卡出不來」那一層長得一樣。
     這裡把 content-type 與開頭的 bytes 一起寫進失敗訊息，下一輪就不用再猜。
     """
+    if raw[:4] == b"PK\x03\x04":
+        return parse_xlsx(raw, ident), "xlsx"
     for kind, fn in (("json", parse_json), ("csv", parse_csv)):
         try:
             return fn(raw, ident), kind

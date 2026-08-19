@@ -92,6 +92,15 @@ def main(argv) -> int:
     # 退讓過就要看得見。utf-8 以外的編碼不是錯誤，但它是一個要被人看到的狀態。
     fell_back = [f"{k}（{r['encoding']}）" for k, r in out.items()
                  if r.get("encoding") and r["encoding"] != "utf-8-sig"]
+    # 截斷要看得見。安靜地只留最後 N 列，會讓「歷史很短」與「我們只保留這麼多」
+    # 在下游眼裡長得一樣。
+    truncated = [f"{k}（{r['data']['total_rows']}→{r['data']['kept_last']}）"
+                 for k, r in out.items()
+                 if r["status"] == "ok" and isinstance(r.get("data"), dict)
+                 and r["data"].get("dropped")]
+    if truncated:
+        print(f"\n只保留最後幾列：{'、'.join(truncated)}")
+
     if fell_back:
         print(f"\n編碼退讓：{'、'.join(fell_back)} —— 不是錯誤，但值得看一眼是不是亂碼")
 
