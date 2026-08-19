@@ -74,7 +74,21 @@
 ## 六、來源
 
 **付費訂閱（從已登入的 Chrome 讀）**：Bloomberg、WSJ、NYT、Nikkei Asia、
-Washington Post、Barron's、IBD、Politico、The Hill、SemiAnalysis、The Economist。
+Washington Post、Barron's、IBD、Politico、The Hill、
+SemiAnalysis（**文章在 `newsletter.semianalysis.com`**，`semianalysis.com` 只剩訂閱模型頁）、
+The Economist。
+
+**Barron's 是計量制，不是「可讀／不可讀」的二分。** 2026-08-19 同一天測到兩種相反的結果：
+傍晚兩篇 `article.access=paid` 的個股與財報文都完整讀到（13 段／2,331 字、15 段／2,784 字），
+而白天採集階段卻只拿到導言。兩份紀錄都是真的——這個 profile 的
+`meta[name="user.type"]` 是 **`freeRegister`**（已註冊、未訂閱），額度未用完時給全文、用完後只給導言。
+
+**實務規則三條**：①判定訂閱狀態讀 `user.type`，`freeRegister` 是「註冊未訂閱」，
+不是「被擋」；②額度有限，優先把 Barron's 留給沒有替代來源的題材，別拿它補量；
+③同一輪後段若內文量突然掉到導言水準，那是額度用完，不是選擇器壞掉——換來源，不要重試。
+
+**開場可用性測試對計量制來源會樂觀。** 測試時額度還在，判定「可讀」；採集到中後段才發現被截斷。
+這不是測試方法錯，是計量制本來就沒有單一狀態——**把開場結論當成「此刻可讀」，不是「今天可讀」。**
 
 **免費公開**：CNBC、MarketWatch、Tom's Hardware、Oil & Gas Journal、華爾街見聞、
 鉅亨網 Anue、MoneyDJ、Fierce Biotech、STAT News、Korea Herald、Mint、
@@ -96,6 +110,10 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 
 **節奏正常，不是降級**：SemiAnalysis 週更一到兩篇、The Economist 是週刊。
 窗口內沒有新文是它們的正常狀態。
+
+**來源健康度分四種，不是兩種**：可讀／需換選擇器／被擋（有訂閱卻讀不到）／訂閱範圍外
+（沒訂閱本來就讀不到）。計量制的來源會在同一天跨越前三種，回報時寫**當下那一次的狀態
+與時間**，不要寫成整天的結論。
 
 ## 七、台股官方端點（F 組）
 
