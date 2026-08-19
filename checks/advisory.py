@@ -367,6 +367,11 @@ def _watch_review(p):
 
     「全部未決」在資料上跟「有認真判」長得一樣，所以它要被具名擋下來。
     """
+    # 第一天沒有前一版，就沒有任何 watch 可以回顧。**這是具名的「跑不了」，
+    # 不是 PASS 也不是 FAIL** —— 判成 PASS 會讓「認真回顧了」與「沒東西可回顧」
+    # 長得一樣；判成 FAIL 會讓第一天永遠發不出去。
+    if p.get("prev") is None:
+        return skipped("第一天沒有前一版的 watch 可回顧")
     wr = (p["doc"].get("overview") or {}).get("watchReview")
     if wr is None:
         return fail("沒有 watchReview —— 拋出去的預測要回頭對答案")
@@ -390,12 +395,15 @@ register(Check(
         "有判但判得敷衍",
         "只回顧了容易判的那幾條、避開難的",
         "回顧的不是前幾天真的丟出去的那些 watch",
+        "第一天整條檢查跳過——那天的 watchReview 品質沒有任何機制看著",
     ],
     run=_watch_review,
     fixture={"anchors": {"fixed_structure": {"watch_review_verdicts": ["應驗", "落空", "未決"]}},
-             "doc": {"overview": {"watchReview": [{"verdict": "未決"}, {"verdict": "未決"}]}}},
+             "prev": {}, "doc": {"overview": {"watchReview": [{"verdict": "未決"},
+                                                              {"verdict": "未決"}]}}},
     near_miss={"anchors": {"fixed_structure": {"watch_review_verdicts": ["應驗", "落空", "未決"]}},
-               "doc": {"overview": {"watchReview": [{"verdict": "未決"}, {"verdict": "應驗"}]}}},
+               "prev": {}, "doc": {"overview": {"watchReview": [{"verdict": "未決"},
+                                                                {"verdict": "應驗"}]}}},
     suite="advisory",
 ))
 
