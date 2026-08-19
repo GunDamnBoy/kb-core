@@ -52,8 +52,10 @@ def fetch_one(ident: str, ymd: str) -> dict:
         if empty and not ROUTES[ident].get("empty_ok"):
             return {"status": "failed", "reason": "EmptyResult",
                     "detail": f"{ident} 回了零列，而它沒有宣告 empty_ok"}
+        enc = r["data"].get("encoding") if isinstance(r["data"], dict) else None
         return {"status": "ok", "unit": r["unit"], "note": r["note"],
-                "url": r["url"], "data": r["data"]}
+                "url": r["url"], **({"encoding": enc} if enc else {}),
+                "data": r["data"]}
     except FetchError as e:
         return {"status": "failed", "reason": type(e).__name__, "detail": str(e)}
 
@@ -86,6 +88,12 @@ def main(argv) -> int:
         "failed_other": failed_other,
         "items": out,
     }, ensure_ascii=False, indent=1))
+
+    # 退讓過就要看得見。utf-8 以外的編碼不是錯誤，但它是一個要被人看到的狀態。
+    fell_back = [f"{k}（{r['encoding']}）" for k, r in out.items()
+                 if r.get("encoding") and r["encoding"] != "utf-8-sig"]
+    if fell_back:
+        print(f"\n編碼退讓：{'、'.join(fell_back)} —— 不是錯誤，但值得看一眼是不是亂碼")
 
     n_ok = sum(1 for r in out.values() if r["status"] == "ok")
     print(f"\n{n_ok}/{len(out)} 成功；"

@@ -80,16 +80,40 @@ def parse_json(raw: bytes, ident: str) -> Dict:
         raise ParseFailed(f"{ident} 回應不是合法 JSON：{e}") from e
 
 
+# 依序試，第一個成功的就用。**用了哪一個要寫進輸出** ——
+# 安靜的編碼退讓會讓「解對了」與「解成亂碼」長得一樣。
+#
+# **latin-1 刻意不在這裡。** 它能解開任何 byte 序列，所以放進來之後底下那個
+# `raise ParseFailed` 就永遠不會執行——一個看起來像有處理、實際上是死碼的分支，
+# 而且它的代價是把解不開的檔案變成亂碼而不是報錯。（2026-08-19 加編碼串聯時
+# 第一版真的放了 latin-1，寫測試才發現那個分支打不到。）
+#
+# cp1252 仍然很寬鬆（只有五個未定義 byte 會擋），所以第二道防線是**把 encoding
+# 寫進輸出並在摘要裡標出來**：退讓過就要看得見。
+ENCODINGS = ("utf-8-sig", "cp1252")
+
+
 def parse_csv(raw: bytes, ident: str) -> Dict:
-    """UTF-8 BOM 由 `utf-8-sig` 吃掉。
+    """UTF-8 BOM 由 `utf-8-sig` 吃掉；不是 UTF-8 的往下試 cp1252、latin-1。
 
     **欄位名一律原樣保留，不 strip。** `主旨 ` 結尾那個半形空白是真的，
     幫它清乾淨會讓下游照文件寫的欄位名反而取不到。
+
+    編碼串聯是 2026-08-19 第一次實跑換來的：SPDR 的 GLD 歷史序列回了資料但
+    `utf-8` 在 position 11 撞到 0xe2。**那個具名的 ParseFailed 是關鍵** ——
+    它把「路徑錯了」與「路徑對但編碼不同」分開，兩者的處置完全不同。
+    籠統的例外會讓這兩件事都顯示成「黃金失敗」。
     """
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError as e:
-        raise ParseFailed(f"{ident} 不是 UTF-8：{e}") from e
+    text = enc_used = None
+    for enc in ENCODINGS:
+        try:
+            text, enc_used = raw.decode(enc), enc
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise ParseFailed(f"{ident} 用 {'、'.join(ENCODINGS)} 都解不開；"
+                          f"開頭 32 bytes：{raw[:32].hex(' ')}")
     r = csv.DictReader(io.StringIO(text))
     rows = list(r)
     if r.fieldnames is None:
@@ -97,7 +121,7 @@ def parse_csv(raw: bytes, ident: str) -> Dict:
     # **零列不是錯誤。** 週末的法說會端點回 0 筆是正常狀態（「當日訊息」不是
     # 「行事曆」）。解析器報它看到什麼，「空算不算失敗」是呼叫端的政策 ——
     # 把政策烤進解析器，會讓正常狀態長得跟故障一模一樣。
-    return {"columns": list(r.fieldnames), "rows": rows}
+    return {"encoding": enc_used, "columns": list(r.fieldnames), "rows": rows}
 
 
 def get_tw(ident: str, ymd: str) -> Dict:
