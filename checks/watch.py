@@ -23,7 +23,7 @@ payload 形狀：{"now": ISO8601, "heartbeat": {...}|None}
 """
 import datetime as dt
 
-from kbcore.check import Check, fail, ok, register, warn
+from kbcore.check import Check, fail, ok, register, skipped, warn
 
 MAX_HEARTBEAT_AGE_H = 30
 
@@ -84,5 +84,42 @@ register(Check(
              "heartbeat": {"at": "2026-08-19T00:00:00+00:00", "exit": 10,
                            "summary": "資料停在三天前"}},
     no_boundary="退出碼是 0 或非 0，離散的；門檻的部分在 sentinel_alive 那條",
+    suite="watch",
+))
+
+
+def _no_code_drift(p):
+    """線上跑的程式，跟版控裡的程式，是不是同一份。
+
+    2026-08-19 實測撞到：第 4 片的 `publish.py` 是直接 cp 到 Mac 上跑的，驗完就去
+    裝 launchd，**從沒 commit 進 kb-core**。線上版本與版控版本不同將近一小時，
+    而且沒有任何東西會發現——git 不會主動說話，程式也跑得好好的。
+
+    **為什麼非得由 Mac 這一側看**：Actions 的哨兵跑在全新的 checkout 上，它看到的
+    永遠是 HEAD，**結構上看不見本機的漂移**。看守者要在被看守的東西外面，但也得
+    看得到它。
+
+    這條檢查的對象是**它自己所在的 repo**——程式問「我是不是版控裡的那個我」。
+    """
+    drift = p.get("drift")
+    if drift is None:
+        return skipped("拿不到 git 狀態（不在 repo 裡，或 git 不可用）")
+    if drift:
+        return fail(f"{len(drift)} 個檔案跟 HEAD 不一致：" + "、".join(drift[:5]) +
+                    " —— 線上跑的不是版控裡的那一份")
+    return ok()
+
+
+register(Check(
+    id="watch.no_code_drift",
+    covers="本機的程式檔案與 git HEAD 一致",
+    blind_to=[
+        "本機是乾淨的但 HEAD 落後 origin（沒推或沒拉，這條看不到）",
+        "程式一致但跑它的 venv 裡套件版本變了",
+        "plist 指向的是另一份 checkout，這條驗的是自己所在的那份",
+    ],
+    run=_no_code_drift,
+    fixture={"drift": ["tools/publish.py"]},
+    no_boundary="一致或不一致，沒有中間狀態",
     suite="watch",
 ))

@@ -1,0 +1,32 @@
+# repo lint —— 每次改動都跑，抓的是「有人剛剛改壞了什麼」。
+#
+# 跟哨兵刻意分開：哨兵問「這套系統還活著嗎」（每天一次），lint 問「這次改動有沒有
+# 寫錯設定」（每次改動）。把 lint 塞進每日哨兵，等於設定寫錯要等最多 24 小時才知道。
+#
+# permissions 只給 contents: read —— 這支不寫任何東西。權限比需要的多，
+# 就是把一個不存在的風險變成存在的。
+
+name: repo-lint
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: 檢查器自檢 ＋ checks.lock 對帳
+        run: python tools/verify.py --selftest
+
+      - name: repo 設定 lint
+        run: python tools/repo_check.py .

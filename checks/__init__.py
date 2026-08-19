@@ -6,4 +6,5 @@
 """
 from . import demo      # noqa: F401  suite=draft
 from . import sentinel  # noqa: F401  suite=sentinel
+from . import repo      # noqa: F401  suite=repo
 from . import watch     # noqa: F401  suite=watch

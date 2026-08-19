@@ -28,6 +28,22 @@ from kbcore.result import Exit  # noqa: E402
 
 HEARTBEAT = "sentinel/heartbeat.json"
 
+# 只看真的會被執行的東西。README 改了沒 commit 不是事故。
+CODE_DIRS = ("kbcore", "checks", "tools")
+
+
+def code_drift():
+    """本機這份 kb-core 有沒有跟 HEAD 漂移。回傳檔名清單；None 表示問不到。
+
+    對象是 ROOT——也就是**這支程式自己所在的 repo**。程式問的是「我是不是版控裡
+    的那個我」，不是「別的地方有沒有髒東西」。
+    """
+    r = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--",
+                        *CODE_DIRS], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    return [ln[3:] for ln in r.stdout.splitlines() if ln.strip()]
+
 
 def main(argv) -> int:
     if len(argv) != 3:
@@ -61,6 +77,7 @@ def main(argv) -> int:
     payload = {
         "now": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "heartbeat": hb,
+        "drift": code_drift(),
     }
     return report(run_all(payload, suite="watch"))
 
