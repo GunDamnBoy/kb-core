@@ -16,7 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import checks  # noqa: F401,E402  匯入即註冊
+import systems  # noqa: F401,E402  匯入即登記
 from kbcore.check import REGISTRY  # noqa: E402
+from kbcore.system import REGISTRY as SYSTEMS  # noqa: E402
 from kbcore.report import check_lock, report, run_all, selftest  # noqa: E402
 from kbcore.result import Exit  # noqa: E402
 
@@ -27,7 +29,7 @@ def do_selftest() -> int:
     dead = selftest()
     gone, added = check_lock(LOCK)
 
-    print(f"已註冊檢查：{len(REGISTRY)} 條")
+    print(f"已註冊檢查：{len(REGISTRY)} 條、系統 {len(SYSTEMS)} 套")
 
     if dead:
         print("\n以下檢查沒有被自己的 fixture 觸發 —— 它們是永遠會 PASS 的檢查：")
@@ -42,7 +44,17 @@ def do_selftest() -> int:
         for a in added:
             print(f"  {a}")
 
-    if dead or gone:
+    # 登記了系統、卻沒有對應的檢查 —— 那套系統會在 publish 當下才爆，
+    # 而那時候草稿已經在 outbox 裡了。在 CI 就擋下來。
+    suites = {c.suite for c in REGISTRY.values()}
+    empty = sorted(f"{sid}（suite={sy.suite}）"
+                   for sid, sy in SYSTEMS.items() if sy.suite not in suites)
+    if empty:
+        print("\n以下系統登記的 suite 一條檢查都沒有：")
+        for e in empty:
+            print(f"  {e}")
+
+    if dead or gone or empty:
         return Exit.CONTENT
     print("\nselftest OK")
     return Exit.OK

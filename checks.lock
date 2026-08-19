@@ -1,3 +1,15 @@
+advisory.base_cards
+advisory.card_lengths
+advisory.cross_version_dedup
+advisory.date_ts_consistent
+advisory.fixed_structure
+advisory.group_floors
+advisory.group_names
+advisory.site_total
+advisory.ts_in_window
+advisory.ts_wellformed
+advisory.url_is_article
+advisory.watch_review
 demo.date_present
 demo.items_nonempty
 demo.note_length

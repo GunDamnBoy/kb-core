@@ -20,7 +20,7 @@
 4. **每一輪都寫回執。** 成功或失敗都寫，因為「沒有回執」與「回執說失敗」
    是兩件不同的事——前者代表 publish 根本沒跑。
 
-5. **目的地守門。** 資料 repo 根目錄必須有 `.kb-data-repo`，內容要對得上
+5. **目的地守門，而且同一個 id 決定跑哪一組檢查。** 資料 repo 根目錄必須有 `.kb-data-repo`，內容要對得上
    呼叫時指定的系統 id，否則拒絕寫入。
 
    這條是 2026-08-19 一次真實事故換來的：tracer bullet 被指向了承載 14 天
@@ -45,9 +45,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import checks  # noqa: F401,E402
+import systems  # noqa: F401,E402  匯入即登記
 from kbcore.report import run_all  # noqa: E402
 from kbcore.repo import check_destination  # noqa: E402
 from kbcore.result import Exit, Level  # noqa: E402
+from kbcore.system import REGISTRY as SYSTEMS, get as get_system  # noqa: E402
 
 
 def git(repo: Path, *args, check=True):
@@ -76,7 +78,7 @@ def atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def publish_one(draft_path: Path, repo: Path, outbox: Path) -> int:
+def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     name = draft_path.name
     try:
         draft = json.loads(draft_path.read_text())
@@ -84,8 +86,14 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path) -> int:
         write_receipt(outbox, name, Exit.BAD_INPUT, "parse", str(e))
         return Exit.BAD_INPUT
 
-    # 1. 閘門
-    results = run_all(draft)
+    # 1. 閘門。payload 怎麼組是每套系統自己的事（見 kbcore/system.py）。
+    try:
+        payload = system.build(draft, repo)
+    except Exception as e:
+        write_receipt(outbox, name, Exit.BAD_INPUT, "build-payload",
+                      f"{type(e).__name__}: {e}")
+        return Exit.BAD_INPUT
+    results = run_all(payload, suite=system.suite)
     fails = [(c, o) for c, o in results if o.level == Level.FAIL]
     if fails:
         detail = "; ".join(f"{c.id}: {o.detail}" for c, o in fails)
@@ -171,13 +179,21 @@ def main(argv) -> int:
         print(f"DESTINATION  {err}", file=sys.stderr)
         return Exit.BAD_INPUT
 
+    # 認不出來就停，**不要退回預設的 suite**。退回去會讓這套系統的草稿被別套的
+    # 檢查驗過然後全綠 —— 每個訊號都說成功，該擋的一條都沒跑。
+    system = get_system(system_id)
+    if system is None:
+        print(f"SYSTEM  {system_id!r} 不在登記裡（已登記：{'、'.join(sorted(SYSTEMS))}）"
+              " —— 不知道該跑哪一組檢查就沒有資格發布", file=sys.stderr)
+        return Exit.BAD_INPUT
+
     drafts = sorted(outbox.glob("*.draft.json"))
     if not drafts:
         print("outbox 沒有 draft —— 空輪次，不是失敗")
         return Exit.EMPTY_ROUND
     worst = Exit.OK
     for d in drafts:
-        code = publish_one(d, repo, outbox)
+        code = publish_one(d, repo, outbox, system)
         worst = code if code != Exit.OK else worst
     return worst
 
