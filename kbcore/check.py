@@ -52,6 +52,33 @@ class Check:
     機制。舊系統修過至少五處這類靜默，每一處都是「寫了但從沒被觸發過」。
     """
 
+    near_miss: Any = None
+    """一個**剛好還在合格側**的樣本——貼著邊界的另一邊。
+
+    `fixture` 證明這條檢查**會叫**。它證明不了**在對的地方叫**。
+
+    2026-08-19 實測：`no_future_date` 的 fixture 是 `2030-01-01`，成功觸發，
+    `selftest OK`。但那條檢查的門檻寫錯了一天，要日期超前**兩天**才會叫，於是
+    一個 `days[0].date` ＝ 明天的真實靶子被判成「全部正常」。**fixture 離邊界
+    四年遠，看不見邊界站錯位置。**
+
+    有門檻的檢查要把 fixture 與 near_miss 擺在邊界兩側、只差一格：
+    fixture 必須非 PASS，near_miss 必須 PASS。這樣自檢從「證明它會叫」升級成
+    「證明它在哪裡叫」。
+
+    沒有門檻的檢查（欄位存在與否之類）留 None，但要在 `no_boundary` 寫明理由。
+    """
+
+    no_boundary: str = ""
+    """這條檢查為什麼沒有邊界。沒給 `near_miss` 時必填。
+
+    二選一必填，而不是選填——**選填的東西會漂移**。`blind_to` 當初做成必填也是
+    同一個理由。省略 near_miss 從「什麼都不用做」變成「要動手寫一句理由」，於是
+    「我忘了」跟「這裡真的沒有邊界」在程式碼裡長得不一樣。
+
+    「有沒有門檻」沒辦法用程式判斷，所以機制只能逼人回答，不能替人回答。
+    """
+
     suite: str = "draft"
     """這條檢查看的是哪一種 payload。
 
@@ -72,5 +99,10 @@ def register(check: Check) -> Check:
         raise ValueError(f"重複的 check id：{check.id}")
     if not check.blind_to:
         raise ValueError(f"{check.id} 沒有宣告 blind_to —— 邊界聲明是必填的")
+    if check.near_miss is None and not check.no_boundary:
+        raise ValueError(
+            f"{check.id} 既沒有 near_miss 也沒有 no_boundary。"
+            "fixture 只證明這條檢查會叫，證明不了它在對的地方叫 —— "
+            "給一個貼著邊界另一側的樣本，或寫明它為什麼沒有邊界")
     REGISTRY[check.id] = check
     return check

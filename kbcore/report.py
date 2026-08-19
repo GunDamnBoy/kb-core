@@ -25,15 +25,33 @@ def run_all(payload: Any, suite: str = "draft") -> List[Tuple[Check, Outcome]]:
 
 
 def selftest() -> List[str]:
-    """每條檢查都必須被自己的 fixture 觸發。回傳失敗的 id 清單。"""
+    """每條檢查都必須被自己的 fixture 觸發，且不能被 near_miss 觸發。
+
+    兩側都驗，因為只驗一側答不出「門檻站對位置了嗎」——fixture 離邊界夠遠時，
+    門檻寫錯一整天也照樣 selftest OK（2026-08-19 實測撞到）。
+
+    回傳失敗的 id 清單，每一筆標明是哪一側壞的。
+    """
     dead = []
     for c in REGISTRY.values():
         try:
             outcome = c.run(c.fixture)
-        except Exception as e:  # fixture 讓它爆掉也算被觸發
+            triggered = outcome.level != Level.PASS
+        except Exception:  # fixture 讓它爆掉也算被觸發
+            triggered = True
+        if not triggered:
+            dead.append(f"{c.id}（fixture 觸發不了它——它是一條永遠會 PASS 的檢查）")
+
+        if c.near_miss is None:
             continue
-        if outcome.level == Level.PASS:
-            dead.append(c.id)
+        try:
+            near = c.run(c.near_miss)
+        except Exception as e:
+            dead.append(f"{c.id}（near_miss 讓它爆掉：{e}）")
+            continue
+        if near.level != Level.PASS:
+            dead.append(
+                f"{c.id}（near_miss 也被觸發了——門檻站錯邊：{near.detail}）")
     return dead
 
 

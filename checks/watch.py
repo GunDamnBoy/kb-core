@@ -50,7 +50,10 @@ register(Check(
         "Mac 自己關機時，這條檢查連跑都沒跑——它看不見自己的缺席",
     ],
     run=_sentinel_alive,
-    fixture={"now": "2026-08-19T01:00:00+00:00", "heartbeat": None},
+    fixture={"now": "2026-08-19T01:00:00+00:00",
+             "heartbeat": {"at": "2026-08-17T18:00:00+00:00"}},
+    near_miss={"now": "2026-08-19T01:00:00+00:00",
+               "heartbeat": {"at": "2026-08-17T20:00:00+00:00"}},
     suite="watch",
 ))
 
@@ -80,5 +83,6 @@ register(Check(
     fixture={"now": "2026-08-19T01:00:00+00:00",
              "heartbeat": {"at": "2026-08-19T00:00:00+00:00", "exit": 10,
                            "summary": "資料停在三天前"}},
+    no_boundary="退出碼是 0 或非 0，離散的；門檻的部分在 sentinel_alive 那條",
     suite="watch",
 ))

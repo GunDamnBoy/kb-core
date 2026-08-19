@@ -29,6 +29,7 @@ register(Check(
     ],
     run=_date_present,
     fixture={"items": [1]},
+    no_boundary="缺欄位／格式對不對是離散的，沒有「差一點就合格」這種狀態",
 ))
 
 
@@ -50,6 +51,7 @@ register(Check(
     ],
     run=_items_nonempty,
     fixture={"date": "2026-08-19", "items": []},
+    near_miss={"date": "2026-08-19", "items": [1]},
 ))
 
 
@@ -69,7 +71,8 @@ register(Check(
         "note 長度合格但內容是空話（機器驗不了）",
     ],
     run=_note_length,
-    fixture={"date": "2026-08-19", "note": "x" * 200},
+    fixture={"date": "2026-08-19", "note": "x" * 101},
+    near_miss={"date": "2026-08-19", "note": "x" * 100},
 ))
 
 
@@ -90,4 +93,5 @@ register(Check(
     ],
     run=_upstream_fresh,
     fixture={"date": "2026-08-19"},
+    no_boundary="只看 upstream_date 這個欄位在不在，沒有連續量可以貼邊界",
 ))

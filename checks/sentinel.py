@@ -76,7 +76,9 @@ register(Check(
     ],
     run=_data_fresh,
     fixture={"now": "2026-08-19T01:00:00+00:00",
-             "index": {"days": [{"date": "2020-01-01"}]}},
+             "index": {"days": [{"date": "2026-08-17"}]}},
+    near_miss={"now": "2026-08-19T01:00:00+00:00",
+               "index": {"days": [{"date": "2026-08-18"}]}},
     suite="sentinel",
 ))
 
@@ -87,21 +89,31 @@ def _no_future_date(p):
     if not days:
         return skipped("index 裡沒有天數，該項未執行")
     age = _date_age_hours(p)
-    if age < -24:
-        return fail(f"最新一期是 {days[0]['date']}，比現在還晚 {-age:.0f} 小時 "
-                    "—— 日期是被寫出來的，不是被觀測到的")
+    # age 是從**那個日期的台北零時**算起。今天的資料 age 落在 0~24 之間；
+    # 只要 age < 0，那個日期的零時都還沒到——它就是未來。
+    #
+    # 這裡原本寫 `age < -24`，想表達「容許超前一天」。但明天的零時只在十幾個
+    # 小時之後，所以那條線要日期超前**兩天**才碰得到。2026-08-19 實測時漏放了
+    # 一個 latest_date = 明天 的靶子，判定「全部正常」。
+    #
+    # 而且沒有理由容許超前：已發布的日期應該是被觀測到的，不是被寫出來的。
+    if age < 0:
+        return fail(f"最新一期是 {days[0]['date']}，那一天還沒到（還有 {-age:.0f} 小時）"
+                    " —— 日期是被寫出來的，不是被觀測到的")
     return ok()
 
 
 register(Check(
     id="sentinel.no_future_date",
-    covers="days[0].date 不會超前現在超過一天",
+    covers="days[0].date 不在未來",
     blind_to=[
         "日期沒超前，但它是硬寫進去的當天日期而非真的抓到了資料",
     ],
     run=_no_future_date,
     fixture={"now": "2026-08-19T01:00:00+00:00",
-             "index": {"days": [{"date": "2030-01-01"}]}},
+             "index": {"days": [{"date": "2026-08-20"}]}},
+    near_miss={"now": "2026-08-19T01:00:00+00:00",
+               "index": {"days": [{"date": "2026-08-19"}]}},
     suite="sentinel",
 ))
 
@@ -135,7 +147,10 @@ register(Check(
     run=_updated_fresh,
     fixture={"now": "2026-08-19T01:00:00+00:00",
              "index": {"days": [{"date": "2026-08-19"}],
-                       "updated": "2020-01-01T00:00:00+00:00"}},
+                       "updated": "2026-08-17T18:00:00+00:00"}},
+    near_miss={"now": "2026-08-19T01:00:00+00:00",
+               "index": {"days": [{"date": "2026-08-19"}],
+                         "updated": "2026-08-17T20:00:00+00:00"}},
     suite="sentinel",
 ))
 
@@ -171,7 +186,10 @@ register(Check(
     run=_no_data_loss,
     fixture={"now": "2026-08-19T01:00:00+00:00",
              "index": {"days": [{"date": "2026-08-19"}]},
-             "prev": {"day_count": 14}},
+             "prev": {"day_count": 2}},
+    near_miss={"now": "2026-08-19T01:00:00+00:00",
+               "index": {"days": [{"date": "2026-08-19"}]},
+               "prev": {"day_count": 1}},
     suite="sentinel",
 ))
 
@@ -200,7 +218,10 @@ register(Check(
     ],
     run=_ledger_overdue,
     fixture={"now": "2026-08-19T01:00:00+00:00",
-             "ledger": [{"id": "x1", "due": "2020-01-01T00:00:00+00:00",
+             "ledger": [{"id": "x1", "due": "2026-08-19T00:59:00+00:00",
                          "judge": {"type": "manual", "at": None}}]},
+    near_miss={"now": "2026-08-19T01:00:00+00:00",
+               "ledger": [{"id": "x1", "due": "2026-08-19T01:01:00+00:00",
+                           "judge": {"type": "manual", "at": None}}]},
     suite="sentinel",
 ))
