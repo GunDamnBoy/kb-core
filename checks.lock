@@ -26,6 +26,7 @@ podcast.release_in_window
 podcast.show_keys_known
 podcast.status_vocabulary
 podcast.window_sane
+podfetch.no_block_repetition
 repo.brief_budget
 repo.no_pull_request_target
 sentinel.data_fresh
