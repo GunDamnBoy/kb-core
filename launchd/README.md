@@ -75,6 +75,38 @@ for f in ~/kb-core/launchd/com.kenny.*.plist; do
 done
 ```
 
+## 金鑰：跟 `pmset` 同一類，換機器不會跟著走
+
+FRED 與 Tiingo 的 key **不在任何 repo 裡**（刻意的），所以 `git clone` 拿不到它們，
+`git status` 也不會提。2026-08-20 換到 Mac mini 之後首次手動跑預抓才發現三樣都不在：
+
+```bash
+ls -l ~/.config/fred/api_key ~/.config/tiingo/api_key    # 兩個都要存在且 600
+```
+
+重建 —— 跑這支，key 用貼的：
+
+```bash
+bash ~/kb-core/launchd/setup-keys.sh          # 或 setup-keys.sh fred / tiingo
+```
+
+它會提示、收下貼上的內容（`read -rs`，畫面不回顯）、剃掉前後空白與換行、
+寫檔並 `chmod 600`，然後立刻打一次網路驗證。三件事各有理由：
+
+- **不要把 key 寫在指令列裡**，那會進 shell history，而那個檔案不會過期。
+- **貼上很容易多帶一個換行或尾隨空白**，而多一個字元的 key 不會回「格式錯」，
+  只會回 400 —— 看起來像「這把 key 沒有權限」，於是人去查權限而不是查空白。
+- **寫檔成功與金鑰可用是兩件獨立的事**，所以寫完立刻驗，不讓「檔案存在」冒充「能用」。
+
+長度不符（FRED 32 碼、Tiingo 40 碼）與覆蓋既有檔案都會再問一次，預設是不做。
+
+**它壞掉的樣子是安靜跑二十分鐘然後全部失敗。** 沒有 key 就退到 `fredgraph.csv`，
+而那條路在這台機器上不通（`chart/SOURCES.md`，Errno 60），於是每一條各自逾時 30 秒，
+一條快取都不寫。`kbprefetch-chart.sh` 現在會在起飛前問一次金鑰，讀不到就 `exit 14` 中止 ——
+**這個問題要在兩秒內問完，不是二十分鐘後。**
+
+台股（證交所、櫃買）免金鑰，所以「只有美股與總經整片消失、台股正常」是這個病的典型樣子。
+
 ## 電源：`pmset` 不在任何設定檔裡
 
 `pmset` 寫的是韌體層的排程與設定。**repo 裡看不到、`git status` 不會提、
