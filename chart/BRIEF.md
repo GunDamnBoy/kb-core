@@ -1,7 +1,14 @@
+---
+system: chart-of-the-day
+budget:
+  tokens: 4000
+  source: "2026-08-20 實測 2,589 字元 ~2,354 token（字元／token 比 1.1，沿用工單 11 對舊 brief 的量測）。預算取實測的約 1.7 倍，留給第一週實跑後補規格的空間；超過就是要砍，不是要調高。取數眉角刻意不放這裡而是 chart/SOURCES.md，就是為了讓這份留得住。"
+---
+
 # 每日五圖｜什麼算對的產出
 
 每一個數字在 `chart/anchors.json`；怎麼做出來在 `skills/chart/SKILL.md`；
-取數眉角在 `scripts/chart/preamble.md`。**這份只講「什麼算對」，不講「怎麼做」。**
+取數眉角在 `chart/SOURCES.md`。**這份只講「什麼算對」，不講「怎麼做」。**
 
 ## 一、這套系統的身分
 

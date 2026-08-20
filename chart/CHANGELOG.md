@@ -110,4 +110,83 @@
    也是今晚唯一沒動的大塊。
 2. **取數層** —— `fetch.py`／`build_series.py`／`prefetch.py` 還在資料 repo 的 `tools/` 裡。
    **今晚刻意不動它們**：那是目前唯一能產出一天的東西，移掉等於讓管線完全不能跑。
-3. `scripts/chart/preamble.md` —— SKILL 指到它，檔案還不存在。
+3. ~~`scripts/chart/preamble.md`~~ —— 見下一則，那個指標本身是錯的形狀。
+
+## 2026-08-20 深夜（續）｜雙軌決定、一個活著的 bug、以及一個我自己造的死連結
+
+### 一、架構改判：兩軌都留，改用檢查抓漂移
+
+稍早我把 `stored_option` 設成 false，前提是「只剩一個渲染器」。
+使用者選了第三條路 —— **兩軌都留**（PNG 的排版規格不動、互動也不失去），
+所以那個前提不成立，`stored_option` 改回 true，
+`chart.no_stored_option` 換成 `chart.option_matches_spec`。
+
+**這次改判要記下來的不是結論，是它推翻了什麼。**
+我原本以為「兩軌從同一份 spec 渲染」就能解決漂移 —— 讀完 `chartkit.py` 才發現
+那 891 行裡本來就是兩套實作（`render_static` 用 matplotlib、`echarts_option` 產 option），
+**逐圖型各寫一次**。同一份 spec 只是讓它們從同一個地方開始各畫各的。
+
+### 二、檢查的形式：不是比兩張圖，是問「option 有沒有忠實編碼 spec」
+
+**實際發生過的漂移，錯的都在 option 那一側** —— 因為 PNG 每天有人看、網頁沒有。
+所以靜態軌被當成參考實作，四條斷言全部從真實事故反推：
+
+| 斷言 | 它當初藏住的方式 |
+|---|---|
+| 類別軸 `xAxis.data` 與序列長度對得上 | ECharts 按位置貼資料，錯位不報錯、整條位移 |
+| waterfall 帶 `stackStrategy: "all"` | **漏掉時資料完全不變**，只有渲染行為變，每根從 0 往上長 |
+| grouped／stacked 用 `barCategoryGap` 不用逐序列 `barWidth` | `barWidth` 是每一條不是一整組，兩條各 62% → 一組實佔 143% |
+| `zero_line` 為真時 option 有 `markLine {yAxis: 0}` | 只有 PNG 有 |
+
+第二條特別值得留意：**光比資料抓不到它**，必須直接斷言那個鍵。
+因為 option 是存在日檔裡的，整組比對是純資料、不需要渲染，也因此能拿封存回測。
+
+### 三、這條檢查一寫出來就抓到還活著的 bug
+
+站上 **7 張標了 `zero_line` 的圖，只有 1 張的互動軌真的有零線** ——
+而那 1 張是唯一的 timeseries。grouped_bar 4 張、scatter 1 張、waterfall 1 張全部沒有。
+
+原因是 `_apply_zero_line` 那段程式**只寫在 timeseries 那條出口**，
+而 `_echarts_new_kind` 與 scatter 早在前面就 `return` 了。
+當初的測試案例剛好是 timeseries，所以**看起來修好了**——
+舊規格自己記著的那句「**改一半比沒改更難發現**」就是這個。
+
+在宣稱它是漂移之前先查過：那幾張的 option 裡沒有 markLine、沒有 markArea、
+沒有 graphic、`yAxis` 也沒有任何零線設定 —— **沒有替代編碼**，零線只存在於 PNG。
+
+修法是抽成共用函式讓三條出口都經過，讓「哪一種圖型」不再是變因。
+`gauge` 與 `heatmap` 排除，條件與 `render_static()` 第 408 行逐字相同。
+
+**驗收有三層**：
+
+| 問題 | 答案 |
+|---|---|
+| 四種圖型都補上了嗎 | 1/7 → **7/7** |
+| 原本對的那張有沒有被弄壞 | 沒有 |
+| **有沒有順手改到別的東西** | 65 張圖重建 option，把零線 markLine 拿掉後**全部與原檔逐字相同** |
+
+第三列才是「我只改了我以為我改的東西」的證據。歷史封存不回頭改寫，
+所以站上那 6 張的互動軌維持原樣，而檢查在生產時只跑當日。
+
+### 四、我替自己造了一個死連結
+
+`SKILL.md` 裡寫著「取數眉角在 `scripts/chart/preamble.md`」，而那個檔案不存在。
+更根本的是**那個形狀是錯的**：preamble 存在的理由是「採集 subagent 讀不到 brief」，
+而 chart 是單一代理跑完五張圖 —— `subagent`／`子代理`／`派工` 在舊 brief 與
+MAINTENANCE 裡**零命中**。我照抄 advisory 的骨架時沒問它適不適用。
+
+改成 `chart/SOURCES.md`：一份**第 3 步才需要、靠指標到達**的參考檔，
+不隨每次執行載入 —— 這樣 `BRIEF.md` 也留得住預算（實測 ~2,354 token，預算 4,000）。
+
+順手寫了一段掃描，把 chart 這一套所有文件裡的相對路徑指標抓出來對存在性。
+**它立刻抓到 `BRIEF.md` 裡還有第二處沒改** —— 我只修了 SKILL。
+> **一個指標指向不存在的檔案，比沒有指標更糟**：它讓讀的人以為那份東西存在，
+> 然後去別的地方找一個不存在的答案。
+
+### 五、還沒做
+
+1. **`tools/` 的去留** —— 架構定案是「兩軌都留」，所以 `chartkit.py` 不必重寫，
+   問題只剩「它該住在資料 repo 還是 kb-core」。
+   **這會動到每天 11:00 的關鍵路徑，建議明天那兩輪跑完再動。**
+2. **`fetch.py`／`prefetch.py`** 同上。
+3. 排程 plist 尚未安裝（`com.kenny.kbpublish.chart`），所以 chart 目前不會自動跑。
