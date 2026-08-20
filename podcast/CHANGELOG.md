@@ -277,3 +277,64 @@ podcast 的草稿放 `~/outbox/podcast/`。`publish.py` 的 `glob("*.draft.json"
 所以投顧那條線（掃 `~/outbox/`）一個字都不用改。
 **更根本的解是草稿自帶 `system` 欄位、publish 讀出來比對**，
 等下次改投顧 SKILL 時一起做，不要現在同時動兩個變因。
+
+## 2026-08-20 傍晚｜官方稿層的偵查：六檔沒有共用規則
+
+`fallback_order` 第一層還沒接。這一節是**偵查結果**，不是實作——
+寫下來是為了下次不用重跑這五輪測試。
+
+### Apple lookup 回得出 `feedUrl`，六檔皆然
+
+所以 `shows.json` 只要維護 `appleId`，**feed 網址不用存第二份**。
+`https://itunes.apple.com/lookup?id=<appleId>` → `results[0].feedUrl`。
+
+### 但 RSS 的 `<link>` 不等於「那裡有逐字稿」
+
+| showKey | RSS `<link>` | 那個頁面 |
+|---|---|---|
+| acquired | `acquired.fm/episodes/…` | 節目自己的站，**未驗證** |
+| dwarkesh | `dwarkesh.com/p/…` | 25,725 words、**0 個 `Name:` 輪替**、18 個時間戳 |
+| latentspace | `latent.space/p/…` | 1,432 words → 付費牆或 JS |
+| macrovoices | `macrovoices.podbean.com/e/…` | **Podbean 播放頁**，199 words |
+| mib | `omny.fm/shows/…` | **Omny 播放頁**，293 words |
+| gsx | **沒有 `<link>`** | 只有 megaphone 的 MP3 |
+
+兩個代管平台（Podbean、Omny）的播放頁只有節目說明。
+**「RSS 有連結」與「那裡有稿」是兩個不同的問題**，而第一個問題答對了會讓人以為第二個也答了。
+
+### GS：slug 可推導但只通 3/10
+
+`.../goldman-sachs-exchanges/<標題 slug>`。最近十集實測 **3 通 7 個 404**，
+成功的三集標題都長，404 的清一色是短標題。索引頁 569KB 但**零個 episode 連結**——JS 渲染。
+
+**處置：不逆向工程它的渲染，改做機會性嘗試。** 試 slug，200 且輪替 ≥ 20 就用，
+404 就退回第二層並在 `source` 具名記錄。**這跟硬鑽是兩件事——它的失敗是 404，
+響亮、即時、沒有歧義**，而硬鑽出來的 scraper 壞掉時會安靜地退回第二層，
+跟「本來就沒有官方稿」長得一模一樣。
+
+### 我的偵測方法自己就是錯的
+
+用 `\b[A-Z][a-z]+ [A-Z][a-z]+:\s` 數講者輪替，在 acquired 那頁量到 **1543 次**，
+判成「有逐字稿」。實際上抓到的開頭是
+`Disney: … | Acquired so Cloudflare URLs win cascade before parses and triggers…`
+——JS 設定字串漏進來被當成講者標記。
+
+**今天第三次撞到同一條：我的方法對 A 敏感、對 B 全盲，而輸出長得跟答案一樣。**
+（前兩次：以連續 token 重複判區塊重播、以 diff 判 lock 的差集成因。）
+
+下次要用的判準不是 regex 計數，是**抽出來的文字與 podfetch 稿的相似度**——
+兩份講同一集，重疊度應該很高；重疊度低就表示抽到的不是那一集的內容。
+
+### 價值重估：官方稿的好處在講者歸屬，不在字數
+
+BRIEF 寫官方稿「同片長多出三到五成實質內容」。**GS 這一集不成立**：
+去標籤後 8,338 words，扣掉導覽與訂閱樣板之後跟 podfetch 的 7,551 差不多。
+原因是 GS 的稿是編輯過的，拿掉了 "um"、"you know" ——字數沒變多，密度變高。
+
+真正的好處是 **60/59 乾乾淨淨的講者輪替**，而 2026-08-20 十集實測
+podfetch 的講者標記幾乎每一集都不可靠（編號互換、同一人多編號、主持人與來賓對調）。
+**那是 podfetch 這條路補不起來的東西。**
+
+但當天十集裡只有兩集是 A 類。所以這一層每天的實際收益是「兩集的講者標記變準」，
+而成本是六種各自不同的路由。**它該獨立排一次、一檔一檔做**，
+不是在別的工作做完之後順手推完。

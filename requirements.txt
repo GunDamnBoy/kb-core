@@ -4,3 +4,12 @@
 # （檢查、publish、哨兵、看門狗）刻意零依賴，因為它們要在 Mac 的 venv、
 # Actions、以及雲端三個環境都能跑，而三個環境裝了什麼是三件會漂移的事。
 openpyxl==3.1.5
+
+# Word 報告（tools/podcast_docx.py）。BRIEF 第一節說每輪要交付一份 Word，
+# 而它是**機械轉出、不由 LLM 重寫**——同一份內容出現在兩個地方時，
+# 只要有一次是「再寫一遍」，兩邊就會開始漂移而且沒有訊號。
+#
+# 選 python-docx 而不是 docx-js：這支程式每天在 ~/.venvs/kb 裡跑，跟 publish、
+# 哨兵、檢查同一個直譯器。換成 Node 等於為了一個檔案格式在排程環境裡多養一套
+# 工具鏈，而 launchd 的 PATH 是明寫的四個目錄——多一個相依就多一個會在半夜壞掉的東西。
+python-docx
