@@ -1,0 +1,99 @@
+# 哨兵（可重用）—— 每個資料 repo 呼叫它，回答「這套系統還活著嗎」。
+#
+# ## 為什麼現在收成 reusable
+#
+# 2026-08-19 建 advisory 的哨兵時，我在那份 YAML 的註解裡寫了觸發條件：
+# 「**第二份出現的那天，就是把這段收成 reusable workflow 的時機** —— 現在只有一份，
+# 為了一個尚未存在的第二份先引入新機制，不划算。」
+#
+# 2026-08-20 podcast 的資料 repo 上線，條件成立。**判斷邏輯搬到這裡之後，
+# 每個資料 repo 只剩一個宣告自己是誰的 caller**，改哨兵不用改 N 個地方。
+#
+# ## 三個刻意的設計（從 advisory 那份原樣帶過來）
+#
+# 1. **heartbeat 不管綠不綠都寫。** 它的語意是「我跑過了」，不是「一切正常」。
+#    綁在成功路徑上，就再也分不出「哨兵說沒事」與「哨兵根本沒跑」。
+#    所以跑哨兵那步用 `set +e` 收退出碼，commit 那步沒有 `if:`。
+#
+# 2. **判定寫成檔案，開 issue 留在 YAML。** 判斷邏輯在 Python 裡離線測得到。
+#
+# 3. **同一則 issue 持續留言，不是每天開一則新的。** 每天一則新 issue 一週內
+#    會變成沒人看的噪音；一則持續長大的 open issue 才是「還沒修好」的準確形狀。
+#
+# ## 呼叫端要給什麼
+#
+# `system_id` 必填，而且要與該 repo 根目錄 `.kb-data-repo` 的內容逐字相同 ——
+# 對不上時 `sentinel.py` 的目的地守門會拒絕動作。
+
+name: sentinel-reusable
+
+on:
+  workflow_call:
+    inputs:
+      system_id:
+        description: "資料 repo 的系統 id，與 .kb-data-repo 逐字相同"
+        required: true
+        type: string
+
+jobs:
+  sentinel:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      # 無參數的 checkout 取的是**呼叫端**的 repo，這正是我們要看的那一份。
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          repository: GunDamnBoy/kb-core
+          path: kb-core
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # 哨兵不碰取數層，所以不裝 requirements —— 檢查那一側是刻意零依賴的。
+      - name: 跑哨兵
+        id: sentinel
+        run: |
+          set +e
+          python kb-core/tools/sentinel.py . "${{ inputs.system_id }}"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      # 沒有 if: —— 判定越糟，heartbeat 越需要被留下來。
+      - name: commit heartbeat 與回報
+        run: |
+          git config user.name  "kb-sentinel"
+          git config user.email "sentinel@users.noreply.github.com"
+          git add sentinel
+          if git diff --cached --quiet; then
+            echo "沒有東西可以 commit —— heartbeat 的 at 每次執行都會變，"
+            echo "所以這個狀態是不可能的。哨兵可能根本沒跑到寫檔那一步。"
+            exit 1
+          fi
+          git commit -m "sentinel: $(date -u +%FT%TZ) exit=${{ steps.sentinel.outputs.code }}"
+          git pull --rebase
+          git push
+
+      - name: 判定不綠就叫人
+        if: steps.sentinel.outputs.code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="哨兵：${{ inputs.system_id }} 判定不綠"
+          num=$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number // empty')
+          body=$'退出碼 `'"${{ steps.sentinel.outputs.code }}"$'`\n\n'"$(sed -n '1,60p' sentinel/report.md)"
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: 把判定帶回 workflow 狀態
+        if: steps.sentinel.outputs.code != '0'
+        run: |
+          echo "哨兵退出碼 ${{ steps.sentinel.outputs.code }} —— heartbeat 已寫入，issue 已更新"
+          exit 1

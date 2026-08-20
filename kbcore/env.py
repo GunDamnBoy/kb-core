@@ -38,10 +38,17 @@ REQUIRED_BINARIES = {
 # 會永遠因為找不到 ffmpeg 而 FAIL —— 而它們根本不用 ffmpeg。
 #
 # **那是一個會固定響的警報，也就是雜訊。** 需求要逐支宣告，不是一視同仁。
+# **每個 label 都要在這裡具名，即使它什麼都不需要**（`podfetch` 就是空陣列）。
+# 沒登記時 `watch.external_binaries` 判 FAIL 而不是跳過 —— 那是刻意的：
+# 「不知道它需要什麼」與「檢查過沒問題」是兩件事，而後者是預設會發生的謊。
+#
+# 2026-08-20 實測有效：`com.kenny.kbpublish.podcast` 一裝上去，看門狗那一輪
+# 就叫了。新增排程而漏掉宣告，在這裡是紅的，不是安靜的。
 REQUIRED_BY_LABEL = {
-    "com.kenny.podfetch":  [],
-    "com.kenny.kbpublish": ["git"],
-    "com.kenny.kbwatch":   ["git"],
+    "com.kenny.podfetch":          [],
+    "com.kenny.kbpublish":         ["git"],
+    "com.kenny.kbpublish.podcast": ["git"],
+    "com.kenny.kbwatch":           ["git"],
 }
 
 # **有比較好，沒有也能跑。** 缺席是 WARN 不是 FAIL —— 把降級判成失敗，
