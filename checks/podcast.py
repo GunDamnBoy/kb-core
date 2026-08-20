@@ -7,6 +7,18 @@ payload 形狀（由 payload builder 組出來，檢查本身不做 IO）：
      "anchors":  podcast/anchors.json,
      "now":      ISO8601}
 
+## 為什麼 suite 叫 podfetch 不叫 podcast
+
+這十條回答的是「**昨晚那一輪轉錄好不好**」，不是「今天這份日報可不可以發」。
+兩個問題、兩組讀者、兩個時機——前者是早上人看的，後者是 publish 的閘門。
+
+擠在同一個 suite 裡的代價很具體：`publish.py` 用系統 id 選 suite，
+它組出來的 payload 裡沒有 `manifest`，這十條會整組 KeyError；
+而為了讓它們不爆掉去塞一個 `manifest` 進發布的 payload，
+等於讓發布這件事依賴一個 repo 外面的路徑。
+
+**`podcast` 這個 suite 名留給日報層。**
+
 ## 為什麼現在只有取數層，沒有日報層
 
 日報那一段（03:00 讀 manifest 產出當日 doc）還沒接。門檻雖然已經在
@@ -104,7 +116,7 @@ register(Check(
                             "windowStartUtc": "2026-08-17T17:00:00Z",
                             "windowEndUtc": "2026-08-19T17:00:00Z",
                             "episodes": []}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -147,7 +159,7 @@ register(Check(
                "manifest": {"generatedAt": "2026-08-20T01:00:00+08:00",
                             "windowStartUtc": "2026-08-17T01:00:00+08:00",
                             "windowEndUtc": "2026-08-20T01:00:00+08:00"}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -201,7 +213,7 @@ register(Check(
         "manifest": {"episodes": [
             {"showKey": "unhedged", "title": "Does the market know anything about oil?",
              "durationMs": 630_000}]}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -234,7 +246,7 @@ register(Check(
              "manifest": {"episodes": [{"showKey": "sharptech"}]}},
     near_miss={"shows": {"allin": {}, "unhedged": {}},
                "manifest": {"episodes": [{"showKey": "allin"}]}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -266,7 +278,7 @@ register(Check(
              "manifest": {"episodes": [{"showKey": "allin", "title": "x", "status": "ok"}]}},
     near_miss={"anchors": {"quality": {"status_values": ["OK", "DEGRADED", "FAILED"]}},
                "manifest": {"episodes": [{"showKey": "allin", "title": "x", "status": "OK"}]}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -295,7 +307,7 @@ register(Check(
         {"showKey": "tip", "title": "x", "status": "FAILED"}]}},
     near_miss={"manifest": {"episodes": [
         {"showKey": "tip", "title": "x", "status": "DEGRADED"}]}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -306,11 +318,14 @@ def _completeness(p):
     低於下界：掉字、截斷。跳針不在這裡——它在計字前就被剔除了
     （2026-08-08 一行 28,122 個重複 token 讓完整度顯示 3.36、實際 1.10）。
 
-    高於上界：剔除跳針之後仍然偏高，只剩一個解釋——**該節目的語速基準過期了**。
-    2026-08-20 實測 iltb 是 1.57，逐字稿驗過沒有重複（最長連續同 token 只有 2、
-    3-gram 分佈正常），實際約 224 字/分而 shows.json 記 140。
+    高於上界：**有兩個成因，不是一個。** 語速基準過期（分母偏小），或整段內容被重播
+    （分子偏大）。2026-08-20 早上我看 iltb 的 1.57，查了連續 token 重複與 3-gram
+    分佈都正常，就宣告是語速過期——**錯了**，實際是 970 token 的整段重播兩次。
+    區塊重複的 3-gram 分佈本來就正常，我用測 A 的方法宣告了 B 不存在。
 
-    所以上界該說的是「去修分母」，不是「逐字稿有問題」。
+    而且同日的 bloomberg 8/19 完整度只有 **0.81**，一樣有區塊重播——
+    **重播疊加時這個數字上升，重播覆蓋時它下降。** 所以它單獨一個指不出成因，
+    要跟 `podfetch.no_block_repetition` 一起讀。
     """
     lo = _A(p, "quality", "retry_below")
     hi = _A(p, "quality", "completeness_high")
@@ -327,7 +342,8 @@ def _completeness(p):
         return fail(f"{len(low)} 集完整度低於 {lo}：{'、'.join(low[:4])} —— 掉字或截斷")
     if high:
         return warn(f"{len(high)} 集完整度高於 {hi}：{'、'.join(high[:4])}"
-                    " —— 跳針已在計字前剔除，所以這是語速基準過期，去修 shows.json 的 wpm")
+                    " —— 兩個可能的成因：語速基準過期（分母偏小）或整段內容被重播（分子偏大）。"
+                    "**先看 podfetch.no_block_repetition，這個數字自己分不出來**")
     return ok()
 
 
@@ -339,7 +355,8 @@ register(Check(
         "完整度在區間內但內容是錯的那一集",
         "字數對、順序亂（時間戳回跳全庫 32% 出現，實測後決定不加單調性檢查）",
         "**沒有 completeness 欄位的集數會被跳過**，輸出與「檢查過沒問題」相同",
-        "上界被觸發時，是分母過期還是分子異常——這條只指方向，分辨要看重複度",
+        "**上界被觸發時，是語速基準過期還是整段重播——這條分不出來**，"
+        "要看 podfetch.no_block_repetition",
         "整體都偏低但每一集都還在下界之上",
     ],
     run=_completeness,
@@ -351,7 +368,67 @@ register(Check(
                "manifest": {"episodes": [
                    {"showKey": "gsx", "title": "x", "completeness": 0.56},
                    {"showKey": "iltb", "title": "y", "completeness": 1.34}]}},
-    suite="podcast",
+    suite="podfetch",
+))
+
+
+# ── 7b. 整段內容被重播 ───────────────────────────────────────────────
+def _block_repeat(p):
+    """**這一條是 2026-08-20 下午由一個判斷錯誤換來的。**
+
+    早上看到 iltb 完整度 1.57，我查了「最長連續重複同一 token」與 3-gram 分佈，
+    兩者都正常，於是宣告成因是語速基準過期。錯了——實際是 970 token 的整段內容
+    重播兩次。**區塊重複的 3-gram 分佈本來就正常，因為重複的是一大段連貫文字。**
+    我用測 A 的方法宣告了 B 不存在。
+
+    第二個發現更要命：bloomberg 8/19 完整度只有 **0.81**，一樣有 281 token 的區塊
+    重播，而且那段重播**覆蓋掉了下一位來賓訪談的真實內容**。所以：
+
+    **重播疊加時完整度上升，重播覆蓋時完整度下降。** `completeness_band` 只抓得到
+    前一種，而後一種才是有東西真的不見了的那一種。
+
+    偵測本身不在這裡做——檢查不做 IO。payload builder 讀逐字稿算出區塊，
+    這裡只判門檻，跟 `watch.no_code_drift` 與 `code_drift()` 是同一道 seam。
+    """
+    lo = _A(p, "quality", "block_repeat_min_tokens")
+    head = _A(p, "quality", "block_repeat_coldopen_head")
+    reps = p.get("repeats")
+    if reps is None:
+        return fail("payload 沒有 repeats —— 偵測沒跑，而不是沒有重複")
+    bad = []
+    for name, blocks in sorted(reps.items()):
+        for b in blocks:
+            if b["tokens"] < lo:
+                continue
+            if b["first"] < head:
+                continue  # 片頭預告：第一次出現就在開頭，稍後正片再播一次
+            bad.append(f"{name} {b['tokens']} token @{b['first']}→{b['second']}")
+    if bad:
+        return fail(f"{len(bad)} 處整段重播：{'；'.join(bad[:3])}"
+                    " —— 重播若覆蓋掉原內容，那段就真的不見了，而完整度指不出來")
+    return ok()
+
+
+register(Check(
+    id="podfetch.no_block_repetition",
+    covers="沒有超過 anchors.block_repeat_min_tokens 的整段逐字重播（片頭預告除外）",
+    blind_to=[
+        "**同義重述的重播**：allin 那集同一組論點講了兩次但用字不同，"
+        "機械查重完全看不到，只有讀得出來",
+        "重播「覆蓋」與「疊加」的差別——這條只說有重複，說不出原內容有沒有被蓋掉",
+        "片頭預告的豁免會放掉真正發生在開頭前 200 token 的重播",
+        "廣告與台呼低於下限所以不叫，但**一段被截短的廣告**也可能低於下限",
+        "重複但兩次之間有細微差異（時間戳插入、一個字不同）會讓 shingle 斷開",
+    ],
+    run=_block_repeat,
+    fixture={"anchors": {"quality": {"block_repeat_min_tokens": 150,
+                                     "block_repeat_coldopen_head": 200}},
+             "repeats": {"iltb.md": [{"tokens": 970, "first": 7041, "second": 8000}]}},
+    near_miss={"anchors": {"quality": {"block_repeat_min_tokens": 150,
+                                       "block_repeat_coldopen_head": 200}},
+               "repeats": {"a.md": [{"tokens": 140, "first": 3000, "second": 5000},
+                                    {"tokens": 300, "first": 17, "second": 1946}]}},
+    suite="podfetch",
 ))
 
 
@@ -395,7 +472,7 @@ register(Check(
                             "windowEndUtc": "2026-08-19T17:00:00Z",
                             "episodes": [{"showKey": "allin", "title": "x",
                                           "releaseDate": "2026-08-17T17:00:00Z"}]}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -446,7 +523,7 @@ register(Check(
                     "durationMs": 1_740_000},
                    {"showKey": "bloomberg", "title": "Bloomberg Surveillance TV",
                     "durationMs": 1_920_000}]}},
-    suite="podcast",
+    suite="podfetch",
 ))
 
 
@@ -488,5 +565,5 @@ register(Check(
     near_miss={"manifest": {"episodes": [
         {"showKey": "allin", "title": "x", "file": "iltb-1000783964339.md",
          "appleUrl": "https://podcasts.apple.com/us/podcast/id1502871393?i=1000783964339"}]}},
-    suite="podcast",
+    suite="podfetch",
 ))
