@@ -30,6 +30,12 @@ from kbcore.check import Check, fail, ok, register, skipped, warn
 
 TPE = dt.timezone(dt.timedelta(hours=8))
 
+# **這個數字與三個 repo 的 sentinel.yml cron 是一組的。** 年齡從那一天的台北零時
+# 起算，所以 36 小時這條線落在次日中午 12:00 台北。哨兵必須排在那條線**之後**，
+# 而且要留得夠遠 —— 2026-08-21 之前三個都排在 11:00–11:30，距離只有 30–60 分鐘，
+# 而 GitHub 排程延遲動輒數十分鐘（實測有一次延了五小時）。
+# **一個判決取決於 cron 準不準時的檢查，會隨機紅、隨機綠。**
+# 現在三個都排在 07:00–07:30 UTC（15:00–15:30 台北）：昨天的資料 39 小時 → 紅。
 MAX_DATE_AGE_H = 36
 MAX_UPDATED_AGE_H = 30
 

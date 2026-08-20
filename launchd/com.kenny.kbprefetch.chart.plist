@@ -23,6 +23,18 @@
     <string>/Users/macmini/kb-core/launchd/kbprefetch-chart.sh</string>
   </array>
 
+  <!-- PATH 與 HOME 明寫在這裡，即使包裝腳本自己也 export 一次。
+       **檢查讀的是 plist，不是腳本** —— 而 launchd 的預設環境只有
+       /usr/bin:/bin:/usr/sbin:/sbin，兩者不一致時安靜的那一邊會贏。
+       2026-08-21 watch.external_binaries 就是這樣抓到這兩支的。 -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
   <key>WorkingDirectory</key>
   <string>/Users/macmini</string>
 
