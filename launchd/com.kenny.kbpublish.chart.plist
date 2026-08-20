@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 2026-08-20 新增：每日五圖是第四套系統。
+     形狀與另外兩支 kbpublish 完全一致 —— publish.py 的參數是 (outbox, repo, 系統 id)
+     三件一組，一個 plist 只發一套系統。 -->
+  <key>Label</key>
+  <string>com.kenny.kbpublish.chart</string>
+
+  <!-- 2026-08-20 新增。podcast 的日報在台北 03:06 由 Cowork 排程產出草稿，
+       在此之前沒有任何東西會去發它 —— 草稿會躺在 outbox、網站停在前一天，
+       而排程回報成功、podfetch 是綠的、哨兵也沒話說。**每一個訊號都正常。**
+
+       **outbox 是 ~/outbox/podcast/ 這個子目錄，不是 ~/outbox/。**
+       publish 的 glob 是 `*.draft.json` 且非遞迴，所以兩套系統的草稿放在
+       不同層就互相看不見。這是物理隔離，不靠紀律。
+
+       更根本的解是草稿自帶 `system` 欄位、publish 讀出來比對 —— 那能擋住
+       「plist 指錯 outbox」這種子目錄擋不住的情況。排在投顧 SKILL 下次
+       改動時一起做，不要為此同時動兩個變因。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/publish.py</string>
+    <string>/Users/macmini/outbox/chart</string>
+    <string>/Users/macmini/chart-of-the-day</string>
+    <string>chart-of-the-day</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- log 與投顧分開。合在一起的話，兩套系統的空輪次訊息會互相淹沒，
+       而 publish 在沒有草稿的日子每分鐘都會說一次「空輪次」。 -->
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/chart/publish.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/chart/publish.log</string>
+</dict>
+</plist>

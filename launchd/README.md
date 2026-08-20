@@ -4,7 +4,7 @@
 兩邊會漂移，而且 launchd 不會告訴你——所以有 `watch.external_binaries`
 在讀實裝的 plist，還有下面那條對帳指令。
 
-## 五個工作
+## 六個工作
 
 | Label | 什麼時候 | 做什麼 |
 |---|---|---|
@@ -13,6 +13,7 @@
 | `com.kenny.kbpublish.podcast` | 每 60 秒 | 發布**podcast**：`~/outbox/podcast/` → `podcast-knowledge-digest` |
 | `com.kenny.kbwatch` | 每 4 小時 | 看門狗：Actions 上的哨兵還活著嗎、本機程式有沒有漂移 |
 | `com.kenny.kbwatch.podcast` | 02／06／10／14／18／22 時 | podcast 的看門狗（`kbwatch-podcast.sh`）：哨兵＋`healthcheck.py` |
+| `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
 
 **一個 plist 只發一套系統。** `publish.py` 的參數是 `(outbox, repo, 系統 id)`
 三件一組，沒有「多套」這個形態——一次只驗一組檢查、一個目的地，

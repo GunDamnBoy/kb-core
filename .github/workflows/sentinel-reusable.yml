@@ -92,6 +92,28 @@ jobs:
             gh issue create --title "$title" --body "$body"
           fi
 
+      # **警報要能自己解除。** 上面那一步開了 issue、也會去重，
+      # 但先前沒有任何東西在條件恢復之後關掉它 ——
+      # 於是一個真陽性（2026-08-20 早上排程被暫停、data_fresh 判「管線停了」）
+      # 在當天 17:54 補跑完成之後，issue 還開著。
+      #
+      # 一個永遠開著的 issue 就是雜訊，而**雜訊訓練人忽略警報**。
+      # 回綠時留一則「已恢復」再關掉，紀錄留在 issue 裡不會消失。
+      - name: 判定回綠就收掉警報
+        if: steps.sentinel.outputs.code == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="哨兵：${{ inputs.system_id }} 判定不綠"
+          num=$(gh issue list --state open --search "$title in:title" --json number -q '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "已恢復｜$(date -u +%FT%TZ) 這一輪全綠，警報收掉。"
+            gh issue close "$num"
+            echo "關掉 #$num"
+          else
+            echo "沒有開著的警報，不用收"
+          fi
+
       - name: 把判定帶回 workflow 狀態
         if: steps.sentinel.outputs.code != '0'
         run: |

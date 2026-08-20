@@ -5,4 +5,5 @@
 """
 from . import advisory  # noqa: F401
 from . import podcast   # noqa: F401
+from . import chart     # noqa: F401
 from . import tracer    # noqa: F401

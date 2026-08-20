@@ -52,6 +52,7 @@ REQUIRED_BY_LABEL = {
     # bash 不列在這裡：它是 /bin/bash，跟 PATH 無關，缺席時 launchd 自己就起不來。
     # git 要列，因為 watch_sentinel 會 fetch，而 healthcheck 明訂不碰 git。
     "com.kenny.kbwatch.podcast":   ["git"],
+    "com.kenny.kbpublish.chart":   ["git"],
 }
 
 # **有比較好，沒有也能跑。** 缺席是 WARN 不是 FAIL —— 把降級判成失敗，

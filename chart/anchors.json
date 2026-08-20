@@ -1,0 +1,348 @@
+{
+ "_": "每日五圖的每一個數字，唯一的家。四個讀者共用：檢查程式驗它、SKILL 的步驟用它、取數層讀它的限流與代理表、渲染層讀配色與序列上限。引用一律指路，不抄值。",
+ "_source_rule": "每一組數字都帶 source。**優先取自舊 `tools/check_day.py`**——它是舊系統自述的「唯一權威副本」，而規格散文與它不一致的地方以它為準。散文有、程式沒驗的，收進來時標 `_was_prose_only`。估算值標 ~；更正舊量測要留痕；禁止在兩個實測點之間內插。",
+ "identity": {
+  "_": "三件事同時成立才算數，缺一張圖就不算。這是這套系統的身分，不是可調的旋鈕。",
+  "own_charts_only": "圖一律自己重製。選題可取材自國際媒體，**絕不轉載他們的圖**。",
+  "every_chart_has_a_point": "`takeaway`／`so_what`／`watch` 三欄必填。",
+  "reproducible": "任何一天的圖，一年後都要能被重畫。",
+  "archive_immutable": "`data/YYYY-MM-DD.json` 一旦發布就不改寫；要修正就發新的一天並在 about.run 說明。"
+ },
+ "schedule": {
+  "prefetch": "11:00",
+  "run": "11:30",
+  "tz": "Asia/Taipei",
+  "upstream_wait_minutes": 15,
+  "source": "11:30 是兩次往後挪出來的：原本 09:00 起跑，但方塊圖裡的 07:30 是上游的**起跑**時間不是完成時間——上游實測完成 07-30 08:20、08-03 13:10、08-05 10:40、08-06 10:40，近四個交易日有三天 09:30 還沒好，「退回前一日題材」從例外變成常態。08-06 挪到 11:00；上游繼續漂到 08-08 的 11:20，08-08 再挪到 11:30。**每次挪動都要把當時的實測時間留下來**——這條時間線本身就是判斷「還要不要再挪」的依據。若哪天 11:30 又接不住，**先查是不是上游的來源家數又變了**（實測在 24／25／26 家之間變動過），那才是根因；一直往後挪只是在追症狀。",
+  "upstream_note": "寫上游時間一律寫**完成**時間，起跑時間對下游沒有意義。"
+ },
+ "structure": {
+  "charts_per_day": 5,
+  "slots": [
+   "當日主圖",
+   "市場異動圖",
+   "重製圖",
+   "主題深掘",
+   "軌道圖"
+  ],
+  "slot_order_fixed": true,
+  "theme_unique_within_day": true,
+  "_slots_source": "前四個 slot 名稱與 `theme` 值域來自 check_day.py 的 SLOTS／THEMES。第五個在資料裡寫成 `軌道圖｜<軌道名>`。撞 theme 就換掉排序較後那張，週末同樣適用。",
+  "slot_freshness": {
+   "must_be_today": [
+    "當日主圖",
+    "市場異動圖",
+    "主題深掘"
+   ],
+   "within_days": {
+    "重製圖": 7
+   },
+   "source": "slot 3 的**原題**可以是七天內的專題，但**我們的圖必須用最新資料**——原題可以是三天前的專題，我們的圖不行是三天前的圖。slot 1／2／4 素材不足時改「前瞻框架」並在 about.run 記錄，不是硬湊。"
+  }
+ },
+ "tracks": {
+  "_": "軌道圖的五條軌道**綁死週一至週五**，不是輪流。",
+  "monday": "利率與匯率",
+  "tuesday": "台股與資金流",
+  "wednesday": "AI 與半導體",
+  "thursday": "原物料與能源",
+  "friday": "信用與風險偏好",
+  "weekend_mode": "週線複查",
+  "weekend_slot_label": "軌道圖｜<軌道名>（週線複查）",
+  "weekend_distinct_days": true,
+  "source": "「同一條軌道每週固定同一天出現」才有跨期可比。**週末若往下數第六、七條，一輪之後全部錯位。**排程一週跑七天，週末不是例外狀況，所以週末不推進輪盤、改週線複查，且**週六與週日不得挑同一條**。"
+ },
+ "lengths": {
+  "title": [
+   12,
+   30
+  ],
+  "takeaway_max": 70,
+  "reading": [
+   200,
+   620
+  ],
+  "reading_paragraphs_min": 3,
+  "so_what": [
+   60,
+   120
+  ],
+  "watch_items": [
+   1,
+   3
+  ],
+  "tags": [
+   2,
+   5
+  ],
+  "headline": [
+   20,
+   32
+  ],
+  "standfirst": [
+   60,
+   130
+  ],
+  "_headline_standfirst_was_prose_only": "**舊 check_day.py 只檢查 headline／standfirst 存在，從不驗長度**（第 50 行）。規格散文寫著 20–30 與 60–100，而那兩個數字沒有任何讀者 —— 所以 2026-08-20 收進來時先拿 13 天封存量了一次，結果散文那兩個數字**有一個是錯的**：\n　headline 實測 20–31、中位 27、P75 29 —— 規格 20–30 只有一天界外（31），大致成立，帶取 20–32。\n　standfirst 實測 69–126、中位 98、P75 110 —— **規格 60–100 有 6/13 天界外**，帶取 60–130。\n「規格與實作連續一週不一致而沒有人擋，代表那條規格從一開始就不可執行」——**一個沒有讀者的數字不會被違反，只會被無視**，然後在有人拿它當真的那天集體變紅。",
+  "source": "全部取自舊 check_day.py 第 60–74 行。`reading` 的 200–620 有沿革：當初往腳本靠訂為 200–520（散文版原寫 250–420，兩邊互相矛盾），因既有 JSON 不得改寫，上限後來放寬到 620。`so_what` 下限 60 的校準：全樣本 10 筆有 8 筆在範圍內，分布集中 61–77、中位 71，**自然落點沒有貼著下限的（最接近 61）**——所以不為兩個試作日的違規（59、42 字）調降下限。",
+  "title_is_a_judgement": "`title` 是一個判斷，不是標籤。",
+  "so_what_banned": "不准寫「須密切關注」這種空話。"
+ },
+ "series": {
+  "max_per_chart": 4,
+  "warn_at": 4,
+  "min_points_timeseries": 20,
+  "stacked_bar_max_items": 4,
+  "grouped_bar_max_groups": 4,
+  "color_default_empty": true,
+  "signed_values_share_color": true,
+  "source": "四條上限是配色決定的：`PALETTE` 只有四個角色，第 5 條會 `PALETTE[4 % 4]` **繞回主角紅**，一張圖出現兩個主角。**超過就拆圖，不是換色。** stacked／grouped 同理，超過就把小的併成「其他」。`series[].color` 預設留空由 chartkit 依角色給：2026-08-05 那期九條序列 100% 手寫 color，其中**七條等於預設（白工）**。正負值不分色，一律靠 zero_line 與資料標籤表達。"
+ },
+ "palette": {
+  "_": "四個**角色**，不是六個編號。與 House View 共用同一套。",
+  "lead": "#D70C18",
+  "contrast": "#1F4E79",
+  "overflow": "#8A8F95",
+  "background": "#B8BBBE",
+  "contrast_on_white": {
+   "lead": 5.3,
+   "contrast": 8.7,
+   "overflow": 3.3,
+   "background": 1.9
+  },
+  "retired": {
+   "#D9942B": "土黃，對白底只有 2.6:1",
+   "#3F7D5C": "綠，與主角紅在紅綠色盲下只差 17",
+   "#7A6BA8": "紫"
+  },
+  "source": "主角紅取自 tsholdings.com.tw 的 logo SVG `fill`（全站計算樣式 86 處）。**三個容易混淆的紅**：舊值 #C8102E（註解謊稱「台新紅」）、品牌紅 #D70C18、以及 PowerPoint 標準色盤的 #C00000（House View 月報模板用）。三者兩兩相距 ΔE 6～8，全落在「太近讀不出是刻意的、太遠又不像同一個顏色」的最糟區間。",
+  "shared_with_houseview": "House View 的健康檢查會讀它的登記值比對，改這裡就會讓那邊 FAIL——**那是設計成這樣的**。"
+ },
+ "diversity": {
+  "line_kinds": [
+   "timeseries"
+  ],
+  "min_non_line_per_day": 1,
+  "source": "2026-08-09 量測：前五期 **25 張圖有 24 張是 timeseries、53 條序列裡 52 條是線**，`bar` 五天一次都沒被用過。所以硬性擋下「五張全折線」。**但若當天真的每個題目都是兩條線的關係，要換的是選題角度不是硬換圖型**——為了滿足規則把不適合的資料塞進雷達圖，比五張折線更糟。"
+ },
+ "footer": {
+  "visual_width_per_line": 120,
+  "cjk_width": 2,
+  "latin_width": 1,
+  "lines_warn": 3,
+  "lines_fail_above": 3,
+  "source": "頁尾 `source` ＋ `note` 合計 > 3 行硬失敗、== 3 行警示。**下游會直接拿 charts/<date>/*.png 貼進簡報，所以圖的頁尾要自帶來源標註、離開網站也站得住。**既有一筆 note 視覺寬 224，等於砍掉快一半。"
+ },
+ "freshness": {
+  "daily_warn_days": 2,
+  "daily_fail_days": 5,
+  "monthly_warn_periods": 2,
+  "monthly_fail_periods": 3,
+  "monthly_detection": "日期全部以每月 1 號標記",
+  "source": "日頻落後 ≥2 天警示（subtitle 或 note 必須寫出實際基準日）、≥5 天硬失敗不得發布。月頻是 2026-08-13 加的：CPI／PCE／非農是月頻，7 月觀測值標記為 2026-07-01，在 8/13 那輪一律落後 43 天，照日頻門檻算是硬失敗——**等於同一份規範自己禁止自己**。",
+  "known": [
+   "FRED 日頻序列比 Yahoo 慢一個交易日"
+  ]
+ },
+ "size": {
+  "json_warn_kb": 250,
+  "json_fail_kb": 600,
+  "source": "實測單日 105.7 KB（series 47.1、option 41.0、文字 16.4）；credit-spreads 一張佔 49 KB（3 年 × 2 條日資料共 1,569 點）。"
+ },
+ "quality": {
+  "sigma": 5,
+  "merge_adjacent_flags": true,
+  "abs_change_zscore_when_signed": true,
+  "rollover_spread_normal_pct": [
+   0,
+   1
+  ],
+  "rollover_spread_rare_pct": 2,
+  "source": "**原本設 6σ**，2026-08-05 覆核發現它漏掉 2026-01-30 黃金單日 −11.37%（z＝−5.59）。改 5σ 後同一份資料由 2 筆增為 5 筆，多出來的三筆都是已知真實事件。**5σ 是覆核逼出來的校準值，不要退回 6σ。** 相鄰交易日的旗標合併成一筆事件（記 date_end 與 days）——2025-04-03 與 04-04 是同一次關稅衝擊。轉倉價差正常在 1% 以內、極少超過 2%，所以「跌 11% 是轉倉」在數量級上就不成立——**先看幅度再看故事**。分母趨近零的導出序列會誤報（2020-05 CPI 0.2% → 次月 0.72% 被算成 +260%；2026-08-11 外資買賣超 −5.1 → +323.8 億被算成 −6449%，序列完全正確），所以「同一序列同時有正負值」改用絕對變動 z 分數並標 abs_chg。"
+ },
+ "data_paths": {
+  "_": "`about.data_path` 每期必填，三選一。",
+  "order": [
+   "prefetch",
+   "direct",
+   "browser"
+  ],
+  "prefetch_conditions": "狀態檔在有效期內，且本期序列不在 failed／skipped 裡",
+  "source": "**`prefetch` 不是降級**：資料一樣出自 FRED／Tiingo／證交所的正規 API，只是取數的機器不同。**真正該響的是 `browser`**——它需要有 Chrome 在線並經人工指定，**無人值守輪次實際上不可用**，2026-08-14 11:30 那輪就因為當下沒有 Chrome 而完全沒有產出。"
+ },
+ "prefetch": {
+  "status_valid_hours": 30,
+  "coverage": "核心清單 ∪ 近 14 天用過的序列",
+  "source": "2026-08-16 驗收：11:00:00 準時觸發、跑 8 分 53 秒、34/46 條，該期 data_path=prefetch、全鏈路無人介入。涵蓋率歷程 13/36 → 13/43 → 27/43 → 34/46（接台股與 Tiingo 前後）。",
+  "timing_risk": "**Mac 若在 11:00 睡著**，launchd 會延到喚醒才跑，可能落在執行輪次之後，屆時那一輪用到的是前一日快取。狀態檔的時間戳與序列新鮮度檢查會讓這件事看得出來，不會靜默。"
+ },
+ "rate_limits": {
+  "http_429_backoff_seconds": [
+   20,
+   40
+  ],
+  "source_breaker_consecutive_429": 3,
+  "fred_req_per_min": 120,
+  "tiingo_per_day": 1000,
+  "tiingo_per_hour": 50,
+  "twse_month_per_request": 1,
+  "twse_request_interval_seconds": 1,
+  "source": "**429 不是障礙，是對方在說「慢一點」。等，不要繞。** 不可以換 host、改用瀏覽器規避；若持續未解，該圖降級或改題並在 about.run 寫明——**寧可誠實少一張圖，也不要繞**。**但也不該對一個明確說「不」的站台連敲十幾次**：熔斷 3 次的理由是「連敲十三次不是『等』，是敲」，其餘記為 skipped（未嘗試）而非 failed。",
+  "two_kinds_of_429": "**同樣是 429，成因可能完全不同**：2026-08-05 那次是累積型（打數十次後才出現）→ 等；2026-08-14 是**第一個請求就 429** → 等再久也不會好。分辨方式是「看第一次請求就 429，還是打了一陣子才 429」。"
+ },
+ "proxies": {
+  "_": "沒有免費來源的指數，用 ETF 代理。**代理必須在 series_spec 明寫，不由取數層自動替換。**",
+  "^SOX": {
+   "use": "SOXQ",
+   "why": "直接追蹤 PHLX Semiconductor Sector Index（SOXX 追的是另一個 ICE 指數）"
+  },
+  "^STOXX50E": {
+   "use": "FEZ",
+   "why": "追蹤歐洲 Stoxx 50"
+  },
+  "HG=F": {
+   "use": "CPER",
+   "why": "ETF 有轉倉成本，與期貨本身不同"
+  },
+  "GC=F": {
+   "use": "GLD",
+   "why": "紐約證交所收盤，無結算日標記爭議；含年化約 0.4% 管理費耗損，水準不等於每盎司金價"
+  },
+  "source": "查證過六家免費方案（Tiingo、Twelve Data、Alpha Vantage、Polygon、Finnhub、Nasdaq Data Link）**沒有任何一家提供 ^SOX**——這是指數授權限制，不是技術問題。曾經寫成「^SOX 取不到就改抓 SOXQ」，那會把 ETF 的資料寫進 ^SOX 的快取，**圖上標的是指數、數字卻是 ETF**。**替換要是一個有意識的決定，不是取數層的靜默行為。**"
+ },
+ "history_limits": {
+  "BAMLxxx_years": 3,
+  "SOXQ_points": 1299,
+  "FEZ_points": 2920,
+  "CPER_points": 2920,
+  "DGS10_points_via_api": 16134,
+  "source": "ICE BofA 利差只有近三年是 FRED 政策，序列頁明載。**申請 API key 不會解決，換端點也不會。**分位數與中位數一律標「近三年」，**不可寫成「歷史低點」**。SOXQ 約回到 2021 年成立，用它時錨點措辭必須限縮成「成立以來」或「近五年」，**不可寫「歷史上」或「十年分位」**。"
+ },
+ "units": {
+  "roc_year_offset": 1911,
+  "margin_amount_unit": "仟元",
+  "margin_to_100m_divisor": 100000,
+  "bfi82u_rows_to_aggregate": 6,
+  "source": "民國 115/08/14 ＝ 2026-08-14。**轉換錯了不會報錯，只會讓整條序列偏到 1911 年代。**三大法人 bfi82u 是六列要聚合（自營商拆自行買賣與避險、外資拆外資及陸資與外資自營商），與證交所合計列對帳 20.05 對 20.05。2026-08-04 實測：融資張數 −88,687 張、金額 +63.79 億（**方向相反，不是資料錯誤**）。",
+  "tpex_volume_field_varies": "櫃買的成交量欄位名稱會隨年代改變（近年「成交張數」、2016 年「成交仟股」），要讀 `flagField` 判斷單位，**不能寫死欄位名或倍率**——與融資餘額「仟元 vs 元」同類，差 1,000 倍而數字看起來都像個數字。"
+ },
+ "publish": {
+  "index_days_order": "由新到舊",
+  "verify_needs": [
+   "days[0].date 是當天",
+   "線上那份與剛上傳的同一個檔"
+  ],
+  "static_outputs": [
+   "charts/<date>/*.png（200dpi）",
+   "charts/<date>/*.svg"
+  ],
+  "_charts_path_is_a_contract": "**House View 的 pptx 直接吃 `charts/<date>/*.png` 的路徑。** 那是一個外部消費者，改路徑等於弄壞一個不在重建範圍內的下游。",
+  "source": "2026-08-20 重建時決定**沿用 chart-of-the-day 這個 repo**，理由就是上面那條，以及舊規格自己記著「新建的 repo 不會自動納入推送清單」——那個坑踩過兩次（podcast 8/02、chart 8/05），開新 repo 是把同一類設定風險再進一次。"
+ },
+ "rendering": {
+  "_": "**一份 spec，兩個渲染器。** 靜態軌（PNG／SVG）與互動軌（網頁）從同一份 spec 出圖。",
+  "stored_option": false,
+  "record_renderer_version": true,
+  "source": "舊制把 ECharts 的 `option` 存進日檔，於是同一張圖有兩份實作——而文件反覆記載**雙軌漂移是這套系統最常見的缺陷類型**：zero_line 只有 PNG 有、ECharts category 軸按位置貼資料導致整條位移、heatmap 中文列標籤在 PNG 被切掉、grouped_bar 的 barWidth 是每條而非一組（兩條各 62% → 一組實佔 143%），以及最嚴重的那個：**瀑布圖在網頁上每根從 0 往上長**（ECharts 預設 stackStrategy=samesign），**圖上的結論與 takeaway 相反卻不丟任何例外**。2026-08-17 那期實測 option 佔全檔 43%、series 佔 32%，兩者內容重複。改成不存 option：兩種錯的代價不對稱——**雙軌漂移是正確性失效，而「舊圖用新版渲染器重畫會有樣式差異」只是版本問題**，在 about 記 renderer_version 就能定位。",
+  "legacy_dialect": "2026-08-05 至 08-17 這 13 天的日檔**存了 option**。歷史封存不改寫，所以渲染層要吃兩種方言：有 option 就用它，沒有就從 spec 現算。",
+  "first_use_of_a_new_kind": "**首次使用任何一種新圖型的當天，一定要實載網頁看一眼**——檢查程式只檢查欄位齊不齊，不會把 option 餵進 ECharts。2026-08-12 gauge 的 markLine 在無直角座標系上丟例外，而前端只有一層 catch，**一張圖丟例外就整頁死掉**。",
+  "renderer_ready": false,
+  "_renderer_ready_source": "**規則已經決定，機制還沒建。** `stored_option: false` 要成立，前提是兩個渲染器都能從 spec 畫出 anchors.kinds 那八種圖型 —— 在那之前照這條規則發布會什麼都畫不出來。\n所以這裡用一個**具名的旗標**而不是把 `stored_option` 暫時改成 true：後者會讓 anchors 說「我們存 option」，跟 BRIEF 矛盾，而且未來看不出那是過渡狀態。\n`chart.no_stored_option` 讀這個旗標：`false` 時回 SKIPPED 並說出原因 ——**「還沒做」與「做過了沒問題」必須分得出來。** 渲染器落地那天把它改成 true，檢查就自動開始擋。"
+ },
+ "kinds": {
+  "_": "**每一種圖型的資料住在自己的欄位裡，不是統一用 `series`。** 這張表是「一年後能不能原樣重畫」的實際依據——渲染層照它取資料，檢查程式照它決定該驗哪些欄位。",
+  "timeseries": {
+   "data": [
+    "series"
+   ],
+   "optional": [
+    "zero_line",
+    "y_log",
+    "y2_label",
+    "y2_fmt",
+    "markers",
+    "pts",
+    "hi_pts"
+   ]
+  },
+  "range_area": {
+   "data": [
+    "band",
+    "band_label",
+    "series"
+   ],
+   "optional": []
+  },
+  "grouped_bar": {
+   "data": [
+    "cats",
+    "groups"
+   ],
+   "optional": [
+    "zero_line"
+   ]
+  },
+  "stacked_bar": {
+   "data": [
+    "cats",
+    "groups"
+   ],
+   "optional": [
+    "zero_line"
+   ]
+  },
+  "scatter": {
+   "data": [
+    "pts"
+   ],
+   "optional": [
+    "hi_pts",
+    "zero_line",
+    "x_label"
+   ]
+  },
+  "heatmap": {
+   "data": [
+    "cats",
+    "rows",
+    "matrix"
+   ],
+   "optional": []
+  },
+  "waterfall": {
+   "data": [
+    "cats",
+    "vals"
+   ],
+   "optional": [
+    "total_label",
+    "zero_line"
+   ]
+  },
+  "gauge": {
+   "data": [
+    "gauge"
+   ],
+   "optional": []
+  },
+  "marker_support": [
+   "timeseries",
+   "range_area"
+  ],
+  "source": "2026-08-20 拿 13 天 65 張圖機械盤出來的，先前不在任何文件裡。**這張表不存在的時候，「series 是空的」看起來就像資料掉了**——我自己在盤點時就這樣誤判過一次：只找 `series`，於是 18 張非折線圖全被算成沒有資料，而它們的資料一直都在 `pts`／`cats`／`matrix` 裡。`series_spec` 只出現在 24/47 張 timeseries 與 3/5 張 range_area，**不是每張圖都有**。",
+  "markers_note": "`marker` 只有日期軸圖型畫得出來（timeseries／range_area）；類別軸圖型的錨點改寫進 `note`，**不要硬塞**。",
+  "range_area_is_heavy": "range_area 的 option 中位 24,570 字元，是所有圖型裡最大的（其次 timeseries 5,934）。credit-spreads 一張就佔 49 KB（3 年 × 2 條日資料共 1,569 點）——不存 option 之後這一項會直接消失。"
+ },
+ "known_exceptions": {
+  "_": "已發布的封存不改寫，所以違規的舊資料登錄在這裡，而不是把門檻改鬆。",
+  "2026-08-05": [
+   "risk-premium-unwind so_what 59 字（門檻 60–120）",
+   "spx-vix-corise so_what 42 字（門檻 60–120）",
+   "sox-vs-twse reading 引用 8/4 費半 +6.55%，該日不在本圖序列內（已於 note 標明）"
+  ],
+  "diversity_from": "2026-08-10",
+  "_diversity_from_source": "「至少一張非折線」是 2026-08-10 才生效的，08-06 至 08-09 四天五張全折線是**規則生效前**的資料，不是違規。回測歷史時要記得這條線。",
+  "data_path_from": "2026-08-15",
+  "_data_path_from_source": "`about.data_path` 是預抓系統落地前後才加的欄位，實測只有 2026-08-15／16／17 三天有（值都是 prefetch）。更早的日檔缺它是**規則生效前**，不是漏填。"
+ }
+}

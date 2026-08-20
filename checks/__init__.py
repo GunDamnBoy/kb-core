@@ -6,6 +6,7 @@
 """
 from . import advisory  # noqa: F401  suite=advisory
 from . import podcast   # noqa: F401  suite=podcast
+from . import chart     # noqa: F401  suite=chart
 from . import demo      # noqa: F401  suite=draft
 from . import sentinel  # noqa: F401  suite=sentinel
 from . import repo      # noqa: F401  suite=repo

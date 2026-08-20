@@ -52,6 +52,36 @@ REPO = resolve("~/podcast-knowledge-digest")
 PODFETCH = resolve("~/.podfetch")
 TRANSCRIPTS = resolve("~/podcast-transcripts")
 KBCORE = resolve("~/kb-core")
+OUTBOX = resolve("~/outbox")
+
+
+def scheduled_run(day):
+    """這一天的日報是**排程**跑出來的，還是有人在互動對話裡跑的？
+
+    回傳 (是不是排程, 一句說明)；判不出來回傳 (None, 原因)。
+
+    為什麼要分：那四個 token 欄問的是「一輪排程日報花多少」。
+    互動對話裡跑出來的那一輪，同一場工作階段通常還做了別的事，
+    **拿它的總量去填會得到一個看起來正常、實際不可比的數字** ——
+    2026-08-15 那筆 `eff_tokens_k=31891` 就是（其他天約 2,900，它是 11 倍）。
+    舊規格那句「寫錯的數字比空著更糟，因為它看起來像有效資料」正是指這個。
+
+    判準用 `~/outbox/podcast/<date>.receipt.json` 的 `at`：
+    publish 寫回執的時刻就是那一輪真正落地的時刻，比任何自述都可靠。
+    """
+    if not OUTBOX:
+        return None, "讀不到 ~/outbox"
+    f = os.path.join(OUTBOX, "podcast", f"{day}.receipt.json")
+    if not os.path.exists(f):
+        return None, "沒有回執"
+    try:
+        at = json.load(open(f, encoding="utf-8"))["at"]
+        t = datetime.fromisoformat(at).astimezone(TAIPEI)
+    except Exception as e:
+        return None, f"回執讀不開（{e}）"
+    # 排程 03:00 起跑，正常一輪一個多小時。落在 03:00–07:00 之間算排程。
+    ok = 3 <= t.hour < 7
+    return ok, f"回執時刻台北 {t:%H:%M}"
 
 
 # ---------------------------------------------------------------- 1. 資料檔
@@ -968,12 +998,22 @@ def collect_metrics():
                 "`eff_tokens_k ÷ 集數` 混了固定開銷與一次性維護動作、不可比。"
                 % (row["eff_tokens_k"], "／".join(miss)))
         else:
-            # **量測失敗一定要說出來。** 08-09 到 08-10 連兩天留空沒人發現，
-            # 就是因為留空看起來像「還沒有資料」而不是「壞了」。
-            log("WARN", "每日指標",
-                base + "。**今日的 eff_tokens_k 還沒填**——"
-                "從當日 token 分析報告抄進 metrics.csv 對應欄位（加權總量千位、"
-                "子代理數、子代理總回合數、**子代理加權千位**）。" + (TOKEN_NOTE or ""))
+            sched, why = scheduled_run(today)
+            if sched is False:
+                # **不是排程跑的那一天，這四欄沒有可比的數字。** 這時候催人去填，
+                # 是在催一個不存在的東西 —— 而每四小時響一次的提醒會訓練人忽略它。
+                log("SKIP", "每日指標",
+                    base + "；**今天不是排程跑的**（%s），"
+                    "四個 token 欄刻意留空 —— 那一場工作階段還做了別的事，"
+                    "總量填進來會像 2026-08-15 的 31891 一樣不可比。" % why)
+            else:
+                # **量測失敗一定要說出來。** 08-09 到 08-10 連兩天留空沒人發現，
+                # 就是因為留空看起來像「還沒有資料」而不是「壞了」。
+                log("WARN", "每日指標",
+                    base + "。**今日的 eff_tokens_k 還沒填**——"
+                    "從當日 token 分析報告抄進 metrics.csv 對應欄位（加權總量千位、"
+                    "子代理數、子代理總回合數、**子代理加權千位**）。"
+                    + ("（%s）" % why if sched is None else "") + (TOKEN_NOTE or ""))
     except Exception as e:
         log("WARN", "每日指標", "寫不進 metrics.csv：%s" % e)
 
