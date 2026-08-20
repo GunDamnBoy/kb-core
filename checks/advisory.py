@@ -420,6 +420,13 @@ def _fixed_structure(p):
     keys = [x.get("k") for x in (ov.get("pulse") or [])]
     if keys and keys != fs["pulse_keys"]:
         bad.append(f"pulse 鍵名或順序不符：{keys}")
+    # `dir` 與卡片的 `tone` 共用同一個值域（見 anchors 的 _pulse_dir_shares_tone）。
+    # 先前這裡沒有驗過 dir —— 值域寫在 anchors 但沒有讀者，等於沒有訂。
+    tones = _A(p, "card_vocab", "tone")
+    off = [f"{x.get('k')}＝{x.get('dir')!r}" for x in (ov.get("pulse") or [])
+           if x.get("dir") not in tones]
+    if off:
+        bad.append(f"pulse 的 dir 不在值域 {tones}：{'、'.join(off)}")
     lvl = (ov.get("thermo") or {}).get("level")
     if not (isinstance(lvl, str) and lvl.isdigit() and 0 <= int(lvl) <= 100):
         bad.append(f"thermo.level 不是 0–100 的整數字串：{lvl!r}")
@@ -437,7 +444,8 @@ register(Check(
         "pulse 的 dir 天天翻轉",
     ],
     run=_fixed_structure,
-    fixture={"anchors": {"fixed_structure": {"snap_cells": 6, "focus_cards": 4, "takeaways": 7,
+    fixture={"anchors": {"card_vocab": {"tone": ["偏多", "中性", "偏空"]},
+                         "fixed_structure": {"snap_cells": 6, "focus_cards": 4, "takeaways": 7,
                                              "pulse_entries": 5, "pulse_keys": []}},
              "doc": {"overview": {"thermo": {"level": "偏熱"}}}},
     no_boundary="數量與形態是離散的；thermo 的 0–100 邊界由值域比對涵蓋",
