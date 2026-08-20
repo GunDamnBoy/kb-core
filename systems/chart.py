@@ -1,4 +1,5 @@
-"""每日五圖。payload 要帶兩份 anchors、前一版、以及當日 JSON 的實際大小。
+"""每日五圖。payload 要帶兩份 anchors、前一版、當日 JSON 的實際大小，
+以及三樣只有摸得到磁碟的人才答得出來的東西：PNG 實際位元組、預抓狀態檔、近 14 期的 data_path。
 
 ## 為什麼要帶投顧的 anchors
 
@@ -44,6 +45,54 @@ def load_anchors(repo: Path):
     return json.loads((ROOT / "chart" / "anchors.json").read_text())
 
 
+def png_bytes(draft, repo: Path) -> dict:
+    """每張圖宣稱的 PNG 實際多大。**找不到檔案回 None，不是 0**——
+    「沒有這個檔」與「檔案是空的」是兩件事，處置也不同（前者是沒產出、後者是畫壞了）。
+    """
+    out = {}
+    for c in draft.get("charts") or []:
+        rel = (c.get("files") or {}).get("png") or ""
+        slug = c.get("slug") or "?"
+        if not rel:
+            out[slug] = None
+            continue
+        f = repo / rel
+        out[slug] = f.stat().st_size if f.exists() else None
+    return out
+
+
+def prefetch_status(repo: Path):
+    """預抓狀態檔。讀不動一律回 None 讓檢查判失敗——
+    **「當成沒有預抓處理」是刻意的**，安靜跳過會讓整條線變成永遠 PASS。
+    """
+    f = repo / "data" / "_prefetch_status.json"
+    if not f.exists():
+        return None
+    try:
+        return json.loads(f.read_text())
+    except Exception:
+        return None
+
+
+def recent_data_paths(data_dir: Path, date: str, n: int = 14) -> list:
+    """最近 n 期（含當日之前）的 about.data_path，新到舊。
+
+    連續走備援是**跨期**才看得出來的：單看一期，每一期都是「降級但成功」。
+    """
+    if not data_dir.exists():
+        return []
+    days = sorted((f.stem for f in data_dir.glob("*.json")
+                   if f.stem != "index" and f.stem < date), reverse=True)[:n]
+    out = []
+    for d in days:
+        try:
+            out.append(((json.loads((data_dir / f"{d}.json").read_text())
+                         .get("about") or {}).get("data_path")) or "")
+        except Exception:
+            out.append("")
+    return out
+
+
 def build(draft, repo: Path):
     repo = Path(repo)
     date = draft.get("date", "")
@@ -53,6 +102,9 @@ def build(draft, repo: Path):
         "anchors": load_anchors(repo),
         "advisory_anchors": json.loads((ROOT / "advisory" / "anchors.json").read_text()),
         "size_kb": len(json.dumps(draft, ensure_ascii=False).encode()) / 1024,
+        "png": png_bytes(draft, repo),
+        "prefetch": prefetch_status(repo),
+        "recent_data_paths": recent_data_paths(repo / "data", date),
         "now": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
     }
 

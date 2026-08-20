@@ -4,7 +4,7 @@
 兩邊會漂移，而且 launchd 不會告訴你——所以有 `watch.external_binaries`
 在讀實裝的 plist，還有下面那條對帳指令。
 
-## 六個工作
+## 七個工作
 
 | Label | 什麼時候 | 做什麼 |
 |---|---|---|
@@ -13,6 +13,7 @@
 | `com.kenny.kbpublish.podcast` | 每 60 秒 | 發布**podcast**：`~/outbox/podcast/` → `podcast-knowledge-digest` |
 | `com.kenny.kbwatch` | 每 4 小時 | 看門狗：Actions 上的哨兵還活著嗎、本機程式有沒有漂移 |
 | `com.kenny.kbwatch.podcast` | 02／06／10／14／18／22 時 | podcast 的看門狗（`kbwatch-podcast.sh`）：哨兵＋`healthcheck.py` |
+| `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
 
 **一個 plist 只發一套系統。** `publish.py` 的參數是 `(outbox, repo, 系統 id)`
@@ -28,6 +29,13 @@
 
 釘在整點就沒有這個問題：**02:00** 在 podfetch（01:00）之後、官方稿（02:20）與
 日報（03:00）之前；**06:00** 是日報發完之後的第一次，人起床時已經有兩份報告了。
+
+### 為什麼預抓釘在 11:00
+
+它跟 `chart/anchors.json` 的 `schedule.prefetch`／`schedule.run`（11:00／11:30）是**一組的**，
+不是各寫各的。預抓 46 條實測約 9 分鐘，11:00 起跑留半小時緩衝。
+**動了 anchors 的時刻就要回頭動這支 plist** —— 反過來也一樣。
+漂掉的樣子不是失敗，是那一輪安靜地用了前一日快取。
 
 ### 為什麼 `healthcheck.py` 只掛在 podcast 這一支
 
@@ -52,6 +60,7 @@ launchctl list | grep kenny
 
 `launchctl list` 那一欄是**上次的結束狀態，不是健康狀態**。
 `kbpublish` 在沒有草稿的日子永遠是 `13`（EMPTY_ROUND），那是設計上的正常。
+`kbprefetch.chart` 一天只跑一次，**平常問它會得到「沒跑過」而不是「失敗」** —— 這兩者長得很像。
 **別養成看 `launchctl list` 判死活的習慣**，那是哨兵的工作。
 
 ## 跟版控對帳
@@ -96,7 +105,9 @@ pmset -g sched && pmset -g custom | grep -E '^ *(sleep|displaysleep|disksleep|wo
 - **`kbwatch` 一次只看得了一套系統。** 2026-08-20 之前它指的是 `kb-tracer`，
   於是四條檢查裡有兩條（`sentinel_alive`、`sentinel_verdict`）讀的是靶子的
   heartbeat，另外兩條照常正確——**不會全紅，只會缺一半**，所以撐了兩天沒被發現。
-  podcast 的哨兵建好之後要再加一個 `com.kenny.kbwatch.podcast`。
+  podcast 那一支已經另外建了 `com.kenny.kbwatch.podcast`。
+  **chart 目前沒有任何看門狗** —— 它的哨兵還沒建，所以「發布鏈斷掉」在 chart 這一套
+  仍然是靜默的。
 - **`launchd` 的環境是空的**：`PATH=/usr/bin:/bin:/usr/sbin:/sbin`、`cwd=/`。
   所以每個 plist 都明寫 `PATH`、`HOME`、`WorkingDirectory`，程式路徑一律絕對路徑。
 - `com.kenny.podfetch` 的 `PATH` 多帶了 `/opt/homebrew/bin`，

@@ -190,3 +190,79 @@ MAINTENANCE 裡**零命中**。我照抄 advisory 的骨架時沒問它適不適
    **這會動到每天 11:00 的關鍵路徑，建議明天那兩輪跑完再動。**
 2. **`fetch.py`／`prefetch.py`** 同上。
 3. 排程 plist 尚未安裝（`com.kenny.kbpublish.chart`），所以 chart 目前不會自動跑。
+
+## 2026-08-20 收尾｜搬家的最後一哩、以及退休一個檢查腳本時差點掉的六條
+
+### 一、`tools/` 清空了，殘骸留在 `_to_delete/`
+
+`chart-of-the-day/tools/` 底下 16 個檔案全部移進 `tools/_to_delete/`（工具刪不了檔，
+只能搬）。11 支 `.py` 逐檔比對過與 `kb-core/scripts/chart/` 的差異 ——
+**全部只差在 repo 解析那一段**（舊制 `os.path.dirname(...)` 猜自己在資料 repo 底下，
+新制走 `_repo.py` 明確傳入），沒有任何一支帶著沒搬過去的修正。
+
+`dashpush-auto-push.sh`／`dashpush-repos.txt` 沒有新家 —— 推送改走
+`publish.py` 的 outbox 草稿與回執，那條路會驗檢查、會留退出碼，
+舊的背景推送兩者都沒有。
+
+### 二、退休 `check_day.py` 之前，逐條比對它的每一個 `bad()`
+
+**這一步差點被跳過。** 「它已經被 `checks/chart.py` 取代」是我自己寫在待辦清單上的
+一句話，而那句話當時沒有任何證據 —— 12 條新檢查 vs 26KB 的舊腳本，
+我沒有比對過就把它歸類成「superseded」。
+
+實際比對 41 個 `bad()` 之後，**有六條在新檢查裡完全沒有對應的**：
+
+| 補進去的檢查 | 它守的是什麼 | 沒有它會怎樣 |
+|---|---|---|
+| `chart.provenance` | 重製圖的 `inspired_by` 有 url、有原文日期、不在未來、七天內 | 重製的「題」變成沒有出處，而圖照樣畫得出來 |
+| `chart.series_wellformed` | dates 與 values 等長、點數 ≥20、marker 只上有日期軸的圖型 | **類別軸寫了 marker 不報錯也不畫**，而 `reading` 會照著寫「已標在圖上」 |
+| `chart.png_present` | 宣稱的 PNG 真的在磁碟上，且大於 20,000 位元組 | **空白圖不會拋例外** —— 檔案合法、只是上面沒有線 |
+| `chart.prefetch_fresh` | 宣稱走 prefetch 時狀態檔在 30h 內，且序列不在失敗清單裡 | 用舊快取的那一輪**照樣會成功** |
+| `chart.data_path_streak` | 連續走 browser 備援不超過 3 期 | 2026-08-06 起連九天「降級但成功」，沒有人把它當成故障 |
+| `chart.release_day` | 發布日的當日主圖 slug 與 theme 對得上 | 這條規則一個月只觸發約三次，**漏掉不會有人發現** |
+
+> **少掉的檢查不會報錯，只會全綠。** 一套檢查被另一套取代的時候，
+> 「新的比較好」與「新的涵蓋了舊的」是兩個問題，而只有後者能讓舊的安全地死。
+
+三條需要摸磁碟的（PNG 位元組、預抓狀態檔、近 14 期的 `data_path`）由
+`systems/chart.py` 的 `build()` 取進 payload，檢查本身仍然不做 IO。
+**取不到一律留 `None` 讓檢查判 SKIPPED** —— 給 0 或給空 dict 會讓
+「沒量到」長得跟「量到了而且沒問題」一模一樣。
+
+### 三、`prefetch_fresh` 的參照點：一條在回測裡永遠紅的檢查等於沒有
+
+第一版拿 `now` 算快取年齡，於是回測 08-17 那天得到「已 59 小時未更新」——
+**那是回測本身的產物，不是那天的事實**。改成用該輪的名目時刻
+（日期＋`anchors.schedule.run`）當參照。
+
+順著改出第二件事：狀態檔只有一份、會被後面的輪次覆寫，所以回測舊日期時
+它常常**晚於**那一輪。那種情況答不出「當時新不新鮮」，回 SKIPPED 並說出原因 ——
+判 PASS 等於拿一份根本不是那一輪用的快取替它背書。
+
+回測驗收：08-17 全綠（17 PASS／1 SKIPPED），08-13 只剩那條已知的
+`option_matches_spec`（歷史封存不回頭改寫）。檢查總數 61 → **67**，四套系統。
+
+### 四、預抓終於有 plist 了
+
+`kb-core/launchd/kbprefetch-chart.sh` ＋ `com.kenny.kbprefetch.chart.plist`（11:00）。
+舊版住在資料 repo、假設 cwd 就是 repo；新版明寫 `CHART_REPO`，
+**刻意不猜** —— 猜錯的樣子是「抓到了、寫進另一個目錄」，而那一輪看起來會是成功的。
+
+查現況才發現這件事有多實在：`data/_prefetch_status.json` 停在
+**2026-08-18T11:06，`host` 是 `MacBook-Pro.local`** —— 舊機器。
+新的 Mac mini 從來沒跑過預抓，而在補上 `chart.prefetch_fresh` 之前，
+**這件事不會出現在任何一條檢查裡**。
+
+### 五、資料 repo 的四份舊文件掛了退場橫幅
+
+`README.md`／`AGENT_BRIEF.md`／`MAINTENANCE.md` 頂上加了指向 kb-core 的對照表。
+它們還沒刪，因為 `MAINTENANCE.md` 裡還有一些事故紀錄沒搬完 ——
+但**照它做已經不行了**（那裡寫的 `python3 tools/check_day.py` 現在跑不動）。
+
+### 六、還沒做
+
+1. **chart 沒有每日執行者。** advisory 與 podcast 各有一個 Cowork 桌面排程，
+   chart 還沒有 —— 也就是說 11:00 的預抓與每 60 秒的發布都就位了，
+   **中間那一段沒有人跑**。
+2. **chart 沒有任何看門狗。** 兩支 `kbwatch` 都不看它，發布鏈斷掉在 chart 這一套仍然是靜默的。
+3. `MAINTENANCE.md` 的事故紀錄搬進 kb-core，然後那四份舊文件才能真的刪。

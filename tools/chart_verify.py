@@ -33,7 +33,7 @@ from systems.chart import build  # noqa: E402
 # **門檻取不到是設定壞了，不是資料壞了**，安靜跳過會讓整組檢查變成永遠 PASS。
 REQUIRED = ["structure", "tracks", "lengths", "series", "diversity",
             "footer", "freshness", "size", "kinds", "data_paths",
-            "rendering", "known_exceptions"]
+            "rendering", "known_exceptions", "schedule", "prefetch", "quality"]
 
 
 def main(argv) -> int:

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 每日五圖 · 序列預抓。安裝位置 ~/Library/LaunchAgents/。
+
+       為什麼是 11:00：執行輪次排在 11:30（anchors.schedule.run），
+       預抓 46 條實測約 9 分鐘，留半小時緩衝，且早於執行輪次讀快取的時點。
+       **這兩個時間是一組的** —— 動了 anchors.schedule 就要回頭動這裡。
+
+       Mac 若在 11:00 睡著，launchd 會延到喚醒才跑，可能落在執行輪次之後，
+       那一輪用到的就是前一日快取。狀態檔時間戳（prefetch.status_valid_hours）
+       與序列新鮮度檢查會讓這件事看得出來，**不會靜默**。
+
+       RunAtLoad 為 false —— 載入時不要立刻跑，避免安裝當下打一輪外部站台。
+       要手動驗證就直接跑 launchd/kbprefetch-chart.sh，不要靠 load 觸發。 -->
+  <key>Label</key>
+  <string>com.kenny.kbprefetch.chart</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/macmini/kb-core/launchd/kbprefetch-chart.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>11</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/kbprefetch-chart.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/kbprefetch-chart.err</string>
+</dict>
+</plist>

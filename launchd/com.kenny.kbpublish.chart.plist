@@ -8,17 +8,16 @@
   <key>Label</key>
   <string>com.kenny.kbpublish.chart</string>
 
-  <!-- 2026-08-20 新增。podcast 的日報在台北 03:06 由 Cowork 排程產出草稿，
+  <!-- 2026-08-20 新增。每日五圖的執行輪次在台北 11:30 產出草稿到 ~/outbox/chart/，
        在此之前沒有任何東西會去發它 —— 草稿會躺在 outbox、網站停在前一天，
-       而排程回報成功、podfetch 是綠的、哨兵也沒話說。**每一個訊號都正常。**
+       而排程回報成功、預抓是綠的。**每一個訊號都正常。**
 
-       **outbox 是 ~/outbox/podcast/ 這個子目錄，不是 ~/outbox/。**
-       publish 的 glob 是 `*.draft.json` 且非遞迴，所以兩套系統的草稿放在
+       **outbox 是 ~/outbox/chart/ 這個子目錄，不是 ~/outbox/。**
+       publish 的 glob 是 `*.draft.json` 且非遞迴，所以三套系統的草稿放在
        不同層就互相看不見。這是物理隔離，不靠紀律。
 
        更根本的解是草稿自帶 `system` 欄位、publish 讀出來比對 —— 那能擋住
-       「plist 指錯 outbox」這種子目錄擋不住的情況。排在投顧 SKILL 下次
-       改動時一起做，不要為此同時動兩個變因。 -->
+       「plist 指錯 outbox」這種子目錄擋不住的情況。三套系統都還沒有這一層。 -->
   <key>ProgramArguments</key>
   <array>
     <string>/Users/macmini/.venvs/kb/bin/python</string>

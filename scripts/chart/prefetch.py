@@ -1,0 +1,194 @@
+# -*- coding: utf-8 -*-
+"""
+prefetch.py — 在「網路通得出去的那台機器」上預抓序列，寫進 data/series 快取。
+
+【為什麼需要這支】
+2026-08-06 起，執行輪次所在的沙箱對外連線被出口代理擋掉（FRED／Yahoo／證交所
+一律 Tunnel 403，只有 pypi 通）。**連續九天每一輪都靠瀏覽器同源備援取數**，
+而那條路需要有 Chrome 執行個體在線 —— 2026-08-14 11:30 那輪剛好沒有，整輪沒有產出。
+
+問題不在那天失敗，**在前八天的成功**：每天都「降級但成功」，於是一個持續九天的
+結構性故障從來沒有被當成故障。**降級若每天都成功，就不會有人把它升級成問題。**
+
+這支的角色是把取數移回網路正常的本機（使用者的 Mac），由 launchd 每天在
+執行輪次之前跑一次，把常用序列寫進快取。執行輪次讀快取即可，
+**不再依賴沙箱網路，也不再依賴 Chrome 有沒有開著。**
+
+【明確的限制 —— 不要誤以為它解決了全部】
+只預抓「核心清單 ∪ 近 14 天用過的序列」。當天臨時想到的新序列它抓不到，
+那種情況仍要走瀏覽器備援。**它把常態變成不需要人，不是把例外也變成不需要人。**
+
+用法：
+    python3 ~/kb-core/scripts/chart/prefetch.py              預抓並寫快取
+    python3 ~/kb-core/scripts/chart/prefetch.py --list       只印出這次會抓哪些，不連外
+    python3 ~/kb-core/scripts/chart/prefetch.py --quiet      只印摘要（launchd 用）
+
+狀態會寫進 data/_prefetch_status.json，執行輪次與 `chart.prefetch_fresh` 靠它判斷
+快取是不是新鮮、有沒有哪幾條沒抓到。**沒有狀態檔＝預抓沒跑，不是「都成功」。**
+"""
+from __future__ import annotations
+import json, os, sys, time, datetime, glob
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fetch as F
+
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _repo  # noqa: E402
+REPO = _repo.repo()
+STATUS = os.path.join(REPO, "data", "_prefetch_status.json")
+RECENT_DAYS = 14
+
+# 核心清單：即使近期沒用到也維持新鮮的序列。
+# 挑選依據是「軌道輪盤五條軌道各自的骨幹」＋三大數據，
+# 這些是不論當天選什麼題目都很可能需要的。
+CORE = [
+    # 利率與匯率
+    "DGS2", "DGS10", "DGS30", "^TNX", "^TYX", "^IRX", "JPY=X", "DTWEXBGS",
+    # 信用與風險偏好
+    "BAMLH0A0HYM2", "BAMLC0A0CM", "BAMLH0A3HYC", "BAMLH0A1HYBB", "^VIX",
+    # 美股與 AI 半導體
+    "^GSPC", "^SOX", "^IXIC",
+    # 台股與資金流
+    "^TWII", "2330.TW", "2317.TW",
+    # 原物料與能源
+    "BZ=F", "GLD", "HG=F", "XLE",
+    # 三大月度數據
+    "CPIAUCSL", "CPILFESL", "PAYEMS", "PCEPI", "PCEPILFE",
+    # 指數與期貨的 ETF 代理（見 fetch.PROXY）。**以自己的代號預抓，不冒充原標的**——
+    # 要用就在 series_spec 明寫，並依 brief §3.2 在 note 標明「ETF 非指數」。
+    "SOXQ", "FEZ", "CPER",
+]
+
+# Yahoo 代號的 FRED 等價序列。
+# 2026-08-14 首跑實測 Yahoo 整批 429、FRED 13/13 全通（API key 正常）。
+# **這不是「繞過 Yahoo」，是改用有文件、有認證的官方 API** —— brief §3.1 本來就偏好那條。
+# 代價寫在 brief §3.2：**FRED 的日頻序列比 Yahoo 慢一個交易日**，
+# 所以「講當日事件反應」的圖仍應優先用 Yahoo；這裡預抓只是確保 Yahoo 不通時有底。
+FRED_EQUIV = {
+    "^VIX": "VIXCLS", "^GSPC": "SP500", "^IXIC": "NASDAQCOM",
+    "^IRX": "DTB3", "^TNX": "DGS10", "^TYX": "DGS30",
+    "JPY=X": "DEXJPUS", "^N225": "NIKKEI225", "BZ=F": "DCOILBRENTEU",
+}
+
+
+def recent_ids(days: int = RECENT_DAYS) -> list:
+    """近 N 期實際用過的序列 id。
+
+    **清單自己維護自己**：任何被用過一次的序列會在接下來 N 天保持新鮮，
+    之後自然淘汰。硬寫死一份清單一定會爛掉，因為選題每天都在變。
+    """
+    cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+    ids = set()
+    for p in sorted(glob.glob(os.path.join(REPO, "data", "20*.json"))):
+        day = os.path.basename(p)[:10]
+        if day < cutoff:
+            continue
+        try:
+            doc = json.load(open(p, encoding="utf-8"))
+        except Exception:
+            continue
+        for ch in doc.get("charts", []):
+            for s in ch.get("series_spec") or []:
+                if s.get("id"):
+                    ids.add(s["id"])
+    return sorted(ids)
+
+
+def targets() -> list:
+    seen, out = set(), []
+    base = CORE + recent_ids()
+    # 用到的 Yahoo 代號若有 FRED 等價序列，兩個都抓——Yahoo 不通時才有替代品可用
+    base += [FRED_EQUIV[i] for i in base if i in FRED_EQUIV]
+    for i in base:
+        if i not in seen:
+            seen.add(i)
+            out.append(i)
+    return out
+
+
+def main(argv):
+    quiet = "--quiet" in argv
+    ids = targets()
+
+    if "--list" in argv:
+        print(f"這次會抓 {len(ids)} 條（核心 {len(CORE)} ＋ 近 {RECENT_DAYS} 天用過）：")
+        for i in ids:
+            print(f"  {i}")
+        return 0
+
+    started = datetime.datetime.now().astimezone()
+    ok, failed, skipped = [], {}, {}
+    # 熔斷：同一個來源連續 N 次被限流就停止再試它。
+    # 2026-08-14 首跑實測：13 個 Yahoo 代號各退避 20＋40 秒後仍 429，白耗約 13 分鐘。
+    # **規格說「429 是等不是繞」，但對一個明確說「不」的站台連敲 13 次不是等，是敲。**
+    # 熔斷後其餘同來源標的記為 skipped（不是 failed）——它們沒被試過，不該算失敗。
+    BREAK_AFTER = 3
+    streak = {"yahoo": 0, "fred": 0, "tiingo": 0, "tw": 0}
+
+    # 已知被擋的來源每天只試一條當哨兵（canary）。
+    # **全部不試就再也不會發現它恢復了；全部都試就每天白耗好幾分鐘。**
+    # 選最有代表性的那條：^GSPC 是最常用、也最能代表 Yahoo 整體狀態的標的。
+    CANARY = "^GSPC"
+    canary_done = False
+
+    for i, ident in enumerate(ids, 1):
+        if ident in F.BLOCKED and not (ident == CANARY and not canary_done):
+            skipped[ident] = f"來源已知被擋，改用 {F.BLOCKED[ident]}（brief §3.2）"
+            if not quiet:
+                print(f"  [{i}/{len(ids)}] {ident:<16} — 略過（已知被擋，用 {F.BLOCKED[ident]}）")
+            continue
+        if ident == CANARY:
+            canary_done = True
+        src = F.route_of(ident)
+        if streak.get(src, 0) >= BREAK_AFTER:
+            skipped[ident] = f"{src} 連續 {BREAK_AFTER} 次被限流，本輪不再嘗試"
+            if not quiet:
+                print(f"  [{i}/{len(ids)}] {ident:<16} — 跳過（{src} 已熔斷）")
+            continue
+        try:
+            # use_cache=False：預抓的重點就是刷新，讀快取等於什麼都沒做
+            s = F.get(ident, use_cache=False)
+            last = s["d"][-1] if s.get("d") else "?"
+            ok.append({"id": ident, "n": len(s.get("d") or []), "last": last})
+            streak[src] = 0
+            if ident in F.BLOCKED:
+                print(f"  ★ {ident} 又通了——Yahoo 可能已解除封鎖，"
+                      f"請重新評估 brief §3.2 的替代方案是否仍必要")
+            if not quiet:
+                print(f"  [{i}/{len(ids)}] {ident:<16} {len(s.get('d') or []):>5} 點，末日 {last}")
+        except Exception as e:
+            msg = f"{type(e).__name__}: {e}"[:200]
+            failed[ident] = msg
+            if "429" in msg or "Too Many Requests" in msg:
+                streak[src] = streak.get(src, 0) + 1
+            if not quiet:
+                print(f"  [{i}/{len(ids)}] {ident:<16} ✗ {msg.splitlines()[0][:110]}")
+        time.sleep(1.0)          # 逐標的間隔，見 brief §3.2
+
+    status = {
+        "started": started.isoformat(timespec="seconds"),
+        "finished": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "host": os.uname().nodename,
+        "requested": len(ids),
+        "ok": len(ok),
+        "failed": failed,
+        "skipped": skipped,
+        "series": ok,
+    }
+    with open(STATUS, "w", encoding="utf-8") as f:
+        json.dump(status, f, ensure_ascii=False, indent=1)
+
+    # **兩種「未嘗試」的成因不同，混在一起講會讓人以為今天出了 11 個問題。**
+    _n_blocked = sum(1 for v in skipped.values() if "已知被擋" in v)
+    _n_break = len(skipped) - _n_blocked
+    print(f"預抓完成：{len(ok)}/{len(ids)} 成功"
+          + (f"，{len(failed)} 條失敗：{', '.join(list(failed)[:6])}" if failed else "")
+          + (f"，{_n_blocked} 條來源已知被擋（用替代品）" if _n_blocked else "")
+          + (f"，{_n_break} 條因熔斷未嘗試" if _n_break else ""))
+    # 全部失敗＝網路整條不通，要讓 launchd 的錯誤日誌看得出來
+    return 1 if not ok else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

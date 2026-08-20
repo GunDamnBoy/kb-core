@@ -7,7 +7,14 @@ payload 形狀（由 `tools/chart_verify.py` 組出來，檢查本身不做 IO�
      "anchors":  chart/anchors.json,
      "advisory_anchors": advisory/anchors.json —— **theme 值域的家在那裡**,
      "size_kb":  當日 JSON 的實際大小,
+     "png":      {slug: 位元組數 or None} —— **None 是「檔案不在」，不是 0**,
+     "prefetch": data/_prefetch_status.json 的內容（讀不動就 None）,
+     "recent_data_paths": 當日之前 14 期的 about.data_path，新到舊,
      "now":      ISO8601}
+
+後面三樣都要摸磁碟，所以由 `systems/chart.py` 的 `build()` 負責取，
+**檢查只讀它拿到的東西**。取不到一律留 None 讓檢查判 SKIPPED——
+給 0 或給空 dict 會讓「沒量到」長得跟「量到了而且沒問題」一模一樣。
 
 ## theme 的值域刻意不寫在 chart/anchors.json
 
@@ -642,5 +649,313 @@ register(Check(
     near_miss={"anchors": {"data_paths": {"order": ["prefetch", "direct", "browser"]},
                            "known_exceptions": {"data_path_from": "2026-08-15"}},
                "doc": {"date": "2026-08-20", "about": {"data_path": "prefetch"}}},
+    suite="chart",
+))
+
+
+# ── 13. 重製圖的出處 ─────────────────────────────────────────────────
+def _provenance(p):
+    doc = p["doc"]
+    slot = _A(p, "structure", "slots")[2]          # 「重製圖」——名字的家在 anchors
+    lim = _A(p, "structure", "slot_freshness", "within_days")[slot]
+    day = dt.date.fromisoformat(doc["date"])
+    bad = []
+    for c in _charts(doc):
+        if (c.get("slot") or "").split("｜", 1)[0] != slot:
+            continue
+        who = c.get("slug") or "?"
+        ib = ((c.get("provenance") or {}).get("inspired_by") or {})
+        if not ib.get("url"):
+            bad.append(f"{who} 缺 provenance.inspired_by.url")
+        pub = ib.get("published") or ""
+        if not pub:
+            bad.append(f"{who} 缺 provenance.inspired_by.published（原文日期）")
+            continue
+        try:
+            pd = dt.date.fromisoformat(pub)
+        except ValueError:
+            bad.append(f"{who} published 不是 YYYY-MM-DD：{pub}")
+            continue
+        lag = (day - pd).days
+        if lag < 0:
+            bad.append(f"{who} 原文日期 {pub} 在未來")
+        elif lag > lim:
+            bad.append(f"{who} 原文 {pub} 距今 {lag} 天，超過 {lim} 天上限")
+    if bad:
+        return fail("；".join(bad) + " —— **重製的是「題」，不是「圖」**："
+                    "原題可以是七天內的專題，我們的圖必須用最新資料，"
+                    "而沒有出處就分不出這兩者")
+    return ok("重製圖出處齊備")
+
+
+register(Check(
+    id="chart.provenance",
+    covers="重製圖 slot 的 provenance.inspired_by 有 url 與 published，日期格式正確、不在未來、"
+           "且落在 anchors.structure.slot_freshness.within_days 的天數內",
+    blind_to=[
+        "**url 指的是不是真的那一篇**——這條只看欄位在不在，不連外驗證",
+        "**我們的圖有沒有用最新資料**——原題七天內合格，圖用三天前的資料這條看不出來（那是 series_freshness 的事）",
+        "非重製圖 slot 的出處（其他四張本來就沒有 provenance）",
+        "付費牆內的圖被當成資料來源（SOURCES.md 的規則，程式判不了）",
+    ],
+    run=_provenance,
+    fixture={"anchors": {"structure": {"slots": ["當日主圖", "市場異動圖", "重製圖", "主題深掘", "軌道圖"],
+                                       "slot_freshness": {"within_days": {"重製圖": 7}}}},
+             "doc": {"date": "2026-08-20",
+                     "charts": [{"slot": "重製圖", "slug": "x",
+                                 "provenance": {"inspired_by": {"url": "u", "published": "2026-08-01"}}}]}},
+    near_miss={"anchors": {"structure": {"slots": ["當日主圖", "市場異動圖", "重製圖", "主題深掘", "軌道圖"],
+                                         "slot_freshness": {"within_days": {"重製圖": 7}}}},
+               "doc": {"date": "2026-08-20",
+                       "charts": [{"slot": "重製圖", "slug": "x",
+                                   "provenance": {"inspired_by": {"url": "u", "published": "2026-08-14"}}}]}},
+    suite="chart",
+))
+
+
+# ── 14. 序列本身的形狀 ───────────────────────────────────────────────
+def _series_wellformed(p):
+    doc = p["doc"]
+    lo = _A(p, "series", "min_points_timeseries")
+    can_mark = _A(p, "kinds", "marker_support")
+    bad = []
+    for c in _charts(doc):
+        who = c.get("slug") or "?"
+        kind = c.get("kind") or "timeseries"
+        # 類別軸圖型寫了 marker 不會報錯、也不會畫出來——**規則要求標記卻靜默丟掉**，
+        # 比沒有 marker 更糟，因為 reading 會照著寫「已標在圖上」。
+        if c.get("markers") and kind not in can_mark:
+            bad.append(f"{who} kind={kind} 是類別軸，標不出日期 marker —— "
+                       f"請改把錨點寫進 note，或換成 {can_mark} 之一")
+        for s in c.get("series") or []:
+            n, v = len(s.get("dates") or []), len(s.get("values") or [])
+            if n != v:
+                bad.append(f"{who}／{s.get('name','?')} 日期({n})與值({v})長度不符")
+            elif n < lo:
+                bad.append(f"{who}／{s.get('name','?')} 只有 {n} 點，不足 {lo}")
+    if bad:
+        return fail("；".join(bad))
+    return ok("序列長度對齊、點數足夠")
+
+
+register(Check(
+    id="chart.series_wellformed",
+    covers="每條 series 的 dates 與 values 等長且點數不少於 anchors.series.min_points_timeseries；"
+           "markers 只出現在 anchors.kinds.marker_support 列的圖型上",
+    blind_to=[
+        "**值本身對不對**——長度對齊不代表數字是對的",
+        "非 series 圖型的資料點數（cats／groups／matrix 這條不看）",
+        "序列末日夠不夠新（那是 series_freshness）",
+        "dates 是不是遞增、有沒有重複日期",
+    ],
+    run=_series_wellformed,
+    fixture={"anchors": {"series": {"min_points_timeseries": 20},
+                         "kinds": {"marker_support": ["timeseries", "range_area"]}},
+             "doc": {"date": "2026-08-20",
+                     "charts": [{"slug": "x", "kind": "grouped_bar", "markers": [{"date": "2026-08-01"}]}]}},
+    near_miss={"anchors": {"series": {"min_points_timeseries": 2},
+                           "kinds": {"marker_support": ["timeseries", "range_area"]}},
+               "doc": {"date": "2026-08-20",
+                       "charts": [{"slug": "x", "kind": "timeseries", "markers": [{"date": "2026-08-01"}],
+                                   "series": [{"name": "s", "dates": ["a", "b"], "values": [1, 2]}]}]}},
+    suite="chart",
+))
+
+
+# ── 15. PNG 真的落地了 ───────────────────────────────────────────────
+def _png_present(p):
+    sizes = p.get("png")
+    if sizes is None:
+        return skipped("payload 沒帶 png —— 組 payload 的人才摸得到磁碟，"
+                       "**這裡不自己去看**，也不當成通過")
+    lo = _A(p, "quality", "png_min_bytes")
+    missing = [k for k, v in sizes.items() if v is None]
+    tiny = [f"{k} {v}B" for k, v in sizes.items() if v is not None and v < lo]
+    if missing:
+        return fail(f"PNG 不存在：{'、'.join(missing)} —— JSON 說有、磁碟上沒有，"
+                    "**網站會顯示一張破圖，而檢查以外的每個訊號都是正常的**")
+    if tiny:
+        return fail(f"PNG 過小：{'、'.join(tiny)}（下限 {lo}B）—— "
+                    "**空白圖不會拋例外**，matplotlib 照樣寫出一張合法的 PNG，只是上面沒有線")
+    return ok(f"{len(sizes)} 張 PNG 都在，最小 {min(sizes.values())}B")
+
+
+register(Check(
+    id="chart.png_present",
+    covers="每張圖宣稱的 files.png 在磁碟上存在，且大於 anchors.quality.png_min_bytes",
+    blind_to=[
+        "**圖畫得對不對**——位元組數只證明它不是空白，不證明它畫的是對的資料",
+        "PNG 與 option 是不是同一份 spec（那是 option_matches_spec）",
+        "SVG 那一份（只看 files.png）",
+        "檔案是不是這一輪產的（沒有比對時間戳，舊圖留在原地會通過）",
+    ],
+    run=_png_present,
+    fixture={"anchors": {"quality": {"png_min_bytes": 20000}},
+             "doc": {"date": "2026-08-20"},
+             "png": {"a": 120000, "b": None}},
+    near_miss={"anchors": {"quality": {"png_min_bytes": 20000}},
+               "doc": {"date": "2026-08-20"},
+               "png": {"a": 120000, "b": 20000}},
+    suite="chart",
+))
+
+
+# ── 16. 預抓狀態 ─────────────────────────────────────────────────────
+def _prefetch_fresh(p):
+    doc = p["doc"]
+    claimed = ((doc.get("about") or {}).get("data_path")) or ""
+    if claimed != "prefetch":
+        return skipped(f"本期 data_path 是「{claimed or '（未填）'}」，不走預抓")
+    st = p.get("prefetch")
+    if not st:
+        return fail("本期宣稱走 prefetch，但讀不到 data/_prefetch_status.json —— "
+                    "**沒有狀態檔＝預抓沒跑，不是「都成功」**，無從確認快取何時刷新")
+    hours = _A(p, "prefetch", "status_valid_hours")
+    try:
+        fin = dt.datetime.fromisoformat(st["finished"])
+    except Exception:
+        return fail(f"狀態檔的 finished 讀不動（{st.get('finished')!r}）—— 當成沒有預抓處理")
+    # 參照點是**這一輪的名目時刻**（日期＋anchors.schedule.run），不是 now。
+    # 用 now 的話，拿舊封存回測時每一天都會判「快取過期」——**那是回測本身的產物，
+    # 不是那天的事實**，而一條在回測裡永遠紅的檢查，看的人很快就會學會忽略它。
+    hh, mm = (_A(p, "schedule", "run") or "11:30").split(":")
+    ref = dt.datetime.combine(dt.date.fromisoformat(doc["date"]),
+                              dt.time(int(hh), int(mm)), tzinfo=TPE)
+    age = (ref - fin).total_seconds() / 3600
+    unavailable = set(st.get("failed") or {}) | set(st.get("skipped") or {})
+    used = {s.get("id") or s.get("name") for c in _charts(doc) for s in (c.get("series") or [])}
+    miss = sorted(x for x in used if x and x in unavailable)
+    if age < 0:
+        # 狀態檔只有一份、會被後面的輪次覆寫，所以回測舊日期時它常常來自未來。
+        # **那種情況答不出「當時新不新鮮」——答不出就要說答不出**，
+        # 判 PASS 等於拿一份根本不是那一輪用的快取替它背書。
+        return skipped(f"狀態檔（{st['finished']}）晚於這一輪的名目時刻 {ref:%Y-%m-%d %H:%M}，"
+                       "已被後來的輪次覆寫 —— 這一輪用的是哪一份快取，現在查不到了")
+    if age > hours:
+        return fail(f"預抓已 {age:.0f} 小時未更新（上限 {hours}h，狀態檔停在 {st['finished']}，"
+                    f"跑在 {st.get('host','?')}）—— launchd 可能沒在跑，"
+                    "而**這一輪照樣會成功**，用的是舊快取")
+    if miss:
+        return fail(f"本期用到的序列有 {len(miss)} 條在預抓的失敗／跳過清單裡：{miss} —— "
+                    "那些值不可能來自這次預抓，data_path 填錯了")
+    return ok(f"預抓 {age:.1f} 小時前完成（{st.get('ok')}/{st.get('requested')} 條，{st.get('host','?')}）")
+
+
+register(Check(
+    id="chart.prefetch_fresh",
+    covers="宣稱走 prefetch 時，狀態檔存在、在 anchors.prefetch.status_valid_hours 之內，"
+           "且本期用到的序列不在它的 failed／skipped 裡",
+    blind_to=[
+        "**不宣稱 prefetch 的輪次整條跳過**（回 SKIPPED，不是 PASS）",
+        "**狀態檔說成功不代表值是對的**——它只記「抓到了」",
+        "跑預抓的機器對不對（會把 host 印出來，但不判）",
+        "序列在 doc 裡沒有 id／name 時對不上清單，會被當成沒用到",
+        "**用的是名目輪次時刻**（日期＋schedule.run），不是實際起跑時刻——輪次延後幾小時這條看不出來",
+    ],
+    run=_prefetch_fresh,
+    fixture={"anchors": {"prefetch": {"status_valid_hours": 30}, "schedule": {"run": "11:30"}},
+             "doc": {"date": "2026-08-20", "about": {"data_path": "prefetch"}},
+             "prefetch": {"finished": "2026-08-18T11:06:21+08:00", "host": "old", "ok": 34,
+                          "requested": 46, "failed": {}, "skipped": {}}},
+    near_miss={"anchors": {"prefetch": {"status_valid_hours": 30}, "schedule": {"run": "11:30"}},
+               "doc": {"date": "2026-08-20", "about": {"data_path": "prefetch"}},
+               "prefetch": {"finished": "2026-08-20T11:06:21+08:00", "host": "mini", "ok": 34,
+                            "requested": 46, "failed": {}, "skipped": {}}},
+    suite="chart",
+))
+
+
+# ── 17. 連續走備援 ───────────────────────────────────────────────────
+def _data_path_streak(p):
+    order = _A(p, "data_paths", "order")
+    cap = _A(p, "data_paths", "browser_streak_max")
+    last = order[-1]
+    hist = [((p["doc"].get("about") or {}).get("data_path")) or ""] + list(p.get("recent_data_paths") or [])
+    n = 0
+    for x in hist:
+        if x != last:
+            break
+        n += 1
+    if n >= cap:
+        return fail(f"取數已連續 {n} 期走 {last} 備援（上限 {cap}）—— "
+                    "**問題不在失敗那天，在成功的前幾天**："
+                    "那條路需要有人指定 Chrome，無人值守輪次實際上不可用，"
+                    "而它每天都「降級但成功」，於是結構性故障從來不會被當成故障")
+    if n:
+        return warn(f"已連續 {n} 期走 {last} 備援（上限 {cap}）")
+    return ok(f"本期走 {hist[0] or '（未填）'}")
+
+
+register(Check(
+    id="chart.data_path_streak",
+    covers="含當日在內連續走最後一條（browser）備援的期數，不到 anchors.data_paths.browser_streak_max",
+    blind_to=[
+        "**這是自述的統計**——每一期填的都是自己說的，不是量測出來的",
+        "沒有 data_path 欄位的舊日檔（空字串會中斷連續計數，看起來像恢復了）",
+        "連續走 prefetch 或 direct（那兩條不是備援，不計）",
+        "同一期不同圖走了不同路徑",
+    ],
+    run=_data_path_streak,
+    fixture={"anchors": {"data_paths": {"order": ["prefetch", "direct", "browser"],
+                                        "browser_streak_max": 3}},
+             "doc": {"date": "2026-08-20", "about": {"data_path": "browser"}},
+             "recent_data_paths": ["browser", "browser", "prefetch"]},
+    near_miss={"anchors": {"data_paths": {"order": ["prefetch", "direct", "browser"],
+                                          "browser_streak_max": 3}},
+               "doc": {"date": "2026-08-20", "about": {"data_path": "prefetch"}},
+               "recent_data_paths": ["browser", "browser", "browser"]},
+    suite="chart",
+))
+
+
+# ── 18. 三大數據發布日的當日主圖 ─────────────────────────────────────
+def _release_day(p):
+    doc = p["doc"]
+    mr = (doc.get("about") or {}).get("macro_release")
+    if mr is None:
+        return skipped("about.macro_release 未寫入 —— 沒跑過 macro_release.py --check，"
+                       "**發布日漏圖在這一輪偵測不到**（偵測要網路，判定不要，"
+                       "所以這裡不自己去問 FRED）")
+    rd = _A(p, "structure", "release_day")
+    slot1_name = _A(p, "structure", "slots")[0]
+    fresh = [r for r in mr if r.get("fresh")]
+    if not fresh:
+        return ok("今日無三大數據發布")
+    s1 = next((c for c in _charts(doc)
+               if (c.get("slot") or "").split("｜", 1)[0] == slot1_name), {})
+    bad = []
+    for r in fresh:
+        want = f"{str(r.get('kind','')).lower()}{rd['slug_suffix']}"
+        if s1.get("slug") != want:
+            bad.append(f"{r.get('label')}（{r.get('kind')}）今日發布，"
+                       f"{slot1_name}必須是它：預期 slug `{want}`，實際 `{s1.get('slug')}`")
+    if s1.get("theme") != rd["theme"]:
+        bad.append(f"發布日的{slot1_name} theme 應為「{rd['theme']}」，實際「{s1.get('theme')}」")
+    if bad:
+        return fail("；".join(bad))
+    return ok(f"發布日圖到位：{'、'.join(str(r.get('label')) for r in fresh)}")
+
+
+register(Check(
+    id="chart.release_day",
+    covers="當 about.macro_release 標記今日有三大數據發布時，當日主圖的 slug 與 theme 對得上 "
+           "anchors.structure.release_day",
+    blind_to=[
+        "**今天到底有沒有發布**——這條讀的是 doc 自述的欄位，偵測那一半需要網路，不在檢查裡",
+        "欄位沒寫時整條跳過（SKIPPED），所以「忘了跑 --check」不會變成 FAIL",
+        "圖畫的是不是真的那份數據（只比 slug 與 theme）",
+        "非美國的數據發布（清單只有非農／CPI／PCE）",
+    ],
+    run=_release_day,
+    fixture={"anchors": {"structure": {"slots": ["當日主圖", "市場異動圖", "重製圖", "主題深掘", "軌道圖"],
+                                       "release_day": {"slug_suffix": "-release", "theme": "央行、利率與匯率"}}},
+             "doc": {"date": "2026-08-20",
+                     "about": {"macro_release": [{"kind": "CPI", "label": "消費者物價", "fresh": True}]},
+                     "charts": [{"slot": "當日主圖", "slug": "tw-export", "theme": "總體經濟"}]}},
+    near_miss={"anchors": {"structure": {"slots": ["當日主圖", "市場異動圖", "重製圖", "主題深掘", "軌道圖"],
+                                         "release_day": {"slug_suffix": "-release", "theme": "央行、利率與匯率"}}},
+               "doc": {"date": "2026-08-20",
+                       "about": {"macro_release": [{"kind": "CPI", "label": "消費者物價", "fresh": True}]},
+                       "charts": [{"slot": "當日主圖", "slug": "cpi-release", "theme": "央行、利率與匯率"}]}},
     suite="chart",
 ))
