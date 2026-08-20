@@ -4,7 +4,7 @@
 兩邊會漂移，而且 launchd 不會告訴你——所以有 `watch.external_binaries`
 在讀實裝的 plist，還有下面那條對帳指令。
 
-## 七個工作
+## 八個工作
 
 | Label | 什麼時候 | 做什麼 |
 |---|---|---|
@@ -13,6 +13,7 @@
 | `com.kenny.kbpublish.podcast` | 每 60 秒 | 發布**podcast**：`~/outbox/podcast/` → `podcast-knowledge-digest` |
 | `com.kenny.kbwatch` | 每 4 小時 | 看門狗：Actions 上的哨兵還活著嗎、本機程式有沒有漂移 |
 | `com.kenny.kbwatch.podcast` | 02／06／10／14／18／22 時 | podcast 的看門狗（`kbwatch-podcast.sh`）：哨兵＋`healthcheck.py` |
+| `com.kenny.kbdocx.podcast` | 每天 04:00 | 把**已發布的**當日 JSON 排版成 Word（`kbdocx-podcast.sh`）→ `~/Documents/podcast-reports` |
 | `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
 
@@ -36,6 +37,19 @@
 不是各寫各的。預抓 46 條實測約 9 分鐘，11:00 起跑留半小時緩衝。
 **動了 anchors 的時刻就要回頭動這支 plist** —— 反過來也一樣。
 漂掉的樣子不是失敗，是那一輪安靜地用了前一日快取。
+
+### 為什麼 Word 是一支 launchd 而不是日報那一輪的最後一步
+
+`podcast_docx.py` 全程不需要 LLM —— 它只排版，一個字都不改。
+留在日報那一輪等於為了一段純機械的工作，多要一個資料夾掛載
+（`~/Documents/podcast-reports`），而 2026-08-21 那一輪就是因為那個掛載請求
+被中斷、**發布 exit 0、Word 卻沒有**。
+
+搬出來之後還多了一層好處：逐字稿與 Word 檔留在所有 repo 外面是結構性的界線，
+而「不必連進任何 LLM 工作階段」讓那條界線又厚了一層。
+
+**順序仍然是先發布、後轉檔**：這支先問回執、且只認 `exit 0`，
+所以不會出現「Word 有這集、網站沒有」。
 
 ### 為什麼 `healthcheck.py` 只掛在 podcast 這一支
 
@@ -61,6 +75,7 @@ launchctl list | grep kenny
 `launchctl list` 那一欄是**上次的結束狀態，不是健康狀態**。
 `kbpublish` 在沒有草稿的日子永遠是 `13`（EMPTY_ROUND），那是設計上的正常。
 `kbprefetch.chart` 一天只跑一次，**平常問它會得到「沒跑過」而不是「失敗」** —— 這兩者長得很像。
+`kbdocx.podcast` 在沒有回執、或回執非 0 的那一天回 `13`（EMPTY_ROUND），那也是設計上的正常。
 **別養成看 `launchctl list` 判死活的習慣**，那是哨兵的工作。
 
 ## 跟版控對帳

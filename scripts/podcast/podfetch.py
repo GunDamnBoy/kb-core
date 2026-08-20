@@ -69,8 +69,20 @@ import time
 import urllib.error
 import urllib.request
 
+# kb-core 的根，為了 import kbcore.transcript。**區塊重播的偵測只有一份實作**，
+# 而它同時被這裡（決定 status）與 podcast_verify（檢查）用 ——
+# 各寫一次的話，寬鬆的那一份就是下游會讀到的那一份（2026-08-21 實測）。
+# scripts/podcast/podfetch.py → 往上三層才是 kb-core。**兩層只到 scripts/。**
+_KB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _KB)
+from kbcore.transcript import significant_repeats                    # noqa: E402
+
 HOME = os.path.expanduser("~")
 BASE = os.path.join(HOME, ".podfetch")
+# 門檻的家在 anchors，這裡只當讀者。讀不到就大聲失敗——
+# **門檻取不到是設定壞了，不是資料壞了**，安靜跳過會讓這條偵測變成永遠不觸發。
+_ANCHORS = json.load(open(os.path.join(_KB, "podcast", "anchors.json"),
+                          encoding="utf-8"))["quality"]
 CONFIG_PATH = os.path.join(BASE, "config.json")
 KEY_PATH = os.path.join(BASE, "gemini.key")
 STATE_PATH = os.path.join(BASE, "state.json")
@@ -1267,6 +1279,18 @@ def transcribe_episode(api_key, pool, ep, cfg, workdir):
         warnings.append("偵測到跳針重複，已從字數統計剔除 %s 字%s。"
                         "**跳針處的實際內容是缺的**，摘譯時不要當成有內容"
                         % (f"{dropped:,}", where))
+
+    # 整段複製：跟上面的 collapse_loops **問的是不同的問題**。
+    # 前者抓「同一個 token 連著跳針」，這條抓「一整段連貫文字被放了兩次」。
+    # 2026-08-21 的 tip 有 172 與 152 token 的整段複製，collapse_loops 一處都沒看到，
+    # 於是那一集被判 OK 送進撰寫階段 —— **子代理會把重播那段當成有內容照寫。**
+    for r in significant_repeats(full, _ANCHORS["block_repeat_shingle"],
+                                 _ANCHORS["block_repeat_min_tokens"],
+                                 _ANCHORS["block_repeat_coldopen_head"]):
+        warnings.append("偵測到整段複製 %d token（第 %d → 第 %d 個字）。"
+                        "**重播若覆蓋掉原內容，那段就真的不見了**，"
+                        "而完整度指不出來——摘譯時不要把重播段當成有內容"
+                        % (r["tokens"], r["first"], r["second"]))
 
     speaker_notes = check_speaker_labels(full, ep.get("hosts", ""))
     ts_notes = check_timestamps(full, seconds, ratio)

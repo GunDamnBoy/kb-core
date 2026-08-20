@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 2026-08-21 新增。日報 03:00 產草稿、publish 在一分鐘內接手，
+       04:00 這一輪只做「把已發布的 JSON 排版成 Word」。
+
+       為什麼是獨立一支而不是掛在 kbwatch.podcast 上：
+       **看門狗的依賴要比它守的東西少。** 轉檔要寫 ~/Documents、要 python-docx，
+       掛上去就是給看門狗兩個新的失敗點，而那兩個之中任何一個壞掉
+       都會讓看門狗自己變紅、把真正的訊號埋掉。
+
+       為什麼不是 StartInterval：這件事一天只該做一次，而且要落在日報之後。
+       釘整點才不會隨載入時刻漂進 03:00 的日報中間。
+
+       退出碼 13（EMPTY_ROUND）是設計上的正常 —— 沒有回執、或回執非 0 的那一天
+       本來就不該有 Word。**別拿 launchctl list 判死活。** -->
+  <key>Label</key>
+  <string>com.kenny.kbdocx.podcast</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/macmini/kb-core/launchd/kbdocx-podcast.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>4</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/podcast/docx.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/podcast/docx.log</string>
+</dict>
+</plist>

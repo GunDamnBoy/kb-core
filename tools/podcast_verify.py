@@ -30,52 +30,11 @@ sys.path.insert(0, str(ROOT))
 import checks  # noqa: F401,E402
 from kbcore.report import report, run_all  # noqa: E402
 from kbcore.result import Exit  # noqa: E402
+# 正規化與區塊偵測的**唯一一份實作**在 kbcore，podfetch 也 import 同一份 ——
+# 各留一份再靠人記得同步，就是這套系統最常見的那種缺陷。
+from kbcore.transcript import block_repeats  # noqa: E402
 
 TPE = dt.timezone(dt.timedelta(hours=8))
-
-TS_RE = re.compile(r"^\[\d{1,2}[:.]\d{2}(?::\d{2})?\]\s*", re.M)
-SPK_RE = re.compile(r"(?:^|\s)Speaker\s*\d+\s*[:\]]\s*", re.M)
-NOISE_RE = re.compile(r"[^\w\s]+")
-
-
-def _tokens(text: str):
-    """把逐字稿正規化成 token 串：去 front matter、時間戳、講者標記、標點，轉小寫。
-
-    講者標記那條刻意同時吃 `Speaker 6:` 與 `Speaker 6]` —— Bloomberg 那幾集有
-    冒號被轉成右方括號的行，只認冒號的話那些行會整行被當成內容。
-    """
-    body = text.split("---", 2)[-1]
-    return NOISE_RE.sub(" ", SPK_RE.sub(" ", TS_RE.sub(" ", body)).lower()).split()
-
-
-def block_repeats(text: str, k: int):
-    """找出整段被重播的區塊。回傳 [{tokens, first, second}]，門檻不在這裡判。
-
-    先找重複的 k-gram，再把**位置連續**的併成區塊 —— 單獨一個 k-gram 是慣用語，
-    連成一長串才是整段重播。判定門檻交給檢查，因為門檻的家在 anchors。
-
-    這支程式做 IO、檢查不做，跟 `watch_sentinel.py` 的 `code_drift()` 是同一道 seam。
-    """
-    toks = _tokens(text)
-    seen, dup = {}, []
-    for i in range(len(toks) - k + 1):
-        g = " ".join(toks[i:i + k])
-        if g in seen:
-            dup.append((seen[g], i))
-        else:
-            seen[g] = i
-    out, cur = [], None
-    for a, b in dup:
-        if cur and a == cur[0] + cur[2] and b == cur[1] + cur[2]:
-            cur = (cur[0], cur[1], cur[2] + 1)
-        else:
-            if cur:
-                out.append(cur)
-            cur = (a, b, 1)
-    if cur:
-        out.append(cur)
-    return [{"tokens": n + k - 1, "first": a, "second": b} for a, b, n in out]
-
 
 def main(argv) -> int:
     if len(argv) not in (2, 3):
