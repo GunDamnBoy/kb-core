@@ -43,7 +43,12 @@ budget:
 
 - `window` — `{from, to}`，兩端都是台北時間。
 - `overview` — `snap`（快照列，每格 `k`/`v`/`tone` ＋必填 `num`/`chgPct`）、`focus`、
-  `takeawaysTitle`、`takeaways`、`thermo`（`level`/`note`）、`watch`（`d`/`t`）、`pulse`、`watchReview`。
+  `takeawaysTitle`、`takeaways`、`thermo`（`level`/`note`）、`watch`（`d`/`t`）、`pulse`（`k`/`dir`/`note`）、`watchReview`（`d`/`verdict`/`w`＝原文/`t`＝回顧）。
+
+**總覽的每一塊都是兩層**：上層一句可以單獨讀懂的斷言，下層是它的佐證 ——
+takeaway 的粗體導言與其後的說明、thermo 的數字與判讀、pulse 的方向與理由、
+盯盤回顧的原文與回顧。**只有上層時，讀者拿到的是一個結論而不是一個判斷**，
+而判斷才是這個站跟一般新聞摘要的差別。門檻在 `anchors.json` 的 `overview_prose`。
 - `essay` — `title`／`by`／`kick`／`paras`。
 - `sections` — 三區塊，`id` 為 `macro`／`industry`／`politics`，各含 `title`/`en`/`intro`/`groups`；
   `groups` 內為 `label`／`accent`／`cards`。**`label` 逐字取自 `anchors.json` 的 `groups[].name`。**

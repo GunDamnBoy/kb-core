@@ -702,3 +702,80 @@ register(Check(
                                   "C": {"sources": ["Nikkei Asia"]}}}}},
     suite="advisory",
 ))
+
+
+# ── 16. 三分鐘總覽的第二層 ───────────────────────────────────────────
+def _overview_prose(p):
+    ov = p["doc"].get("overview") or {}
+    lo, hi = _A(p, "overview_prose", "pulse_note_chars")
+    tlo, thi = _A(p, "overview_prose", "thermo_note_chars")
+    ratio = _A(p, "overview_prose", "takeaway_bold_ratio_min")
+    tk_min = _A(p, "overview_prose", "takeaway_chars_min")
+
+    # ── 缺席是錯誤 ──
+    bad = []
+    naked = [x.get("k") for x in (ov.get("pulse") or []) if not (x.get("note") or "").strip()]
+    if naked:
+        bad.append(f"{len(naked)} 筆 pulse 沒有 note：{'、'.join(str(k) for k in naked)}")
+    # watchReview 有兩種方言：舊制 t＝原文／note＝回顧，重寫後 w＝原文／t＝回顧。
+    # 這裡只問「兩層都在嗎」，不強迫哪一種欄位名——歷史封存不改。
+    thin = []
+    for w in ov.get("watchReview") or []:
+        orig = w.get("w") or (w.get("t") if w.get("note") else None)
+        review = w.get("t") if w.get("w") else w.get("note")
+        if not (orig or "").strip() or not (review or "").strip():
+            thin.append(str(w.get("d") or "?"))
+    if thin:
+        bad.append(f"{len(thin)} 筆 watchReview 只有一層（原文或回顧缺一）：{'、'.join(thin[:4])}")
+    if bad:
+        return fail("；".join(bad))
+
+    # ── 偏薄是警告。為了湊字數注水比偏短更糟，所以這裡不擋發布。 ──
+    warns = []
+    over = [x.get("k") for x in (ov.get("pulse") or [])
+            if not (lo <= len((x.get("note") or "").strip()) <= hi)]
+    if over:
+        warns.append(f"{len(over)} 筆 pulse note 不在 {lo}–{hi} 字：{'、'.join(str(k) for k in over)}")
+    tn = ((ov.get("thermo") or {}).get("note") or "").strip()
+    if not (tlo <= len(tn) <= thi):
+        warns.append(f"thermo.note {len(tn)} 字，不在 {tlo}–{thi}")
+    tks = [t if isinstance(t, str) else "" for t in (ov.get("takeaways") or [])]
+    if tks:
+        nb = sum(("<b>" in t or "<strong>" in t) for t in tks)
+        if nb / len(tks) < ratio:
+            warns.append(f"{nb}/{len(tks)} 條 takeaway 有粗體導言（應 ≥{ratio:.0%}）")
+        short = sum(len(t) < tk_min for t in tks)
+        if short:
+            warns.append(f"{short} 條 takeaway 短於 {tk_min} 字")
+    if warns:
+        return warn("；".join(warns))
+    return ok()
+
+
+register(Check(
+    id="advisory.overview_prose",
+    covers="三分鐘總覽的第二層：pulse 每筆有 note、watchReview 兩層俱在（缺就擋）；"
+           "note 字數、thermo.note 長度、takeaway 粗體導言比例（偏薄只警告）",
+    blind_to=[
+        "**兩層都在但下層是上層的換句話說**——字數與粗體都合格，內容卻沒有多說任何事",
+        "粗體導言裡沒有硬數字（只驗有沒有標籤，不驗裡面是什麼）",
+        "thermo.note 長度合格但沒有跟前一版比較",
+        "pulse 的 dir 與 note 互相矛盾",
+        "watchReview 的回顧寫了但與 verdict 對不上",
+        "已發布的舊日期檔（檢查只跑當日的 doc）",
+    ],
+    run=_overview_prose,
+    fixture={"anchors": {"overview_prose": {
+                "pulse_note_chars": [8, 40], "thermo_note_chars": [80, 320],
+                "takeaway_bold_ratio_min": 0.7, "takeaway_chars_min": 100}},
+             "doc": {"overview": {"pulse": [{"k": "美股", "dir": "中性"}]}}},
+    near_miss={"anchors": {"overview_prose": {
+                "pulse_note_chars": [8, 40], "thermo_note_chars": [80, 320],
+                "takeaway_bold_ratio_min": 0.7, "takeaway_chars_min": 100}},
+               "doc": {"overview": {
+                   "pulse": [{"k": "美股", "dir": "中性", "note": "指數收黑但半導體獨強，分化而非轉弱"}],
+                   "thermo": {"note": "比" + "昨" * 100},
+                   "takeaways": ["<b>導言</b>" + "說" * 100],
+                   "watchReview": [{"d": "2026-08-19", "w": "原文", "t": "回顧"}]}}},
+    suite="advisory",
+))
