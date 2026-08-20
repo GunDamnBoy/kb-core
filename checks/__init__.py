@@ -5,6 +5,7 @@
 只會說「有 id 不見了」，不會說「你忘了 import」。
 """
 from . import advisory  # noqa: F401  suite=advisory
+from . import podcast   # noqa: F401  suite=podcast
 from . import demo      # noqa: F401  suite=draft
 from . import sentinel  # noqa: F401  suite=sentinel
 from . import repo      # noqa: F401  suite=repo

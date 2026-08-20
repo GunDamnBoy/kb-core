@@ -1,0 +1,264 @@
+{
+ "_": "Podcast 知識庫摘譯的每一個數字，唯一的家。四個讀者共用：podfetch 的設定、檢查程式、SKILL 的步驟、撰寫 subagent 的 preamble。引用一律指路，不抄值。",
+ "_not_here": "節目清單、AppleID、show_priority、model_preference **刻意不在這裡** —— 它們會過期，唯一的家是 scripts/podcast/shows.json 與 config.json。舊規格就寫了「抄本會過期」，這條照搬。",
+ "schedule": {
+  "wake": "00:55",
+  "podfetch": "01:00",
+  "official_transcripts": "02:20",
+  "digest": "03:00",
+  "tz": "Asia/Taipei",
+  "structural_tradeoff": "台北 03:00 ＝ 美東前一日 15:00，而主要節目集中在台北 04:00–06:30 落地（All-In 約 06:23）。**前一晚的美東晚間集數必定收不到，會出現在明天那一版**——All-In 約在發布後 21 小時進日報。這是設計不是故障，不要追、也不必每天解釋。沒有集數會遺失：podfetch 視窗以 last_run_utc 為起點、日報又會去重。",
+  "source": "podfetch 與 digest 的時點沿用舊制。official_transcripts 是新架構加的一段（A 類官方稿搬到 Actions），排在 digest 前 40 分鐘。"
+ },
+ "window": {
+  "anchor": "last_run_utc",
+  "overlap_minutes": 30,
+  "max_lookback_hours": 72,
+  "typical_hours": [
+   24,
+   26
+  ],
+  "itunes_fallback_hours": 26,
+  "source": "視窗兩端由 podfetch（01:00）決定，不是日報（03:00）。**24–26 小時是結果不是設定。** iTunes 退援路徑沒有 last_run_utc 兜底，26 小時就是硬邊界。真正會掉集數的只有一種情況：podfetch 也一起漏跑、而且中斷超過 72 小時。"
+ },
+ "dedup": {
+  "same_source_fields": [
+   "title",
+   "durationMs"
+  ],
+  "require_both": true,
+  "keep_by": "show_priority 較前者",
+  "placeholder_not_collected": "⚠︎",
+  "source": "**必須兩個欄位同時相同**才算同源，不要只比標題、也不要做模糊比對——漏判只是重複，**誤判會弄丟內容**。2026-08-10 實例：兩集原文 title 都是同一個預告片名、durationMs 都是 113000。另一條例外（08-04 事故）：source 以 ⚠︎ 開頭的佔位**不算已收錄**，否則補回來的完整逐字稿會被自己的去重規則擋掉，那集永遠停在佔位狀態而且沒有徵兆。"
+ },
+ "length_tiers": [
+  {
+   "under_minutes": 15,
+   "chars": [
+    1200,
+    1800
+   ],
+   "paras": [
+    6,
+    9
+   ]
+  },
+  {
+   "under_minutes": 30,
+   "chars": [
+    2000,
+    3000
+   ],
+   "paras": [
+    10,
+    15
+   ]
+  },
+  {
+   "under_minutes": 55,
+   "chars": [
+    2500,
+    4000
+   ],
+   "paras": [
+    13,
+    20
+   ]
+  },
+  {
+   "under_minutes": null,
+   "chars": [
+    4000,
+    6500
+   ],
+   "paras": [
+    20,
+    33
+   ]
+  }
+ ],
+ "_length_tiers_rules": {
+  "boundary": "含下界、不含上界。30 分鐘整算第三層。",
+  "also_top_tier_if_topics": 10,
+  "char_definition": "sections[].paragraphs[] 全部串接後的**字元數，含標點、含空白**，不含 summary／takeaways／quotes／JSON 結構。一個英文單字算它自己的字元數。",
+  "para_median_chars": 198,
+  "para_quartiles": [
+   150,
+   251
+  ],
+  "para_sample_size": 1546,
+  "official_transcript_overrun_pct": 10,
+  "lower_bound_exception": "素材本身撐不起下界時以素材為準——**摘譯不應該超過逐字稿本身**。必須在回報中講出哪一集、逐字稿幾字、寫了幾段。",
+  "source": "2026-08-06 由單一區間改為分層。理由：57–65 分鐘、10 個以上獨立主題的節目壓到 3,000 字必然砍掉整段內容——**規格天天被違反就不是規格**。段數是規劃用的代理指標（1,546 段實測中位 198 字元），因為**子代理自報的字數不可信，誤差 −38%～+81%**：規劃用段數、計量用組檔時的 python。官方稿沒有廣告與口頭贅語，同片長可能多出三到五成實質內容，超出上限一成左右合理。"
+ },
+ "per_episode": {
+  "takeaways": [
+   3,
+   5
+  ],
+  "takeaway_sentences": [
+   2,
+   4
+  ],
+  "quotes": [
+   2,
+   5
+  ],
+  "summary_paragraphs": 1,
+  "topics": [
+   1,
+   3
+  ],
+  "crosscut_min_episodes": 3,
+  "observations_per_day": [
+   2,
+   3
+  ],
+  "source": "核心重點必須含對投資人的含義。金句須為逐字稿中實際出現的發言，中譯＋標明講者姓名。跨節目交叉觀察在當日集數 ≥3 時必寫（集數以兩種去重之後為準）。"
+ },
+ "topics_vocabulary": [
+  "總經與利率",
+  "聯準會與利率",
+  "通膨",
+  "美股大盤",
+  "信用與債市",
+  "AI資本支出",
+  "AI技術與應用",
+  "半導體",
+  "個股拆解",
+  "科技產業",
+  "創投與私募",
+  "加密資產",
+  "地緣政治",
+  "能源與大宗商品",
+  "投資哲學"
+ ],
+ "_topics_source": "十五個受控詞表，只能從這裡選。理由：**自由發揮的標籤跨日對不上，等於沒有標籤。**",
+ "quality": {
+  "completeness_normal": 1.0,
+  "completeness_high": 1.35,
+  "retry_below": 0.55,
+  "wpm_default": 200,
+  "stutter_token_repeat": 20,
+  "status_values": [
+   "OK",
+   "DEGRADED",
+   "FAILED"
+  ],
+  "timestamp_overflow_pct": 25,
+  "timestamp_gap_pct": 30,
+  "timestamp_gap_completeness": 0.85,
+  "timestamp_gap_seconds": 90,
+  "stale_feed_hours": 72,
+  "external_check_apple_id": "296237493",
+  "source": "完整度 ＝ 實際字數 ÷ 以該節目語速基準估出的期望字數。低於 55% 先自動重試該段，仍不足才標 DEGRADED。語速基準只決定分母，**講 DEGRADED 原因時語速基準不是候選答案**，要分辨的是跳針、掉字、截斷。跳針判定（同一 token 連續 20 次以上）**在計字前剔除**——2026-08-08 一行 28,122 個重複 token 讓完整度顯示 3.36、實際 1.10，沒有這一步完整度在這個失效態下會完全反向。stale_feed_hours 取 72 的理由：清單裡有每個交易日都發的 Bloomberg，「所有節目同時安靜三天以上」現實中不會發生（實測：事故當天 15 天、真 0 集日 0.6 天、長週末 1.9 天）。 completeness_high 取 1.35（2026-08-20 新增）：跳針已在計字前剔除，所以**剔除後**仍然偏高只剩一個解釋——該節目的語速基準過期了。當天 iltb 是 1.57，實際 224 字/分而 shows.json 記 140。它該叫，而且該叫的是「去修分母」，不是「逐字稿有問題」。**同一個數字的兩側是兩種病，不要用同一句話描述。**"
+ },
+ "_timestamp_check_blind_to": [
+  "時間戳回跳（全庫 91 集有 32% 出現，遠超雜訊門檻，實測後決定不加單調性檢查）",
+  "同一段內容重複",
+  "相異時間戳少於 5 個的集數（直接跳過，輸出與「檢查過沒問題」相同）",
+  "**空的 timestampNote 只代表那兩種形態沒觸發，不等於時間軸沒問題**"
+ ],
+ "fetch_limits": {
+  "web_fetch_silent_truncate_chars": 104700,
+  "official_transcript_skip_over_minutes": 120,
+  "itunes_limit": 8,
+  "itunes_limit_high_frequency": 20,
+  "cache_buster_required": true,
+  "ft_body_min_chars": 5000,
+  "youtube_minutes_per_episode": 5,
+  "fallback_summary_chars": 500,
+  "subagent_threshold_kb": 10,
+  "source": "**`&cb=<時間戳>` 是必要不是保險。** iTunes 與 Substack 是同一類問題：過期綁在確切的查詢字串上，換任何一個變動參數就繞開。2026-08-15 實測不帶 cb 時 All-In 與 Bloomberg 都停在 15 天前，帶了立刻拿到當日集數——那天整整一天回報「沒有新集數」，**實際有 10 集**。web_fetch 的字元上限**會靜默截斷不報錯**（實例：某集只取到 73%），所以片長超過 120 分鐘的 A 類節目直接用 podfetch 稿。FT 正文低於下限或出現解鎖提示即視為存取失效；**歷史實測值逐集差異很大，不要拿某一次的值當門檻**。"
+ },
+ "fallback_order": [
+  {
+   "tier": 1,
+   "name": "官方逐字稿",
+   "note": "A 類永遠優先。**manifest 決定「有哪幾集」，不決定「用哪份全文」**——A 類即使 podfetch 已轉錄仍要去抓官方稿，抓不到才退回，並據實填 source。例外：片長 >120 分鐘直接用 podfetch 稿。"
+  },
+  {
+   "tier": 2,
+   "name": "podfetch 逐字稿",
+   "note": "B 類的主要來源。FT 存取失效時退回這一層，**不是跳到 YouTube**。"
+  },
+  {
+   "tier": 3,
+   "name": "YouTube 字幕",
+   "note": "2026-08-02 起已知全面失效，只當最後手段，每集最多試 5 分鐘。須為 Chrome 已登入狀態；未登入就走下一層並告知，**不要嘗試代為登入**。"
+  },
+  {
+   "tier": 4,
+   "name": "精簡摘要",
+   "note": "依節目說明＋WebSearch 公開報導寫約 500 字，source 標註待補與原因，該集 quotes 留空陣列。若某集本來就在窗口邊緣又拿不到全文，**寧可不收錄**並在交付訊息中明講。"
+  }
+ ],
+ "podfetch_config": {
+  "_": "**權威值在 scripts/podcast/config.json**，這裡只記「這些鍵存在、以及為什麼」。數字有兩份副本就會漂移。",
+  "keys": [
+   "segment_seconds",
+   "max_chunk_mb",
+   "min_request_interval_seconds",
+   "avoid_preview_models",
+   "flash_slots",
+   "lite_slots",
+   "max_output_tokens",
+   "default_window_hours",
+   "max_lookback_hours",
+   "overload_cooldown_seconds",
+   "episode_budget_seconds",
+   "run_budget_seconds",
+   "stale_feed_hours",
+   "prefer_lite",
+   "show_priority",
+   "model_preference"
+  ],
+  "manual_compare_only": [
+   "prefer_lite",
+   "avoid_preview_models",
+   "show_priority",
+   "model_preference"
+  ],
+  "state_retention_days": 30,
+  "source": "四項需要人工比對：兩個布林值（healthcheck 的數值比對抓不到）＋兩個清單型設定。流程是循序處理，六集約 30–45 分鐘。"
+ },
+ "observations": {
+  "status_values": [
+   "觀察中",
+   "應驗",
+   "部分應驗",
+   "落空",
+   "無法驗證"
+  ],
+  "admission_test": "這句話三個月後有可能被證明是錯的嗎？不能就不要收。",
+  "excluded": [
+   "免責聲明",
+   "來源標註",
+   "管線自檢",
+   "純敘述性總結"
+  ],
+  "source": "2026-08-19 決定升成 ledger-v1 的一個實例（工單 18）。claim 開帳後不得改寫，judge 分 auto／manual，manual 到期由哨兵開 issue —— 投顧的 sentinel.ledger_overdue 已經寫好，接上去它就從 SKIPPED 變成真的在看。"
+ },
+ "publish": {
+  "index_days_order": "由新到舊",
+  "verify_needs": [
+   "days[0].date 是當天",
+   "updated 是本次執行時間"
+  ],
+  "docx_from": "當日 JSON 機械轉出，不由 LLM 重寫",
+  "docx_not_in_repo": true,
+  "transcripts_not_in_repo": true,
+  "source": "**逐字稿與 Word 檔都不進 repo** —— Public repo ＋ 付費來源全文 ＝ 著作權問題。逐字稿放 ~/podcast-transcripts，不在任何 repo 的工作區內，也沒有任何程序會 push 它：不是靠紀律，是結構。上線驗證只看日期會被騙（2026-08-03 實例：days[0].date 早就是當天日期），要同時看執行時間戳。"
+ },
+ "episode_admission": {
+  "_": "哪些「集」根本不該進管線。這一層在轉寫之前，不是品質問題是身分問題——預告片會被忠實轉寫、完整度算出來還是 100%，因為完整度量的是「轉寫得完不完整」，不是「這是不是那一集」。**指標對它是瞎的，所以要在指標之前擋。**",
+  "title_reject_markers": [
+   "(Preview)",
+   "(Trailer)",
+   "Trailer:",
+   "預告"
+  ],
+  "min_minutes": 10,
+  "source": "2026-08-20 sharptech 除名時定的。Sharp Tech 在 Apple 公開 feed 的每一集標題都帶 (Preview)，完整集在訂閱者私有 RSS。**主判準是標題標記，時長只是第二道**——當天最短的兩集是 bloomberg 22.1 分與 unhedged 22.9 分，都是正常完整集，所以下限只能訂在 10 分，它擋不住一支 12 分鐘的加長預告。節目除名了但這一層要留：**任何節目都可能某天發一支預告、一支 trailer、一支「我們下週回來」**，而那天沒有人會記得今天。"
+ }
+}
