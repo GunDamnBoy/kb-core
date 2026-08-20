@@ -16,6 +16,16 @@ demo.date_present
 demo.items_nonempty
 demo.note_length
 demo.upstream_fresh
+podcast.completeness_band
+podcast.episode_admission
+podcast.file_id_matches_url
+podcast.manifest_wellformed
+podcast.no_duplicate_episodes
+podcast.no_failed_episodes
+podcast.release_in_window
+podcast.show_keys_known
+podcast.status_vocabulary
+podcast.window_sane
 repo.brief_budget
 repo.no_pull_request_target
 sentinel.data_fresh
