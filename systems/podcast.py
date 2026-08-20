@@ -127,9 +127,26 @@ def index_entry(doc: dict) -> dict:
     return entry
 
 
+def index_meta(doc: dict) -> dict:
+    """`updatedLabel` 是**人看的**上線時間，而它是上線驗證的判準之一。
+
+    2026-08-20 發現它停在 `8/18 03:20` —— publish 只寫 `updated` 與 `count`，
+    沒有人寫它。舊系統把「`updatedLabel` 是本次執行時間」列為驗證判準，
+    正是因為 `days[0].date` 每天都會被寫成當天，**只看日期看不出推送鏈斷掉**。
+
+    時區用台北，因為讀它的是人不是程式；`updated` 那個給程式的欄位維持 UTC。
+    """
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+    return {
+        "updated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "updatedLabel": f"{now.month}/{now.day} {now:%H:%M}",
+    }
+
+
 register(System(
     id="podcast-knowledge-digest",
     suite="podcast",
     build=build,
     index_entry=index_entry,
+    index_meta=index_meta,
 ))

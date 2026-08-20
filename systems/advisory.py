@@ -111,9 +111,15 @@ def index_entry(doc: dict) -> dict:
     return entry
 
 
+def index_meta(doc: dict) -> dict:
+    """投顧的站台只讀 `updated`，沒有給人看的標籤欄位。"""
+    return {"updated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+
+
 register(System(
     id="advisory-knowledge-hub",
     suite="advisory",
     build=build,
     index_entry=index_entry,
+    index_meta=index_meta,
 ))

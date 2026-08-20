@@ -694,15 +694,32 @@ def _counts(p):
 
     成因不是撰寫端貪心，是**派工單沒有把數量寫進去**——JOB.md 只給了 schema。
     這條檢查抓到的是派工的缺漏，不是內容的缺漏。
+
+    ## 第四層的例外
+
+    退到第四層（拿不到全文、只寫約 500 字精簡摘要）的集數，`quotes` 必須是空陣列——
+    **沒有逐字稿就不寫金句**。對它套金句下界，會把一條正常的退路判成失敗，
+    而 publish 是整輪一起判，所以那會擋掉當天所有集數。
+
+    判定靠 `source` 開頭的佔位符號（家在 `anchors.dedup.placeholder_not_collected`），
+    而且是**雙向**的：標了佔位就不准有金句，沒標就照常套下界。
+    單向放行等於給了一個「填上這個字串就跳過檢查」的後門。
     """
     tlo, thi = _A(p, "per_episode", "takeaways")
     qlo, qhi = _A(p, "per_episode", "quotes")
+    mark = _A(p, "dedup", "placeholder_not_collected")
     bad = []
     for e in _docs(p):
         nt, nq = len(e.get("takeaways") or []), len(e.get("quotes") or [])
         if not (tlo <= nt <= thi):
             bad.append(f"{e.get('id')} 核心重點 {nt} 條，不在 {tlo}–{thi}")
-        if not (qlo <= nq <= qhi):
+        # 退到第四層的集數：**沒有逐字稿就不寫金句**，所以 quotes 必須是空的。
+        # 對它套下界會把一條正常的退路判成失敗，而那會擋掉整天的日報。
+        if (e.get("source") or "").lstrip().startswith(mark):
+            if nq:
+                bad.append(f"{e.get('id')} 標了 {mark} 卻有 {nq} 條金句 —— "
+                           "沒有逐字稿就不寫金句")
+        elif not (qlo <= nq <= qhi):
             bad.append(f"{e.get('id')} 金句 {nq} 條，不在 {qlo}–{qhi}")
     if bad:
         return fail("；".join(bad[:4]))
@@ -715,14 +732,20 @@ register(Check(
     blind_to=[
         "數量對但每一條都很敷衍——`takeaway_sentences` 的句數這條沒有量",
         "核心重點有沒有真的寫進「對投資人的含義」（那是語意，機械判不了）",
-        "**退到第四層的集數 quotes 應該是空陣列**，但那樣就落在下界外，"
-        "這條會誤叫——首輪十集都沒退到第四層，所以還沒撞到",
+        "第四層的判定只看 `source` 開頭的佔位符號 —— **退到第四層但忘了標的集數**，"
+        "會被當成正常集數套下界，訊息會說「金句 0 條」而不是「忘了標退援層級」",
     ],
     run=_counts,
-    fixture={"anchors": {"per_episode": {"takeaways": [3, 5], "quotes": [2, 5]}},
-             "doc": {"episodes": [{"id": "b-1", "takeaways": [0] * 8, "quotes": [0] * 3}]}},
-    near_miss={"anchors": {"per_episode": {"takeaways": [3, 5], "quotes": [2, 5]}},
-               "doc": {"episodes": [{"id": "b-1", "takeaways": [0] * 5, "quotes": [0] * 5}]}},
+    fixture={"anchors": {"per_episode": {"takeaways": [3, 5], "quotes": [2, 5]},
+                         "dedup": {"placeholder_not_collected": "⚠︎"}},
+             "doc": {"episodes": [
+                 {"id": "b-1", "source": "⚠︎ 全文摘譯待補（FT 存取失效）",
+                  "takeaways": [0] * 4, "quotes": [0] * 3}]}},
+    near_miss={"anchors": {"per_episode": {"takeaways": [3, 5], "quotes": [2, 5]},
+                           "dedup": {"placeholder_not_collected": "⚠︎"}},
+               "doc": {"episodes": [
+                   {"id": "b-1", "source": "⚠︎ 全文摘譯待補（FT 存取失效）",
+                    "takeaways": [0] * 4, "quotes": []}]}},
     suite="podcast",
 ))
 

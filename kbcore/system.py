@@ -35,6 +35,20 @@ class System:
     讀檔全部在這裡，因為**檢查本身不做 IO**——那樣每條檢查才能用純資料當 fixture。
     """
 
+    index_meta: Callable[[dict], dict]
+    """草稿 → `data/index.json` 的**頂層**欄位（不含 `days`）。
+
+    2026-08-20 加的，跟 `index_entry` 同一個理由的第二次發作：
+    `publish.py` 原本硬寫 `updated` 與 `count`，而 podcast 的站台還要一個
+    `updatedLabel`（人看的時間字串）—— **沒人寫它，於是它停在兩天前的值**。
+
+    這件事的嚴重性不在顯示：舊系統把「`updatedLabel` 是本次執行時間」列為
+    上線驗證的判準之一，因為 `days[0].date` 早就是當天了（排程每天都會寫），
+    **只看日期看不出推送鏈斷掉**。判準本身被靜靜地架空了。
+
+    每套系統自己決定頂層要有什麼，publish 只負責 merge。
+    """
+
     index_entry: Callable[[dict], dict]
     """草稿 → `data/index.json` 的當日 entry。
 

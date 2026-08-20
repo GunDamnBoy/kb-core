@@ -4,6 +4,8 @@
 刻意不沿用投顧那份：那會讓一個 demo 的 index 帶著五個永遠是空的跨日欄位，
 而空欄位跟「有欄位但沒填」在資料上長得一樣。
 """
+import datetime as dt
+
 from kbcore.system import System, register
 
 
@@ -11,9 +13,14 @@ def index_entry(doc: dict) -> dict:
     return {"date": doc["date"], "file": f"data/{doc['date']}.json"}
 
 
+def index_meta(doc: dict) -> dict:
+    return {"updated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+
+
 register(System(
     id="kb-tracer",
     suite="draft",
     build=lambda draft, repo: draft,
     index_entry=index_entry,
+    index_meta=index_meta,
 ))

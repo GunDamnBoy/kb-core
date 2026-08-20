@@ -12,6 +12,7 @@
  },
  "window": {
   "anchor": "last_run_utc",
+  "anchor_blind_to": "**`last_run_utc` 不能用來判斷「podfetch 今天有沒有跑」**（2026-08-16 起失效）。0 集那天 podfetch 正常執行，但**刻意不推進**它；某集抓取失敗時也不推進，好讓下次必定重抓同一集。所以它現在的語意只剩一個：**下次視窗的起點**。「今天有沒有跑」一律看日誌。**2026-08-20 早上我差點就用它判了**——讀了 repo 裡那份不再更新的 state.json，看到 last_run_utc 停在 8/17，一度把它當成「沒跑」的證據。一個欄位不會因為停住就代表沒動作，它只代表沒有人推進它。",
   "overlap_minutes": 30,
   "max_lookback_hours": 72,
   "typical_hours": [
@@ -155,7 +156,18 @@
   "timestamp_gap_seconds": 90,
   "stale_feed_hours": 72,
   "external_check_apple_id": "296237493",
-  "source": "完整度 ＝ 實際字數 ÷ 以該節目語速基準估出的期望字數。低於 55% 先自動重試該段，仍不足才標 DEGRADED。語速基準只決定分母，**講 DEGRADED 原因時語速基準不是候選答案**，要分辨的是跳針、掉字、截斷。跳針判定（同一 token 連續 20 次以上）**在計字前剔除**——2026-08-08 一行 28,122 個重複 token 讓完整度顯示 3.36、實際 1.10，沒有這一步完整度在這個失效態下會完全反向。stale_feed_hours 取 72 的理由：清單裡有每個交易日都發的 Bloomberg，「所有節目同時安靜三天以上」現實中不會發生（實測：事故當天 15 天、真 0 集日 0.6 天、長週末 1.9 天）。 completeness_high 取 1.35（2026-08-20 新增，同日下午修正）：**上界被觸發時有兩個成因，不是一個。** 一是語速基準過期（分母偏小），二是**整段內容被重播**（分子偏大）。當天實測十集，iltb 的 1.57 我早上判成語速過期，錯了——實際是 970 token 的整段重播兩次；而 bloomberg 8/19 的 0.81 也有 281 token 的區塊重播，**重播覆蓋掉原內容時完整度反而會下降**。所以這個上界抓得到的只是其中一種形態，另一種要靠 `block_repeat_*` 那組。**不要再從這個數字單獨推論成因。**"
+  "source": "完整度 ＝ 實際字數 ÷ 以該節目語速基準估出的期望字數。低於 55% 先自動重試該段，仍不足才標 DEGRADED。語速基準只決定分母，**講 DEGRADED 原因時語速基準不是候選答案**，要分辨的是跳針、掉字、截斷。跳針判定（同一 token 連續 20 次以上）**在計字前剔除**——2026-08-08 一行 28,122 個重複 token 讓完整度顯示 3.36、實際 1.10，沒有這一步完整度在這個失效態下會完全反向。stale_feed_hours 取 72 的理由：清單裡有每個交易日都發的 Bloomberg，「所有節目同時安靜三天以上」現實中不會發生（實測：事故當天 15 天、真 0 集日 0.6 天、長週末 1.9 天）。 completeness_high 取 1.35（2026-08-20 新增，同日下午修正）：**上界被觸發時有兩個成因，不是一個。** 一是語速基準過期（分母偏小），二是**整段內容被重播**（分子偏大）。當天實測十集，iltb 的 1.57 我早上判成語速過期，錯了——實際是 970 token 的整段重播兩次；而 bloomberg 8/19 的 0.81 也有 281 token 的區塊重播，**重播覆蓋掉原內容時完整度反而會下降**。所以這個上界抓得到的只是其中一種形態，另一種要靠 `block_repeat_*` 那組。**不要再從這個數字單獨推論成因。**",
+  "note_dimensions": {
+   "_": "`warnings`／`speaker_notes`／`timestamp_notes` 是**三個維度，不共用欄位**。",
+   "warnings_sources": [
+    "字數低於門檻",
+    "段級語速偏離本集中位數",
+    "跳針剔除"
+   ],
+   "notes_affect_status": false,
+   "timestamp_notes_nonempty_then": "不要依時間戳切章節，改用主題轉換判定",
+   "source": "曾經共用同一個欄位，結果**完整度正常的集數被誤標 DEGRADED**，所以拆開、且後兩者不影響 status。兩條連帶的判讀規則：（一）**「超標」不產生 warning**，warnings 只有上面三個來源，所以在解釋 DEGRADED 的原因時**語速基準不是候選答案**（它只決定分母），真正要分辨的是跳針、掉字、截斷——2026-08-20 早上我就是拿語速基準當答案，而實際原因是一段 970 token 的內容被放了兩次。（二）**空值只代表那兩種形態沒觸發，不等於沒問題**：08-18 的 20VC，子代理自行發現兩處時間戳跳躍與一段重複，`timestampNote` 卻是空的。"
+  }
  },
  "_timestamp_check_blind_to": [
   "時間戳回跳（全庫 91 集有 32% 出現，遠超雜訊門檻，實測後決定不加單調性檢查）",
@@ -264,5 +276,33 @@
   ],
   "min_minutes": 10,
   "source": "2026-08-20 sharptech 除名時定的。Sharp Tech 在 Apple 公開 feed 的每一集標題都帶 (Preview)，完整集在訂閱者私有 RSS。**主判準是標題標記，時長只是第二道**——當天最短的兩集是 bloomberg 22.1 分與 unhedged 22.9 分，都是正常完整集，所以下限只能訂在 10 分，它擋不住一支 12 分鐘的加長預告。節目除名了但這一層要留：**任何節目都可能某天發一支預告、一支 trailer、一支「我們下週回來」**，而那天沒有人會記得今天。"
+ },
+ "reruns": {
+  "_": "重播照常完整摘譯，不跳過——內容對讀者一樣有效。要改的只有兩個欄位。",
+  "published": "填**原始播出日**，不是這次上架日",
+  "source_note": "寫明「本集為 {原始播出日} 的重播」",
+  "title_prefix_markers": [
+   "Re-Run:"
+  ],
+  "sister_show_reruns": {
+   "unhedged": "The Economics Show"
+  },
+  "source": "兩個來源、兩種形態：Money Stuff 用 `Re-Run:` 前綴（08-14 那集是 3 月訪談 Boaz Weinstein 的重播）；Unhedged 的 feed 會直接放姊妹節目 The Economics Show 的重播（08-08 實例：8/6 的 feed 放的是原 6/19 那集，**標題上沒有任何前綴**）。**姊妹節目那一種前綴抓不到**，只能靠內容日期與 feed 不一致才看得出來。這條當初是節目專屬處理，升成全庫通則的理由是：**節目專屬的處理方式，只要有第二檔節目也適用，就該升成通則**——否則第三檔出現時沒有人會想起第一檔。"
+ },
+ "shows_lifecycle": {
+  "_": "節目加入或移出現役時，要動的檔案清單。**兩個方向的漏法不一樣。**",
+  "removal_touches": [
+   "scripts/podcast/shows.json",
+   "show_priority",
+   "節目清單"
+  ],
+  "removal_keeps_css": true,
+  "addition_touches": [
+   "scripts/podcast/shows.json",
+   "show_priority",
+   "index.html 三條配色（.ep.s-<key>、.b-<key>、深色 .b-<key>）"
+  ],
+  "css_home": "podcast-knowledge-digest/index.html",
+  "source": "**移出時 CSS 一律保留**——舊日檔還在站上，刪了色碼就掉色，而且不會報錯。目前保留的除役色：capitalallocators、bg2、breakdowns、lennys、lex、pivot。**加入時反而是最容易漏的那一邊**：2026-08-20 加 fwdguidance 時三條全漏，是拿 shows.json 跟 index.html 對帳才發現的（21 檔現役 vs 26 組配色）。徽章缺色不會丟出任何錯誤，只會在那檔節目第一次出集數的那天默默沒有顏色。**還有一個陷阱**：publish 只做 `git add data`，改 index.html **不會**被排程順手帶進去，要另外提交——`.kb-data-repo` 就是這樣漏掉整整一天的。"
  }
 }

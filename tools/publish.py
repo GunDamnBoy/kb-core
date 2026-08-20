@@ -137,7 +137,9 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     idx["days"] = [d for d in idx.get("days", []) if d.get("date") != date]
     idx["days"].insert(0, system.index_entry(draft))
     idx["days"].sort(key=lambda d: d["date"], reverse=True)
-    idx["updated"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    # 頂層欄位由系統決定，publish 不知道任何一套系統的形狀。
+    # 硬寫在這裡的代價已經付過兩次了（index entry 的欄位、updatedLabel）。
+    idx.update(system.index_meta(draft))
     idx["count"] = len(idx["days"])
     atomic_write(idx_path, json.dumps(idx, ensure_ascii=False, indent=1))
 

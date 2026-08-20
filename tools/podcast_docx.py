@@ -47,7 +47,8 @@ def _muted(p, text, size=9):
     return r
 
 
-def build(doc_json: dict) -> Document:
+def build(doc_json: dict):
+    """回傳 (文件, 實際寫進去的集數)。**兩個都要，因為第二個才是驗收依據。**"""
     d = Document()
     st = d.styles["Normal"]
     st.font.name = "Times New Roman"
@@ -82,6 +83,7 @@ def build(doc_json: dict) -> Document:
         _muted(sub, f"怎麼驗：{o.get('check','')}　·　到期 {o.get('horizon','')}"
                     f"　·　{o.get('status','')}")
 
+    written = 0
     for e in eps:
         d.add_page_break()
         d.add_heading(e.get("title", "").split("｜", 1)[-1], level=1)
@@ -95,6 +97,7 @@ def build(doc_json: dict) -> Document:
             _muted(g, f"來賓：{e['guest']}")
 
         d.add_paragraph(e.get("summary", ""))
+        body_from = len(d.paragraphs) - 1   # 從摘要那一段起算，才是這一集的內容
 
         if e.get("takeaways"):
             d.add_heading("核心重點", level=2)
@@ -123,6 +126,15 @@ def build(doc_json: dict) -> Document:
                 by.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 _muted(by, f"— {q.get('by','')}")
 
+        # 一集「有寫進去」的定義是**文件真的多了內容**，不是迴圈跑了一輪。
+        # 原本這裡是迴圈頂端無條件 written += 1，那樣 written 恆等於 len(eps)，
+        # 底下那個 written != expected 的守衛永遠不可能成立——
+        # 它看起來在數集數，其實只是在數迴圈圈數。
+        # 界線取「有沒有字」而不是「幾個字」：空殼是 0，任何一集正常內容都遠大於 0，
+        # 中間沒有需要調的門檻。字數夠不夠是 chars_in_tier 在發布前的事，不是這裡。
+        if sum(len(x.text.strip()) for x in d.paragraphs[body_from:]):
+            written += 1
+
         qa = e.get("quality") or {}
         for label, key in (("講者", "speakerNote"), ("時間軸", "timestampNote")):
             if qa.get(key):
@@ -134,7 +146,7 @@ def build(doc_json: dict) -> Document:
     tail = d.add_paragraph()
     _muted(tail, "本文為個人知識管理用途的中文摘譯，非投資建議。"
                  "每集均附原節目連結，鼓勵前往收聽。", 8)
-    return d
+    return d, written
 
 
 def main(argv) -> int:
@@ -162,11 +174,23 @@ def main(argv) -> int:
 
     outdir.mkdir(parents=True, exist_ok=True)
     out = outdir / f"podcast-{date}.docx"
-    build(json.loads(src.read_text())).save(out)
+    doc_json = json.loads(src.read_text())
+    d, written = build(doc_json)
+    d.save(out)
+
+    expected = len(doc_json.get("episodes") or [])
     size = out.stat().st_size
-    print(f"{out}　{size:,} bytes")
+    print(f"{out}　{written} 集　{size:,} bytes")
+
+    # **集數才是驗收依據，位元組數只是第二道。**
+    # 舊規格明文要求「腳本會印出集數，要等於當日實際集數」，而我第一版只看位元組——
+    # 一份少了三集但每集都很長的報告，位元組數看起來完全正常。
+    # 今天第三次撞到同一個形狀：守衛量的維度比它宣稱保護的東西低一階。
+    if written != expected:
+        print(f"寫進去 {written} 集，當日應有 {expected} 集 —— 少的那幾集去哪了",
+              file=sys.stderr)
+        return 10
     if size < 20_000:
-        # 「檔案寫出來了」不是「內容在裡面」。十集的報告不可能這麼小。
         print("位元組數異常地小 —— 檔案存在不等於內容在裡面", file=sys.stderr)
         return 10
     return 0
