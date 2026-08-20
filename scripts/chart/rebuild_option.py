@@ -122,6 +122,8 @@ if __name__ == "__main__":
         print(__doc__)
         sys.exit(1)
     ok = all(rebuild(d, dry, png) for d in args)
-    print("\n提醒：本工具不跑 git。dashpush 會在 180 秒內自動推送，"
-          "再抓 Pages 確認一次。")
+    # dashpush 已於 2026-08-20 退休。**改動不會自己上線** ——
+    # 這支只動工作區，要進站上得走 outbox 草稿與 publish 那條路。
+    print("\n提醒：本工具不跑 git，改動只在工作區。"
+          "要上站請走 ~/outbox/chart/ 的草稿與 publish；歷史封存原則上不回頭改寫。")
     sys.exit(0 if ok else 1)
