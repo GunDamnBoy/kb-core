@@ -170,6 +170,65 @@ def check_showkeys():
             log("WARN", "showKey 命名", f"讀不到 shows.json：{e}")
 
 
+def _norm(t):
+    """比對用的正規化：只留英數、轉小寫。
+
+    名稱在不同文件裡寫法本來就不同——`shows.json` 是 `MacroVoices`、
+    brief 寫 `Macro Voices`；`All-In Podcast` 在 README 是 `All-In`。
+    **逐字比對會把這些判成缺漏**，而一條天天誤報的檢查等於沒有檢查。
+    """
+    return re.sub(r"[^a-z0-9]", "", t.lower())
+
+
+def check_show_names_in_docs():
+    """每一檔現役節目，在 brief 與 README 裡都要找得到。
+
+    `MAINTENANCE.md` 第 5 節那張「新增一檔節目」的八步驟清單早就存在，
+    第 1 步是 brief、第 5 步是 README。**它失敗過兩次，兩次同一種**：
+    08-10 加 TIP 漏了 README（登記簿有紀錄），08-20 加 fwdguidance 漏了 brief。
+    清單沒有錯，錯的是「靠人記得走完清單」這件事本身，所以這裡把它變成機械檢查。
+
+    **只做一個方向。** 反方向（文件裡還留著已除役的節目）試過，
+    分不出「變更紀錄裡提到 BG2」與「現況清單忘了刪 BG2」——
+    前者是對的、後者是錯的，而兩者在文字上一模一樣。
+    一條永遠會響的檢查會讓人不再讀它，比沒有更糟。除役後的文件清理留給第 5 節的人工步驟。
+    """
+    if not (PODFETCH and REPO):
+        log("WARN", "節目在文件裡", "有一邊不在（沙箱通常如此），跳過")
+        return
+    try:
+        shows = json.load(open(os.path.join(PODFETCH, "shows.json"), encoding="utf-8"))
+    except Exception as e:
+        log("FAIL", "節目在文件裡", f"讀不到 shows.json：{e}")
+        return
+    docs = {}
+    for fn in ("AGENT_BRIEF.md", "README.md"):
+        try:
+            docs[fn] = _norm(open(os.path.join(REPO, fn), encoding="utf-8").read())
+        except Exception as e:
+            log("FAIL", "節目在文件裡", f"讀不到 {fn}：{e}")
+            return
+    bad = []
+    for key, v in sorted(shows.items()):
+        name = (v.get("name") or "").strip()
+        if not name:
+            bad.append(f"{key} 在 shows.json 沒有 name")
+            continue
+        n = _norm(name)
+        # `All-In Podcast` 在 README 只寫 `All-In`，所以尾綴 podcast 要能省略。
+        forms = {n, re.sub(r"(the)?podcast$", "", n)} - {""}
+        miss = [fn for fn, t in docs.items()
+                if not any(f in t for f in forms)]
+        if miss:
+            bad.append(f"{name}（{key}）沒出現在 " + "、".join(miss))
+    if bad:
+        # WARN 不是 FAIL：日報照樣跑得完，只是那一檔沒有取得方式的說明。
+        log("WARN", "節目在文件裡", "；".join(bad)
+            + " —— 見 MAINTENANCE.md 第 5 節的八步驟")
+    else:
+        log("PASS", "節目在文件裡", f"{len(shows)} 檔在 brief 與 README 都找得到")
+
+
 def check_shows_sync():
     """`shows.json` 有**兩份**，這條是唯一在對它們帳的地方。
 
@@ -920,7 +979,8 @@ def collect_metrics():
 
 
 def main():
-    for fn in (check_data, check_showkeys, check_shows_sync, check_podfetch,
+    for fn in (check_data, check_showkeys, check_shows_sync,
+               check_show_names_in_docs, check_podfetch,
                check_transcripts, check_pending, check_observations,
                check_push, check_live, check_brief, collect_metrics):
         try:
