@@ -4,4 +4,5 @@
 建一個模組、在這裡匯入、把 `.kb-data-repo` 寫成同一個 id。
 """
 from . import advisory  # noqa: F401
+from . import podcast   # noqa: F401
 from . import tracer    # noqa: F401

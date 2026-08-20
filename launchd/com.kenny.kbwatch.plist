@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kenny.kbwatch</string>
+
+  <!-- 2026-08-20 改：由 kb-tracer 改為投顧知識庫。
+
+       原值 (/Users/macmini/kb-tracer, kb-tracer) 是第 5 片留下來的，之後
+       一直沒改。它造成的失效很安靜：四條檢查裡只有兩條失準 ——
+       `sentinel_alive` 與 `sentinel_verdict` 讀的是 tracer 的 heartbeat，
+       而 `no_code_drift`（看 kb-core 自己）與 `external_binaries`（讀 plist）
+       照常正確。**所以它不會全紅，只會缺一半**，那正是它撐了兩天沒被發現的原因。
+
+       教訓不是「要記得改參數」，是**看門狗自己需要有人看**：這個錯誤只能
+       靠人去讀 plist 才發現，沒有任何自動訊號會說「你在看錯的東西」。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/watch_sentinel.py</string>
+    <string>/Users/macmini/advisory-rewrite</string>
+    <string>advisory-knowledge-hub</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>14400</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/watch.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/watch.log</string>
+</dict>
+</plist>

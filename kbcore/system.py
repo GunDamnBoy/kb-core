@@ -35,6 +35,18 @@ class System:
     讀檔全部在這裡，因為**檢查本身不做 IO**——那樣每條檢查才能用純資料當 fixture。
     """
 
+    index_entry: Callable[[dict], dict]
+    """草稿 → `data/index.json` 的當日 entry。
+
+    2026-08-20 從 `publish.py` 搬過來的。原本它寫死投顧的欄位
+    （weekday／stamp／headline／cards／thermo／threads／watch／pulse／snap），
+    住在通用的 publish 裡——**登記那道接縫管到了「跑哪組檢查」與「payload 怎麼組」，
+    卻漏掉了「index entry 長什麼樣」**，而那同樣是每套系統各不相同的東西。
+
+    第二套系統一接上去就撞到：podcast 的 doc 沒有 `overview`，publish 會在
+    組 entry 時 KeyError。**接縫漏一個維度，第二個使用者才會發現。**
+    """
+
 
 REGISTRY: "dict[str, System]" = {}
 

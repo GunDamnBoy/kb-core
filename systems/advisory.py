@@ -59,8 +59,61 @@ def build(draft, repo: Path):
     }
 
 
+# index.json 的每日 entry 必備欄位。前六個是識別與導覽，後五個是**跨日記憶**。
+#
+# BRIEF 第二節：「寫今天的 entry 之前先讀前幾天的 entry —— thread 沿用、
+# pulse 比對翻轉、watch 寫回顧，全部不用打開任何舊日檔。這是設計，不是巧合：
+# 跨日推理的成本被壓在一個索引檔裡。」
+#
+# 2026-08-19 首日這裡只寫了 date 與 file，那五欄全空，而當天沒有任何訊號報警——
+# 因為 `advisory.watch_review` 在沒有前一版時是 SKIPPED。**第一天的 SKIPPED
+# 掩蓋了一個第二天才會爆的洞**。
+INDEX_FIELDS = ("date", "weekday", "stamp", "headline", "cards", "file",
+                "thermo", "threads", "watch", "pulse", "snap")
+
+
+def index_entry(doc: dict) -> dict:
+    """從當日的 doc 組出 index entry。
+
+    **只取跨日推理需要的欄位，不整份塞進去。** index 要能每天被便宜地讀完，
+    塞進完整 overview 會讓它隨天數線性膨脹。pulse 只留 k/dir、
+    snap 只留 k/num/chgPct 就是這個理由。
+
+    2026-08-20 從 `tools/publish.py` 搬到這裡：它寫的是投顧的欄位，
+    住在通用的 publish 裡等於把一套系統的形狀寫進底盤。
+    """
+    ov = doc.get("overview") or {}
+    threads = sorted({c["thread"]
+                      for sec in doc.get("sections") or []
+                      for g in sec.get("groups") or []
+                      for c in g.get("cards") or []
+                      if c.get("thread")})
+    entry = {
+        "date": doc["date"],
+        "weekday": doc.get("weekday", ""),
+        "stamp": doc.get("stamp", ""),
+        "headline": doc.get("headline", ""),
+        "cards": doc.get("cards", 0),
+        "file": f"data/{doc['date']}.json",
+        "thermo": (ov.get("thermo") or {}).get("level"),
+        "threads": threads,
+        "watch": ov.get("watch") or [],
+        "pulse": [{"k": p.get("k"), "dir": p.get("dir")}
+                  for p in (ov.get("pulse") or [])],
+        "snap": [{"k": s.get("k"), "num": s.get("num"), "chgPct": s.get("chgPct")}
+                 for s in (ov.get("snap") or [])],
+    }
+    # 大聲失敗，而不是安靜寫出殘缺的 entry。**寫出一個看起來正常、但少了跨日
+    # 記憶的 index，比寫不出來更糟**——它會讓隔天的推理靜靜地建立在空集合上。
+    missing = [k for k in INDEX_FIELDS if k not in entry]
+    if missing:
+        raise KeyError(f"index entry 缺欄位：{'、'.join(missing)}")
+    return entry
+
+
 register(System(
     id="advisory-knowledge-hub",
     suite="advisory",
     build=build,
+    index_entry=index_entry,
 ))

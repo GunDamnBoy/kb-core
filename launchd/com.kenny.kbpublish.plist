@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kenny.kbpublish</string>
+
+  <!-- 2026-08-19 改：repo 與系統 id 由 kb-tracer 改為投顧知識庫。
+       原值是 /Users/macmini/kb-tracer + kb-tracer，那會讓投顧草稿被 tracer
+       的檢查驗過再寫進 tracer repo —— 目的地守門攔不住，因為目的地與 id
+       互相對得上，只是兩個都不是這份內容該去的地方。
+
+       **一個 plist 只發一套系統。** publish 的參數是 (outbox, repo, 系統 id)
+       三件一組，沒有「多套」這個形態 —— 而那是刻意的：一次只驗一組檢查、
+       一個目的地，才不會有「我到底在發哪一套」這個問題。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/publish.py</string>
+    <string>/Users/macmini/outbox</string>
+    <string>/Users/macmini/advisory-rewrite</string>
+    <string>advisory-knowledge-hub</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/publish.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/publish.log</string>
+</dict>
+</plist>

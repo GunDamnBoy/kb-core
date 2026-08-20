@@ -45,7 +45,7 @@ advisory 的 XLSX 免責頁、podcast 的 Sharp Tech 預告片，兩次都是實
 import datetime as dt
 import re
 
-from kbcore.check import Check, fail, ok, register, warn
+from kbcore.check import Check, fail, ok, register, skipped, warn
 
 FILE_ID_RE = re.compile(r"-(\d+)\.md$")
 URL_ID_RE = re.compile(r"[?&]i=(\d+)")
@@ -566,4 +566,266 @@ register(Check(
         {"showKey": "allin", "title": "x", "file": "iltb-1000783964339.md",
          "appleUrl": "https://podcasts.apple.com/us/podcast/id1502871393?i=1000783964339"}]}},
     suite="podfetch",
+))
+
+
+# ════════════════════════════════════════════════════════════════════
+# suite="podcast"｜日報層：這一份當日 doc 可不可以發布
+#
+# payload 由 `systems/podcast.py` 的 build() 組出來：
+#   {"doc", "prev", "ledger", "quote_misses", "anchors", "now"}
+#
+# 這一組跟上面那組（suite="podfetch"）問的是不同的問題：
+# 上面問「昨晚那一輪轉錄好不好」，這裡問「今天這份日報可不可以上線」。
+# ════════════════════════════════════════════════════════════════════
+
+def _docs(p):
+    return p["doc"].get("episodes") or []
+
+
+def _tier(p, minutes):
+    """回傳該片長所屬層級的 (下界, 上界, 段下界, 段上界)。含下界、不含上界。"""
+    for t in _A(p, "length_tiers"):
+        cap = t["under_minutes"]
+        if cap is None or minutes < cap:
+            return t["chars"][0], t["chars"][1], t["paras"][0], t["paras"][1]
+    raise KeyError("length_tiers 最後一層必須是 under_minutes: null")
+
+
+# ── 11. 篇幅落在所屬層級 ─────────────────────────────────────────────
+def _chars_in_tier(p):
+    """BRIEF 第七節第一條當期失敗判準。
+
+    2026-08-20 寫這條時發現的洞：**doc 裡沒有任何欄位存得下片長**——
+    `published` 是「2026年8月18日｜片長 56 分鐘」這種給人讀的字串。
+    層級是由片長決定的，所以這條判準當時在資料上是判不了的，只是看起來像。
+    於是給每集加了 `minutes`。
+
+    這跟投顧那次保底卡的 `base` 欄位是同一件事：**一條判準若在資料裡找不到
+    對應的欄位，它就不是機械可判的。**
+    """
+    bad = []
+    for e in _docs(p):
+        m = e.get("minutes")
+        if m is None:
+            bad.append(f"{e.get('id')} 沒有 minutes 欄位 —— 層級判不了")
+            continue
+        lo, hi, plo, phi = _tier(p, m)
+        n = e.get("chars") or 0
+        paras = sum(len(s.get("paragraphs") or []) for s in e.get("sections") or [])
+        if n > hi:
+            bad.append(f"{e.get('id')} {n} 字超過上界 {hi}（{m} 分）")
+        elif n < lo and not e.get("lowerBoundException"):
+            bad.append(f"{e.get('id')} {n} 字低於下界 {lo} 且沒有具名的下界例外")
+        elif not (plo <= paras <= phi):
+            bad.append(f"{e.get('id')} {paras} 段不在 {plo}–{phi}（{m} 分）")
+    if bad:
+        return fail("；".join(bad[:4]))
+    return ok(f"{len(_docs(p))} 集都在層級區間內")
+
+
+register(Check(
+    id="podcast.chars_in_tier",
+    covers="每集的 chars 與段數落在片長所屬層級的區間內；低於下界要有具名的 lowerBoundException",
+    blind_to=[
+        "字數對但內容是注水的——**短節目硬拉長比長節目超規格更難發現**",
+        "`also_top_tier_if_topics`（主題數達門檻時升到最高層）這條沒有實作，"
+        "因為 doc 只帶 1–3 個受控 topics，數不到十個",
+        "官方逐字稿的 10% 超規容許（`official_transcript_overrun_pct`）沒有套用，"
+        "因為 doc 沒有欄位說這一集用的是哪一層退援",
+        "`minutes` 本身是從 manifest 抄來的，抄錯這條看不出來",
+    ],
+    run=_chars_in_tier,
+    fixture={"anchors": {"length_tiers": [
+        {"under_minutes": 30, "chars": [2000, 3000], "paras": [10, 15]},
+        {"under_minutes": None, "chars": [4000, 6500], "paras": [20, 33]}]},
+        "doc": {"episodes": [{"id": "iltb-1", "minutes": 76, "chars": 6520,
+                              "sections": [{"paragraphs": ["x"] * 27}]}]}},
+    near_miss={"anchors": {"length_tiers": [
+        {"under_minutes": 30, "chars": [2000, 3000], "paras": [10, 15]},
+        {"under_minutes": None, "chars": [4000, 6500], "paras": [20, 33]}]},
+        "doc": {"episodes": [{"id": "iltb-1", "minutes": 76, "chars": 6500,
+                              "sections": [{"paragraphs": ["x"] * 27}]}]}},
+    suite="podcast",
+))
+
+
+# ── 12. 受控詞表 ─────────────────────────────────────────────────────
+def _topics(p):
+    """自由發揮的標籤跨日對不上，等於沒有標籤。"""
+    vocab = set(_A(p, "topics_vocabulary"))
+    lo, hi = _A(p, "per_episode", "topics")
+    bad = []
+    for e in _docs(p):
+        ts = e.get("topics") or []
+        stray = [t for t in ts if t not in vocab]
+        if stray:
+            bad.append(f"{e.get('id')} 有詞表外的標籤：{'、'.join(stray)}")
+        elif not (lo <= len(ts) <= hi):
+            bad.append(f"{e.get('id')} 有 {len(ts)} 個 topic，不在 {lo}–{hi}")
+    if bad:
+        return fail("；".join(bad[:4]))
+    return ok()
+
+
+register(Check(
+    id="podcast.topics_controlled",
+    covers="每集的 topics 都在受控詞表內，數量在 anchors 的 per_episode.topics 範圍",
+    blind_to=[
+        "標籤在詞表內但貼錯（一集講半導體卻標成投資哲學）",
+        "詞表本身涵蓋不到的題材——2026-08-20 實測 gsx 那集主體是生技醫療投資，"
+        "詞表裡沒有對應項，只能選最接近的三個",
+        "同一個題材跨日被標成不同的標籤",
+    ],
+    run=_topics,
+    fixture={"anchors": {"topics_vocabulary": ["半導體", "通膨"],
+                         "per_episode": {"topics": [1, 3]}},
+             "doc": {"episodes": [{"id": "a-1", "topics": ["半導體", "生技醫療"]}]}},
+    near_miss={"anchors": {"topics_vocabulary": ["半導體", "通膨"],
+                           "per_episode": {"topics": [1, 3]}},
+               "doc": {"episodes": [{"id": "a-1", "topics": ["半導體", "通膨"]}]}},
+    suite="podcast",
+))
+
+
+# ── 13. 每集的件數 ───────────────────────────────────────────────────
+def _counts(p):
+    """2026-08-20 首輪就撞到：撰寫端寫了 7–8 條核心重點，而 anchors 的上界是 5。
+
+    成因不是撰寫端貪心，是**派工單沒有把數量寫進去**——JOB.md 只給了 schema。
+    這條檢查抓到的是派工的缺漏，不是內容的缺漏。
+    """
+    tlo, thi = _A(p, "per_episode", "takeaways")
+    qlo, qhi = _A(p, "per_episode", "quotes")
+    bad = []
+    for e in _docs(p):
+        nt, nq = len(e.get("takeaways") or []), len(e.get("quotes") or [])
+        if not (tlo <= nt <= thi):
+            bad.append(f"{e.get('id')} 核心重點 {nt} 條，不在 {tlo}–{thi}")
+        if not (qlo <= nq <= qhi):
+            bad.append(f"{e.get('id')} 金句 {nq} 條，不在 {qlo}–{qhi}")
+    if bad:
+        return fail("；".join(bad[:4]))
+    return ok()
+
+
+register(Check(
+    id="podcast.per_episode_counts",
+    covers="每集的核心重點與金句數量落在 anchors 的 per_episode 範圍內",
+    blind_to=[
+        "數量對但每一條都很敷衍——`takeaway_sentences` 的句數這條沒有量",
+        "核心重點有沒有真的寫進「對投資人的含義」（那是語意，機械判不了）",
+        "**退到第四層的集數 quotes 應該是空陣列**，但那樣就落在下界外，"
+        "這條會誤叫——首輪十集都沒退到第四層，所以還沒撞到",
+    ],
+    run=_counts,
+    fixture={"anchors": {"per_episode": {"takeaways": [3, 5], "quotes": [2, 5]}},
+             "doc": {"episodes": [{"id": "b-1", "takeaways": [0] * 8, "quotes": [0] * 3}]}},
+    near_miss={"anchors": {"per_episode": {"takeaways": [3, 5], "quotes": [2, 5]}},
+               "doc": {"episodes": [{"id": "b-1", "takeaways": [0] * 5, "quotes": [0] * 5}]}},
+    suite="podcast",
+))
+
+
+# ── 14. 交叉分析 ─────────────────────────────────────────────────────
+def _crosscut(p):
+    n = len(_docs(p))
+    need = _A(p, "per_episode", "crosscut_min_episodes")
+    cc = p["doc"].get("crossCut")
+    if n >= need and not (cc and (cc.get("points") or [])):
+        return fail(f"當日 {n} 集達到門檻 {need}，卻沒有 crossCut —— "
+                    "交叉分析是這個站跟一疊摘要的分水嶺")
+    return ok()
+
+
+register(Check(
+    id="podcast.crosscut_present",
+    covers="當日集數達到 anchors 的 crosscut_min_episodes 時，crossCut 有內容",
+    blind_to=[
+        "crossCut 有內容但只是並列摘要，沒有真的交叉",
+        "**它引用的集數是不是當天真的有的那幾集**（`points[].episodes` 沒有回頭比對）",
+        "集數未達門檻時這條永遠 PASS，包含 0 集那天",
+    ],
+    run=_crosscut,
+    fixture={"anchors": {"per_episode": {"crosscut_min_episodes": 3}},
+             "doc": {"episodes": [{}, {}, {}], "crossCut": {"points": []}}},
+    near_miss={"anchors": {"per_episode": {"crosscut_min_episodes": 3}},
+               "doc": {"episodes": [{}, {}], "crossCut": None}},
+    suite="podcast",
+))
+
+
+# ── 15. 金句必須在逐字稿裡真的出現過 ─────────────────────────────────
+def _quotes_grounded(p):
+    """**這條是整組裡最重要的一條。**
+
+    其他判準壞掉時，產出是缺的、空的、格式錯的——看得出來。
+    金句造假的產出**讀起來比真的還通順**，而且事後回頭看也分不出來。
+
+    `original` 這個欄位存在的唯一理由就是讓這件事變成機械可判。
+    比對在 `systems/podcast.py` 做（它讀得到 repo 外面的逐字稿），這裡只判結果。
+    """
+    misses = p.get("quote_misses")
+    if misses is None:
+        return skipped("讀不到當日逐字稿，這一輪沒有比對過金句 —— "
+                       "**這不等於比對過沒問題**")
+    if misses:
+        lines = [f"{i}／{by}：「{o}…」" for i, by, o in misses[:3]]
+        return fail(f"{len(misses)} 條金句在逐字稿裡找不到：{'；'.join(lines)}")
+    return ok(f"{sum(len(e.get('quotes') or []) for e in _docs(p))} 條金句全部逐字命中")
+
+
+register(Check(
+    id="podcast.quotes_grounded",
+    covers="每一條金句的 original 都是當日逐字稿裡真的出現過的字串",
+    blind_to=[
+        "**中譯與原句對不對得起來**——這條只驗原句存在，不驗翻譯忠實",
+        "原句存在但講者掛錯（逐字稿的講者標記本身就常錯，2026-08-20 十集皆然）",
+        "原句是從廣告或台呼裡挑的",
+        "逐字稿讀不到時整條 SKIPPED，那時候這個閘門是開的",
+    ],
+    run=_quotes_grounded,
+    fixture={"doc": {"episodes": []},
+             "quote_misses": [["iltb-1", "Ben Thompson", "this line was never said"]]},
+    near_miss={"doc": {"episodes": []}, "quote_misses": []},
+    suite="podcast",
+))
+
+
+# ── 16. 帳本有往前走 ─────────────────────────────────────────────────
+def _ledger(p):
+    """BRIEF 第七節第四條：**拋出去的觀察要回頭對答案。**
+
+    這是本站跟一般摘要的分水嶺，所以它是當期失敗判準而不是加分項。
+    """
+    lo, hi = _A(p, "per_episode", "observations_per_day")
+    date = p["doc"].get("date")
+    led = p.get("ledger")
+    if led is None:
+        return fail("讀不到帳本 —— 觀察點沒有家，這一輪不能發")
+    today = [i for i in led.get("items") or [] if i.get("date") == date]
+    if not (lo <= len(today) <= hi):
+        return fail(f"帳本裡當日的觀察點有 {len(today)} 條，不在 {lo}–{hi}")
+    return ok(f"帳本新增 {len(today)} 條")
+
+
+register(Check(
+    id="podcast.ledger_advanced",
+    covers="帳本裡當日新增的觀察點數量落在 anchors 的 observations_per_day 範圍",
+    blind_to=[
+        "**逾期未判的項目**：BRIEF 把它列為當期失敗判準，但帳本的項目"
+        "沒有到期欄位（歷史 62 條都只有 date／status／verdict），所以這條判不了。"
+        "要補這個洞得先給帳本加 `due`，而歷史不改寫——只能從新項目開始帶",
+        "觀察點收得對不對（「三個月後有可能被證明是錯的嗎」是語意判準）",
+        "同一個觀察點被重複收錄",
+        "doc 的 postscript 與帳本檔案有沒有對上（這條只看帳本）",
+    ],
+    run=_ledger,
+    fixture={"anchors": {"per_episode": {"observations_per_day": [2, 3]}},
+             "doc": {"date": "2026-08-20"},
+             "ledger": {"items": [{"date": "2026-08-19"}]}},
+    near_miss={"anchors": {"per_episode": {"observations_per_day": [2, 3]}},
+               "doc": {"date": "2026-08-20"},
+               "ledger": {"items": [{"date": "2026-08-20"}, {"date": "2026-08-20"}]}},
+    suite="podcast",
 ))
