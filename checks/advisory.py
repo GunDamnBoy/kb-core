@@ -618,3 +618,87 @@ register(Check(
                     "body": "字串", "src": "Bloomberg"}]}]}]}},
     suite="advisory",
 ))
+
+
+# ── 15. 派工表本身 ───────────────────────────────────────────────────
+def _dispatch(p):
+    groups = _A(p, "groups")
+    roster = _A(p, "collectors", "roster")
+    batches = _A(p, "collectors", "batches")
+    bad = []
+
+    # ①每一組、兩種模式，都要有人負責。**素材從來不缺，缺的是有人負責。**
+    for g in groups:
+        for mode in ("weekday", "weekend"):
+            own = (g.get("owners") or {}).get(mode)
+            if not own:
+                bad.append(f"{g['name']} 的 {mode} 沒有指派")
+                continue
+            unknown = sorted(set(own) - set(roster))
+            if unknown:
+                bad.append(f"{g['name']}／{mode} 指給了不存在的採集員 {unknown}")
+            # ②指派的則數要加總成配額。配額與下限的差額是汰除餘裕，
+            #   加總對不上就代表餘裕被默默改掉了。
+            s, q = sum(own.values()), g["quota"][mode]
+            if s != q:
+                bad.append(f"{g['name']}／{mode} 指派合計 {s} ≠ 配額 {q}")
+
+    # ③每個採集員恰好在一個批次裡。漏掉的那個永遠不會被派出去，
+    #   而它負責的組會在盤點缺口時才浮出來——那時已經是補位輪的成本了。
+    flat = [c for b in batches for c in b]
+    dupe = sorted({c for c in flat if flat.count(c) > 1})
+    if dupe:
+        bad.append(f"採集員出現在一個以上的批次：{dupe}")
+    missing = sorted(set(roster) - set(flat))
+    if missing:
+        bad.append(f"採集員不在任何批次裡：{missing}")
+    ghost = sorted(set(flat) - set(roster))
+    if ghost:
+        bad.append(f"批次裡有不存在的採集員：{ghost}")
+
+    # ④**一家來源只能屬於一個採集員。** 這條才是並行安全的實際依據：
+    #   單來源 15 篇的上限與「不要同時打同一家」，只有在獨佔時守得住。
+    home = {}
+    for cid, c in roster.items():
+        for s in c.get("sources") or []:
+            if s in home:
+                bad.append(f"來源「{s}」同時屬於 {home[s]} 與 {cid}")
+            home[s] = cid
+    naked = sorted(cid for cid, c in roster.items() if not (c.get("sources") or []))
+    if naked:
+        bad.append(f"採集員沒有任何來源：{naked}")
+
+    if bad:
+        return fail("；".join(bad))
+    sizes = "＋".join(str(len(b)) for b in batches)
+    return ok(f"{len(roster)} 個採集員、{sizes} 兩批、{len(home)} 家來源各有唯一歸屬")
+
+
+register(Check(
+    id="advisory.dispatch_wellformed",
+    covers="anchors 的派工表自洽：十五組兩種模式都有人負責且合計等於配額、"
+           "每個採集員恰好在一個批次、每一家來源只屬於一個採集員",
+    blind_to=[
+        "**指派了但那個人當天沒跑**——這條驗的是表，不是執行",
+        "數字加得起來但分派得不合理（把台灣 12 則指給只讀 Bloomberg 的人）",
+        "來源獨佔了，但兩個採集員讀同一家的**不同子網域**（newsletter.semianalysis.com vs semianalysis.com）",
+        "批次大小對分頁池是否真的安全——4 這個數字的依據在 anchors 的 _batches_source，這裡不驗它",
+        "採集員實際交回幾則（那是 group_floors 與當期失敗判準的事）",
+        "來源清單有沒有跟 preamble 第六節同步——來源的家在 preamble，這裡只驗歸屬唯一",
+    ],
+    run=_dispatch,
+    fixture={"anchors": {
+        "groups": [{"name": "央行、利率與匯率", "quota": {"weekday": 9, "weekend": 9},
+                    "owners": {"weekday": {"A": 5, "C": 4}}}],
+        "collectors": {"batches": [["A"], ["C"]],
+                       "roster": {"A": {"sources": ["Bloomberg"]},
+                                  "C": {"sources": ["Nikkei Asia"]}}}}},
+    near_miss={"anchors": {
+        "groups": [{"name": "央行、利率與匯率", "quota": {"weekday": 9, "weekend": 9},
+                    "owners": {"weekday": {"A": 5, "C": 4},
+                               "weekend": {"A": 5, "C": 4}}}],
+        "collectors": {"batches": [["A"], ["C"]],
+                       "roster": {"A": {"sources": ["Bloomberg"]},
+                                  "C": {"sources": ["Nikkei Asia"]}}}}},
+    suite="advisory",
+))

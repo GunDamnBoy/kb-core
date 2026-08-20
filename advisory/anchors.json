@@ -27,7 +27,18 @@
     "weekday": 12,
     "weekend": 11
    },
-   "section": "macro"
+   "section": "macro",
+   "owners": {
+    "weekday": {
+     "A": 6,
+     "E": 6
+    },
+    "weekend": {
+     "A": 4,
+     "C": 2,
+     "E": 5
+    }
+   }
   },
   {
    "name": "AI 與半導體",
@@ -40,7 +51,20 @@
     "weekday": 11,
     "weekend": 10
    },
-   "section": "industry"
+   "section": "industry",
+   "owners": {
+    "weekday": {
+     "A": 3,
+     "B": 3,
+     "D": 5
+    },
+    "weekend": {
+     "A": 3,
+     "B": 3,
+     "C": 2,
+     "D": 2
+    }
+   }
   },
   {
    "name": "台灣",
@@ -53,7 +77,15 @@
     "weekday": 12,
     "weekend": 11
    },
-   "section": "macro"
+   "section": "macro",
+   "owners": {
+    "weekday": {
+     "F": 12
+    },
+    "weekend": {
+     "F": 11
+    }
+   }
   },
   {
    "name": "央行、利率與匯率",
@@ -66,7 +98,17 @@
     "weekday": 9,
     "weekend": 9
    },
-   "section": "macro"
+   "section": "macro",
+   "owners": {
+    "weekday": {
+     "A": 5,
+     "C": 4
+    },
+    "weekend": {
+     "A": 5,
+     "C": 4
+    }
+   }
   },
   {
    "name": "中國",
@@ -79,7 +121,15 @@
     "weekday": 7,
     "weekend": 5
    },
-   "section": "macro"
+   "section": "macro",
+   "owners": {
+    "weekday": {
+     "C": 7
+    },
+    "weekend": {
+     "C": 5
+    }
+   }
   },
   {
    "name": "日本",
@@ -92,7 +142,15 @@
     "weekday": 8,
     "weekend": 5
    },
-   "section": "macro"
+   "section": "macro",
+   "owners": {
+    "weekday": {
+     "C": 8
+    },
+    "weekend": {
+     "C": 5
+    }
+   }
   },
   {
    "name": "能源與原物料",
@@ -105,7 +163,16 @@
     "weekday": 7,
     "weekend": 5
    },
-   "section": "industry"
+   "section": "industry",
+   "owners": {
+    "weekday": {
+     "A": 1,
+     "D": 6
+    },
+    "weekend": {
+     "D": 5
+    }
+   }
   },
   {
    "name": "金融、併購與企業",
@@ -118,7 +185,17 @@
     "weekday": 7,
     "weekend": 5
    },
-   "section": "industry"
+   "section": "industry",
+   "owners": {
+    "weekday": {
+     "A": 3,
+     "B": 4
+    },
+    "weekend": {
+     "A": 1,
+     "B": 4
+    }
+   }
   },
   {
    "name": "地緣政治（中東與戰事）",
@@ -131,7 +208,17 @@
     "weekday": 8,
     "weekend": 6
    },
-   "section": "politics"
+   "section": "politics",
+   "owners": {
+    "weekday": {
+     "B": 2,
+     "E": 6
+    },
+    "weekend": {
+     "B": 2,
+     "E": 4
+    }
+   }
   },
   {
    "name": "美國政治與政策",
@@ -144,7 +231,17 @@
     "weekday": 9,
     "weekend": 7
    },
-   "section": "politics"
+   "section": "politics",
+   "owners": {
+    "weekday": {
+     "B": 4,
+     "E": 5
+    },
+    "weekend": {
+     "B": 3,
+     "E": 4
+    }
+   }
   },
   {
    "name": "歐洲",
@@ -157,7 +254,15 @@
     "weekday": 5,
     "weekend": 3
    },
-   "section": "macro"
+   "section": "macro",
+   "owners": {
+    "weekday": {
+     "B": 5
+    },
+    "weekend": {
+     "B": 3
+    }
+   }
   },
   {
    "name": "亞太（韓國、印度、東南亞）",
@@ -170,7 +275,15 @@
     "weekday": 6,
     "weekend": 4
    },
-   "section": "macro"
+   "section": "macro",
+   "owners": {
+    "weekday": {
+     "G": 6
+    },
+    "weekend": {
+     "G": 4
+    }
+   }
   },
   {
    "name": "生技健護",
@@ -183,7 +296,15 @@
     "weekday": 6,
     "weekend": 3
    },
-   "section": "industry"
+   "section": "industry",
+   "owners": {
+    "weekday": {
+     "G": 6
+    },
+    "weekend": {
+     "G": 3
+    }
+   }
   },
   {
    "name": "信用債",
@@ -196,7 +317,15 @@
     "weekday": 4,
     "weekend": 3
    },
-   "section": "industry"
+   "section": "industry",
+   "owners": {
+    "weekday": {
+     "A": 4
+    },
+    "weekend": {
+     "A": 3
+    }
+   }
   },
   {
    "name": "黃金",
@@ -209,7 +338,15 @@
     "weekday": 3,
     "weekend": 2
    },
-   "section": "industry"
+   "section": "industry",
+   "owners": {
+    "weekday": {
+     "D": 3
+    },
+    "weekend": {
+     "D": 2
+    }
+   }
   }
  ],
  "_groups_source": "分級是拿 2026-08-04 的實際素材校準出來的：那天全站 91 則，台灣 9、日本 7、中國 3、韓印東南亞 3、歐洲 3、生技健護 3、黃金 1、信用債 0。衛星組若訂 ≥10 甚至 ≥6，第一天就會有五組達不到。核心四組週末不放寬是刻意的（8/09、8/10 都達標），代價是週末幾乎必然跑一輪補位。配額一律高於下限，差額就是汰除餘裕（去重、一事一卡合併、品質汰除之後會縮水）；配額等於下限就是不留餘裕。配額對齊各組歷史實交量：平日 114、週末 89，落在 8/13–8/16 實交 118／123／122／110 之內。",
@@ -354,5 +491,92 @@
    "en": "Politics"
   }
  ],
- "_sections_source": "舊規格記載三區塊的組數為 macro 7、industry 6、politics 2，但**沒有寫哪一組歸哪一區** ——2026-08-19 照著 SKILL 紙上演練時才發現：撰寫端要自己決定，而檢查驗不到。依組數與語意還原後三區各為 7／6／2，與舊規格記載相符。"
+ "_sections_source": "舊規格記載三區塊的組數為 macro 7、industry 6、politics 2，但**沒有寫哪一組歸哪一區** ——2026-08-19 照著 SKILL 紙上演練時才發現：撰寫端要自己決定，而檢查驗不到。依組數與語意還原後三區各為 7／6／2，與舊規格記載相符。",
+ "_groups_owners_source": "「誰交」這一欄是舊規格第 23 次修訂的原值，2026-08-20 放回來。**重寫時掉的就是這一欄** —— 下限與配額十五組一個數字都沒變，只有它不見了。少了它，`SKILL` 步驟 3 的「依 quota 分派」能分派出來的就只有「一組一個分身」，於是 2026-08-20 那輪跑成 13 個分身逐一執行、3 小時 45 分。**每組的數字是唯一的家；A22・B18 這種每個採集員的合計刻意不寫**，要用就從這裡加總 —— 手寫就是第二份副本（同 site_total._no_sums）。",
+ "collectors": {
+  "_": "七個**來源型**採集員。分組是十五組，但採集員是七個 —— 一個採集員交好幾組。**這樣拆的理由是來源，不是題材**：單一來源 15 篇的上限、以及不要同時打同一家，只有在「一家來源只有一個人碰」的時候才守得住。2026-08-09 A 組對 Bloomberg 連發約 35 次預篩請求觸發風控，當日該來源成卡 0 篇，而開場可用性測試原本是通過的 —— **是採集方式把來源惹毛的，不是來源本來就擋。**",
+  "_sources_authorship": "**批次組成與每組的「誰交」是舊規格原值；來源歸屬是 2026-08-20 新寫的。**舊規格只留下代號（`A6・E6`），A–G 各自讀哪些來源在另一份 `subagent_preamble.md`，而舊規格自述「v1–v13 的 prompt 已不可考」。所以這張表是依三條線索重建的：①A 組打 Bloomberg（8/09 風控）②E 組讀 IBD（8/10 讀完 6 篇才發現全在窗口外）③F 組只做台灣、鉅亨 ≥4／MoneyDJ ≥3；其餘依題材配。**真正要守住的不是我配得對不對，是「一家來源只屬於一個採集員」這個性質**，那條由 `advisory.dispatch_wellformed` 驗。要調整歸屬就改這裡，檢查會擋住重複。",
+  "batches": [
+   [
+    "A",
+    "C",
+    "E",
+    "F"
+   ],
+   [
+    "B",
+    "D",
+    "G"
+   ]
+  ],
+  "_batches_source": "第一批四個、第二批三個，舊規格原值。**第一批全部回報後才派第二批。**Chrome 分頁群組容量約 4–6 格，七組齊發會互相回收分頁：2026-08-11 七組同時跑，三組失敗率 65–70%、吃掉全輪 58% 成本只交回 44 則；順的四組每則約 12.5 萬 token、卡住的三組 55.5 萬。**四個是分頁池撐得住的上限，不是保守估計。**",
+  "dispatch": "同一批的呼叫要在**同一則訊息裡一次發出**，不是一個一個等它跑完。2026-08-20 那輪 14 個分身逐一執行，這是 3 小時 45 分裡最大的一塊可壓縮時間。",
+  "roster": {
+   "A": {
+    "topic": "美股大盤・央行政策面・信用債",
+    "sources": [
+     "Bloomberg",
+     "CNBC",
+     "MarketWatch",
+     "央行官方（Fed／BOJ／ECB／美國財政部）",
+     "FRED"
+    ]
+   },
+   "B": {
+    "topic": "歐洲・美國政策・金融併購",
+    "sources": [
+     "WSJ",
+     "The Economist",
+     "Washington Post"
+    ]
+   },
+   "C": {
+    "topic": "中國・日本・利率市場定價",
+    "sources": [
+     "Nikkei Asia",
+     "華爾街見聞",
+     "Investing.com Fed Rate Monitor"
+    ]
+   },
+   "D": {
+    "topic": "AI 半導體・能源・黃金",
+    "sources": [
+     "SemiAnalysis",
+     "Tom's Hardware",
+     "TrendForce",
+     "Oil & Gas Journal",
+     "EIA",
+     "SPDR Gold Shares"
+    ]
+   },
+   "E": {
+    "topic": "美股個股與財報・地緣・美國政治",
+    "sources": [
+     "NYT",
+     "Barron's",
+     "IBD",
+     "Politico",
+     "The Hill"
+    ]
+   },
+   "F": {
+    "topic": "台灣",
+    "sources": [
+     "鉅亨網 Anue",
+     "MoneyDJ",
+     "TWSE／TPEX／MOPS"
+    ]
+   },
+   "G": {
+    "topic": "亞太・生技健護",
+    "sources": [
+     "Korea Herald",
+     "Mint",
+     "Fierce Biotech",
+     "STAT News"
+    ]
+   }
+  },
+  "_roster_notes": "A 組政策面 ≥5、C 組市場數據面 ≥4 是央行組刻意的兩人分工（舊規格第 23 次修訂由 3 提高）。F 組內部：鉅亨 ≥4、MoneyDJ ≥3，週末 MoneyDJ 不出編輯稿，改由鉅亨與官方端點補。"
+ }
 }
