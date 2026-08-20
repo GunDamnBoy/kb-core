@@ -240,14 +240,21 @@
   "source": "2026-08-20 重建時決定**沿用 chart-of-the-day 這個 repo**，理由就是上面那條，以及舊規格自己記著「新建的 repo 不會自動納入推送清單」——那個坑踩過兩次（podcast 8/02、chart 8/05），開新 repo 是把同一類設定風險再進一次。"
  },
  "rendering": {
-  "_": "**一份 spec，兩個渲染器。** 靜態軌（PNG／SVG）與互動軌（網頁）從同一份 spec 出圖。",
-  "stored_option": false,
+  "_": "**兩軌都留：靜態軌（PNG／SVG，matplotlib）與互動軌（網頁，ECharts）。** 2026-08-20 考慮過只留一個（網頁改顯示 SVG／或 PNG 改成截圖），最後選擇留兩軌、改用檢查抓漂移 —— 代價是兩套實作還在，換來的是 PNG 的排版規格不動、互動也不失去。",
+  "stored_option": true,
   "record_renderer_version": true,
-  "source": "舊制把 ECharts 的 `option` 存進日檔，於是同一張圖有兩份實作——而文件反覆記載**雙軌漂移是這套系統最常見的缺陷類型**：zero_line 只有 PNG 有、ECharts category 軸按位置貼資料導致整條位移、heatmap 中文列標籤在 PNG 被切掉、grouped_bar 的 barWidth 是每條而非一組（兩條各 62% → 一組實佔 143%），以及最嚴重的那個：**瀑布圖在網頁上每根從 0 往上長**（ECharts 預設 stackStrategy=samesign），**圖上的結論與 takeaway 相反卻不丟任何例外**。2026-08-17 那期實測 option 佔全檔 43%、series 佔 32%，兩者內容重複。改成不存 option：兩種錯的代價不對稱——**雙軌漂移是正確性失效，而「舊圖用新版渲染器重畫會有樣式差異」只是版本問題**，在 about 記 renderer_version 就能定位。",
+  "source": "舊制的頭號缺陷是**雙軌漂移**：改了靜態軌忘了互動軌。`chartkit.py` 891 行裡本來就是兩套實作（`render_static` 用 matplotlib、`echarts_option` 產 option），逐圖型各寫一次 —— 所以「從同一份 spec 出發」並不會讓它們畫得一樣。\n**實際發生過的漂移，錯的都在 option 那一側**，因為 PNG 每天有人看、網頁沒有。所以檢查的形式不是比兩張圖，是問「**這份 option 有沒有忠實地把 spec 編碼進去**」——matplotlib 是參考實作，因為它的輸出就是產品（House View 貼的是 PNG）。",
   "legacy_dialect": "2026-08-05 至 08-17 這 13 天的日檔**存了 option**。歷史封存不改寫，所以渲染層要吃兩種方言：有 option 就用它，沒有就從 spec 現算。",
   "first_use_of_a_new_kind": "**首次使用任何一種新圖型的當天，一定要實載網頁看一眼**——檢查程式只檢查欄位齊不齊，不會把 option 餵進 ECharts。2026-08-12 gauge 的 markLine 在無直角座標系上丟例外，而前端只有一層 catch，**一張圖丟例外就整頁死掉**。",
-  "renderer_ready": false,
-  "_renderer_ready_source": "**規則已經決定，機制還沒建。** `stored_option: false` 要成立，前提是兩個渲染器都能從 spec 畫出 anchors.kinds 那八種圖型 —— 在那之前照這條規則發布會什麼都畫不出來。\n所以這裡用一個**具名的旗標**而不是把 `stored_option` 暫時改成 true：後者會讓 anchors 說「我們存 option」，跟 BRIEF 矛盾，而且未來看不出那是過渡狀態。\n`chart.no_stored_option` 讀這個旗標：`false` 時回 SKIPPED 並說出原因 ——**「還沒做」與「做過了沒問題」必須分得出來。** 渲染器落地那天把它改成 true，檢查就自動開始擋。"
+  "drift_assertions": {
+   "_": "四條都是從真實事故反推的，不是想像出來的。每一條後面那句是它當初藏住的方式。",
+   "category_axis_alignment": "類別軸圖型的 `xAxis.data` 要等於 `cats`（waterfall 多一個合計），且每條 bar 序列的資料長度要對得上 —— **ECharts 按位置貼資料，錯位不會報錯，整條位移**。",
+   "waterfall_stack_strategy": "waterfall 的 bar 序列必須帶 `stackStrategy: \"all\"`。**漏掉時資料完全不變**，只有渲染行為變成 ECharts 預設的 `samesign`，於是每根從 0 往上長 —— **圖上的結論與 `takeaway` 相反，卻不丟任何例外**。光比資料抓不到，必須直接斷言這個鍵。",
+   "bar_geometry": "grouped／stacked 用 `barCategoryGap`，**不用逐序列的 `barWidth`**。`barWidth` 是**每一條**的寬度不是一整組 —— 兩條各 62% → 一組實佔 143%。",
+   "zero_line_both_tracks": "`zero_line` 為真時（gauge 與 heatmap 除外，兩軌都刻意不畫），option 裡要有一條 `markLine` 帶 `{yAxis: 0}`。\n**2026-08-20 這條檢查一寫出來就抓到還活著的漂移**：站上 7 張標了 zero_line 的圖，只有 1 張（唯一那張 timeseries）的互動軌有零線 —— grouped_bar 4 張、scatter 1 張、waterfall 1 張全部沒有。當初的修法只做進了 timeseries 那條路，而測試案例剛好是 timeseries，所以看起來修好了。**改一半比沒改更難發現。**\n修法是把它抽成 `_apply_zero_line()` 並讓三條出口都經過，讓「哪一種圖型」不再是變因。驗收：65 張圖重建 option，把零線 markLine 拿掉之後**全部與原檔逐字相同**，證明只加了零線、沒有順手改到別的。歷史封存不回頭改寫，所以站上那 6 張的互動軌維持原樣。",
+   "palette_not_handwritten": "`option.color` 要等於 anchors 的四個角色。2026-08-05 那期九條序列 100% 手寫 color，其中七條等於預設（白工）。",
+   "blind_to": "**這一組驗不到「matplotlib 畫錯了」** —— 它把靜態軌當成參考實作。理由是 PNG 每天有人看，錯了會被發現；而網頁沒有人複查，那才是會藏住的那一側。也驗不到純排版問題（heatmap 中文列標籤在 PNG 被切掉那種），那是像素層的事。"
+  }
  },
  "kinds": {
   "_": "**每一種圖型的資料住在自己的欄位裡，不是統一用 `series`。** 這張表是「一年後能不能原樣重畫」的實際依據——渲染層照它取資料，檢查程式照它決定該驗哪些欄位。",

@@ -407,47 +407,116 @@ register(Check(
 ))
 
 
-# ── 9. 不要存 option ────────────────────────────────────────────────
-def _no_stored_option(p):
-    """**一份 spec，兩個渲染器。** 存了 option 就等於同一張圖有兩份實作。
+# ── 9. option 有沒有忠實地把 spec 編碼進去 ────────────────────────
+CAT_KINDS = ("grouped_bar", "stacked_bar", "pct_stacked_bar", "waterfall")
 
-    舊制最嚴重的一次雙軌漂移：瀑布圖在網頁上每根從 0 往上長，
-    **圖上的結論與 takeaway 相反，卻不丟任何例外。**
-    """
-    if _A(p, "rendering", "stored_option") is not False:
-        return skipped("anchors 目前允許存 option")
-    if not _A(p, "rendering", "renderer_ready"):
-        return skipped("渲染器還沒能從 spec 畫出全部圖型 —— "
-                       "**規則已定、機制未建**，這條先不擋。旗標在 anchors.rendering.renderer_ready")
-    has = [c.get("slug", "?") for c in _charts(p["doc"]) if c.get("option")]
-    if has:
-        return fail(f"{len(has)} 張圖存了 option：{'、'.join(has[:4])} —— "
-                    "兩軌要從同一份 spec 渲染，存下來的那一份會漂")
-    if not p["doc"].get("about", {}).get("renderer_version"):
-        return fail("about.renderer_version 沒填 —— 不存 option 的代價是"
-                    "「舊圖用新版渲染器重畫會有樣式差異」，那要靠這個欄位定位")
-    return ok()
+
+def _waterfall_bases(vals):
+    """瀑布圖每一根的底。**這是從 vals 反推的，不是從 option 抄的** ——
+    抄過來比對就變成拿它自己驗它自己。"""
+    base, run = [], 0.0
+    for v in vals:
+        base.append(round(min(run, run + v), 6))
+        run = round(run + v, 6)
+    base.append(0.0)      # 合計那一根從 0 起
+    return base
+
+
+def _option_spec(p):
+    if _A(p, "rendering", "stored_option") is not True:
+        return skipped("anchors 目前不存 option —— 沒有第二軌可比")
+    want_color = [_A(p, "palette", k) for k in ("lead", "contrast", "overflow", "background")]
+    bad = []
+    for c in _charts(p["doc"]):
+        slug, kind = c.get("slug", "?"), c.get("kind")
+        o = c.get("option")
+        if not o:
+            bad.append(f"{slug} 沒有 option —— 互動軌畫不出來，而網頁不會有人回報")
+            continue
+        srs = o.get("series") or []
+        if o.get("color") and o["color"] != want_color:
+            bad.append(f"{slug} option.color 不是 anchors 的四個角色")
+
+        # ①類別軸對齊：ECharts 按位置貼資料，錯位不報錯、整條位移
+        if kind in CAT_KINDS:
+            cats = c.get("cats") or []
+            want = list(cats) + ([c.get("total_label", "合計")] if kind == "waterfall" else [])
+            got = ((o.get("xAxis") or {}) if isinstance(o.get("xAxis"), dict)
+                   else (o.get("xAxis") or [{}])[0]).get("data")
+            if got is not None and len(got) != len(want):
+                bad.append(f"{slug} xAxis.data {len(got)} 項，cats 是 {len(want)} 項")
+            for si in srs:
+                if si.get("type") == "bar" and si.get("data") is not None \
+                        and len(si["data"]) != len(want):
+                    bad.append(f"{slug} 序列「{si.get('name', '?')}」{len(si['data'])} 筆，"
+                               f"軸上是 {len(want)} 格")
+
+        # ②瀑布圖的 stackStrategy：漏掉時**資料完全不變**，只有渲染行為變
+        if kind == "waterfall":
+            bars = [si for si in srs if si.get("type") == "bar"]
+            off = [si.get("name", "?") for si in bars if si.get("stackStrategy") != "all"]
+            if off:
+                bad.append(f"{slug} 的 bar 序列缺 stackStrategy=all（{'、'.join(str(x) for x in off)}）"
+                           " —— 網頁上每根會從 0 往上長，**結論與 takeaway 相反**")
+            vals = c.get("vals")
+            if vals and bars and isinstance(bars[0].get("data"), list):
+                want_base = _waterfall_bases(vals)
+                got_base = [x if isinstance(x, (int, float)) else None for x in bars[0]["data"]]
+                if len(got_base) == len(want_base):
+                    diff = [i for i, (g, w) in enumerate(zip(got_base, want_base))
+                            if g is None or abs(g - w) > 0.01]
+                    if diff:
+                        bad.append(f"{slug} 底柱與 vals 反推的對不上（第 {diff[:3]} 格）")
+
+        # ③長條幾何：barWidth 是「每一條」不是「一整組」
+        if kind in ("grouped_bar", "stacked_bar", "pct_stacked_bar"):
+            hand = [si.get("name", "?") for si in srs if si.get("barWidth")]
+            if hand and len(srs) > 1:
+                bad.append(f"{slug} 用了逐序列的 barWidth（{'、'.join(str(x) for x in hand)}）"
+                           " —— 那是每一條的寬度，兩條各 62% 會讓一組實佔 143%。用 barCategoryGap")
+
+        # ④zero_line 兩軌都要有。gauge 與 heatmap 排除 ——
+        #   靜態軌 render_static() 就是這樣寫的，兩邊的排除條件要逐字相同。
+        if c.get("zero_line") and kind not in ("gauge", "heatmap"):
+            has = any(any((d or {}).get("yAxis") == 0
+                          for d in ((si.get("markLine") or {}).get("data") or []))
+                      for si in srs)
+            if not has:
+                bad.append(f"{slug} 標了 zero_line 但 option 裡沒有 yAxis=0 的 markLine"
+                           " —— **這條當初只有 PNG 有**")
+    if bad:
+        return fail("；".join(bad))
+    return ok(f"{len(_charts(p['doc']))} 張圖的 option 與 spec 一致")
 
 
 register(Check(
-    id="chart.no_stored_option",
-    covers="當日的圖都不存 ECharts option，且 about.renderer_version 有填",
+    id="chart.option_matches_spec",
+    covers="每張圖的 ECharts option 忠實編碼了 spec：類別軸對齊、waterfall 的 stackStrategy 與底柱、"
+           "長條幾何用 barCategoryGap、zero_line 兩軌都有、配色是 anchors 的四個角色",
     blind_to=[
-        "**兩個渲染器是不是真的一致**——這條只擋掉「存第二份」，不驗兩軌畫出來一樣",
-        "renderer_version 填了但填錯",
-        "**渲染器還沒好的期間這條是 SKIPPED**——它會說出原因，但那段期間沒有東西在擋存 option",
-        "2026-08-17 之前那 13 天存了 option，那是舊制，歷史不改寫（檢查只跑當日）",
-        "spec 本身缺欄位——那是 chart.kind_data_present 的事",
+        "**驗不到「matplotlib 畫錯了」** —— 靜態軌被當成參考實作，"
+        "因為 PNG 每天有人看、網頁沒有人複查，會藏住的是後者",
+        "純排版問題（heatmap 中文列標籤在 PNG 被切掉那種）—— 那是像素層的事",
+        "option 合法但 ECharts 版本不支援那個鍵（`stackStrategy` 需 ≥5.3.3）",
+        "類別軸格數對但**內容順序**錯了（只比長度，不比字串）",
+        "非類別軸圖型的資料是否對齊（timeseries／scatter 走日期或數值軸）",
+        "gauge 與 heatmap 的 zero_line（兩軌都刻意不畫）",
     ],
-    run=_no_stored_option,
-    fixture={"anchors": {"rendering": {"stored_option": False, "renderer_ready": True},
-                         "known_exceptions": {"diversity_from": "2026-08-10"}},
-             "doc": {"date": "2026-08-20", "about": {"renderer_version": "1"},
-                     "charts": [{"slug": "x", "option": {"series": []}}]}},
-    near_miss={"anchors": {"rendering": {"stored_option": False, "renderer_ready": True},
-                           "known_exceptions": {"diversity_from": "2026-08-10"}},
-               "doc": {"date": "2026-08-20", "about": {"renderer_version": "1"},
-                       "charts": [{"slug": "x"}]}},
+    run=_option_spec,
+    fixture={"anchors": {"rendering": {"stored_option": True},
+                         "palette": {"lead": "#D70C18", "contrast": "#1F4E79",
+                                     "overflow": "#8A8F95", "background": "#B8BBBE"}},
+             "doc": {"charts": [{"slug": "w", "kind": "waterfall",
+                                 "cats": ["a", "b"], "vals": [1.0, -2.0],
+                                 "option": {"series": [{"type": "bar", "data": [0, 1, 0]}]}}]}},
+    near_miss={"anchors": {"rendering": {"stored_option": True},
+                           "palette": {"lead": "#D70C18", "contrast": "#1F4E79",
+                                       "overflow": "#8A8F95", "background": "#B8BBBE"}},
+               "doc": {"charts": [{"slug": "w", "kind": "waterfall",
+                                   "cats": ["a", "b"], "vals": [1.0, -2.0],
+                                   "option": {"xAxis": {"data": ["a", "b", "合計"]},
+                                              "series": [{"type": "bar", "stackStrategy": "all",
+                                                          "data": [0.0, -1.0, 0.0]}]}}]}},
     suite="chart",
 ))
 

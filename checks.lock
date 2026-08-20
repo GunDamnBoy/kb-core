@@ -20,7 +20,7 @@ chart.diversity
 chart.footer_lines
 chart.kind_data_present
 chart.lengths
-chart.no_stored_option
+chart.option_matches_spec
 chart.series_cap
 chart.series_freshness
 chart.size
