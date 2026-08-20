@@ -779,3 +779,84 @@ register(Check(
                    "watchReview": [{"d": "2026-08-19", "w": "原文", "t": "回顧"}]}}},
     suite="advisory",
 ))
+
+
+# ── 17. 窗口本身 ─────────────────────────────────────────────────────
+def _window(p):
+    """**其他每一條窗口相關的檢查都拿這個窗口當基準，所以它自己要先被驗過。**
+
+    `ts_in_window` 問「卡片落在窗口裡嗎」、`_mode` 問「起點那天是不是週末」——
+    兩者都對 `window` 照單全收。起點寫錯不會讓任何一條變紅，
+    只會**安靜地換掉整輪的收錄門檻與下限表**。
+    """
+    doc = p["doc"]
+    w = doc.get("window") or {}
+    if not (w.get("from") and w.get("to")):
+        return fail("window 缺 from 或 to —— 沒有窗口就沒有收錄門檻")
+    hour = _A(p, "window", "from_hour_taipei")
+    off = _A(p, "window", "from_day_offset")
+    lo_h, hi_h = _A(p, "window", "length_hours")
+    ov_lo, ov_hi = _A(p, "window", "overlap_hours")
+
+    fr = dt.datetime.fromisoformat(w["from"]).astimezone(TPE)
+    to = dt.datetime.fromisoformat(w["to"]).astimezone(TPE)
+    bad = []
+    if (fr.hour, fr.minute, fr.second) != (hour, 0, 0):
+        bad.append(f"起點是台北 {fr:%H:%M:%S}，應為 {hour:02d}:00:00")
+    want = dt.date.fromisoformat(doc["date"]) + dt.timedelta(days=off)
+    if fr.date() != want:
+        bad.append(f"起點日期 {fr.date()}，依 date {doc['date']} 與偏移 {off} 應為 {want}")
+    if to <= fr:
+        bad.append(f"終點 {to} 不晚於起點 {fr}")
+    if to.date() != dt.date.fromisoformat(doc["date"]):
+        bad.append(f"終點的台北日期 {to.date()} 不是 date {doc['date']}")
+
+    prev = p.get("prev")
+    pw = (prev or {}).get("window") or {}
+    ov = None
+    if pw.get("to"):
+        ov = (dt.datetime.fromisoformat(pw["to"]).astimezone(TPE) - fr).total_seconds() / 3600
+        if ov < ov_lo:
+            # 負的重疊 ＝ 兩個窗口之間有斷口，那一段的素材**永久掉單**，
+            # 而且不會有任何一張卡看起來不對。
+            bad.append(f"與前一版的窗口有 {-ov:.1f} 小時斷口 —— 那一段永久掉單")
+    if bad:
+        return fail("；".join(bad))
+
+    warns = []
+    ln = (to - fr).total_seconds() / 3600
+    if not (lo_h <= ln <= hi_h):
+        warns.append(f"窗口長 {ln:.1f} 小時，不在 {lo_h}–{hi_h} —— "
+                     "多半代表這一輪開跑時間偏離常態，跨日比較會失真")
+    if ov is not None and ov > ov_hi:
+        warns.append(f"與前一版重疊 {ov:.1f} 小時，超過 {ov_hi}")
+    if warns:
+        return warn("；".join(warns))
+    return ok(f"起點台北 {fr:%m-%d %H:%M}、長 {ln:.1f} 小時"
+              + (f"、與前版重疊 {ov:.1f} 小時" if ov is not None else ""))
+
+
+register(Check(
+    id="advisory.window_wellformed",
+    covers="window 自己：起點的時刻與日偏移符合 anchors、終點晚於起點且落在當日、"
+           "與前一版沒有斷口（缺就擋）；窗口長度與重疊超出實測帶（只警告）",
+    blind_to=[
+        "**起點形式正確但那天根本不該跑**（例如整輪重跑時 to 用了舊時刻）",
+        "窗口對，但卡片的 ts 是轉載時間而非原始發布時間",
+        "前一版自己的窗口就是錯的——這條只比兩者的接縫",
+        "斷口為零但前一版根本沒收到那段素材（重疊只保證有機會，不保證有讀）",
+        "已發布的舊日期檔（檢查只跑當日的 doc）",
+    ],
+    run=_window,
+    fixture={"anchors": {"window": {"from_hour_taipei": 7, "from_day_offset": -1,
+                                    "length_hours": [24, 30], "overlap_hours": [0, 6]}},
+             "doc": {"date": "2026-08-20",
+                     "window": {"from": "2026-08-19T09:00:00+08:00",
+                                "to": "2026-08-20T11:00:00+08:00"}}},
+    near_miss={"anchors": {"window": {"from_hour_taipei": 7, "from_day_offset": -1,
+                                      "length_hours": [24, 30], "overlap_hours": [0, 6]}},
+               "doc": {"date": "2026-08-20",
+                       "window": {"from": "2026-08-19T07:00:00+08:00",
+                                  "to": "2026-08-20T11:00:00+08:00"}}},
+    suite="advisory",
+))

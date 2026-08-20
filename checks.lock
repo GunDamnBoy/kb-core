@@ -14,6 +14,7 @@ advisory.ts_in_window
 advisory.ts_wellformed
 advisory.url_is_article
 advisory.watch_review
+advisory.window_wellformed
 demo.date_present
 demo.items_nonempty
 demo.note_length
