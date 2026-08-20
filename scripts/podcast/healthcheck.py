@@ -488,7 +488,15 @@ def check_brief():
     try:
         shows = json.load(open(os.path.join(PODFETCH, "shows.json"), encoding="utf-8"))
         claimed = {int(n) for n in re.findall(r"(\d+)\s*檔", brief)}
-        if claimed and len(shows) not in claimed:
+        if not claimed:
+            # **沒有可比的東西 ≠ 比過了沒問題。** 2026-08-20 把 brief 裡寫死的
+            # 檔數與鍵值清單全部拿掉（一個檔案、一行指令的東西不值得抄第二份），
+            # 於是這條沒有輸入了。原本的 else 會照樣印「brief 與 shows.json 一致
+            # （21 檔）」——**一句它其實沒有驗過的話**，而且還帶著一個看起來像
+            # 佐證的數字。這正是它要抓的那種錯，只是發生在它自己身上。
+            log("SKIP", "節目數量", f"brief 已不再宣稱檔數（刻意），無從比對；"
+                                    f"shows.json 現有 {len(shows)} 檔")
+        elif len(shows) not in claimed:
             log("WARN", "節目數量", f"brief 提到 {sorted(claimed)} 檔，shows.json 有 {len(shows)} 檔")
         else:
             log("PASS", "節目數量", f"brief 與 shows.json 一致（{len(shows)} 檔）")
@@ -921,15 +929,21 @@ def main():
             log("FAIL", fn.__name__, f"檢查本身出錯：{type(e).__name__}: {e}")
 
     width = max(len(c) for _, c, _ in results) if results else 10
-    icon = {"PASS": "✓", "WARN": "!", "FAIL": "✗"}
+    # SKIP 要跟 PASS 分開列。**「這條沒得判」與「這條判過沒問題」是兩件事**，
+    # 而把前者印成後者，正是這支腳本存在的理由的反面。
+    icon = {"PASS": "✓", "WARN": "!", "FAIL": "✗", "SKIP": "–"}
     print(f"節目知識庫健康檢查　{datetime.now(TAIPEI):%Y-%m-%d %H:%M}（台北）")
     print(f"repo={REPO}\npodfetch={PODFETCH}\ntranscripts={TRANSCRIPTS}")
     print("-" * 72)
     for lvl, check, msg in results:
         print(f"{icon[lvl]} {lvl:<4} {check:<{width}}  {msg}")
     print("-" * 72)
-    tally = {k: sum(1 for l, _, _ in results if l == k) for k in ("PASS", "WARN", "FAIL")}
-    print(f"PASS {tally['PASS']}　WARN {tally['WARN']}　FAIL {tally['FAIL']}")
+    tally = {k: sum(1 for l, _, _ in results if l == k)
+             for k in ("PASS", "WARN", "FAIL", "SKIP")}
+    line = f"PASS {tally['PASS']}　WARN {tally['WARN']}　FAIL {tally['FAIL']}"
+    if tally["SKIP"]:
+        line += f"　SKIP {tally['SKIP']}"
+    print(line)
     return 1 if tally["FAIL"] else 0
 
 

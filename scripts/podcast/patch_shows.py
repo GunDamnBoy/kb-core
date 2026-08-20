@@ -33,9 +33,13 @@ ADD = {
     "fwdguidance": {
         "appleId": "1592743188",
         "name": "Forward Guidance",
-        # **hosts 完全待確認。** 這檔換過主持人，我沒有可靠的現任資訊。
-        # 留空字串，等你從節目頁確認後補。
-        "hosts": "",
+        # 2026-08-20 夜補上。先前留空是因為這檔換過主持人、我沒有可靠的現任資訊——
+        # **留空不是中性的**：轉錄 prompt 靠 hosts 把 Speaker 1／Speaker 2 換成真名，
+        # 而講者姓名是這條管線最大的增值（AGENT_BRIEF 第 163 行）。
+        # 空著的話 Forward Guidance 第一次出集數就會整集都是 Speaker N，
+        # 而 completeness 照樣 100%，沒有任何檢查會叫。
+        # 來源：blockworks.com/brand/forward-guidance 的 Behind the Brand 欄位。
+        "hosts": "Felix Jauvin",
     },
 }
 
