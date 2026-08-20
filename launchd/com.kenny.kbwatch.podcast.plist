@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kenny.kbwatch.podcast</string>
+
+  <!-- 2026-08-20 新增。跟 com.kenny.kbwatch 完全對稱，理由也一樣：
+       GitHub 會在 60 天無活動時自動停用排程 workflow，於是看守者跟被看守的
+       東西綁在同一個開關上。podcast 的哨兵今天才第一次成功，60 天還很遠 ——
+       **但「還很遠」正是這種東西不會被補上的原因。**
+
+       為什麼是 StartCalendarInterval 而不是照抄 advisory 的 StartInterval：
+       兩者問的問題對「什麼時候問」的敏感度不同。watch_sentinel 問哨兵活著沒，
+       任何時刻問都一樣；healthcheck 會去讀當天的日檔與逐字稿，**答案跟時點有關**。
+       StartInterval 的相位取決於載入時刻，會漂到 03:00 的日報中間。
+       釘在整點就沒有這個問題：02:00 在 podfetch 之後、官方稿與日報之前，
+       06:00 是日報發完之後的第一次，人起床時已經有兩份報告了。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/macmini/kb-core/launchd/kbwatch-podcast.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/watch-podcast.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/watch-podcast.log</string>
+</dict>
+</plist>

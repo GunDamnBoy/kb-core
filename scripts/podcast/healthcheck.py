@@ -51,6 +51,7 @@ def resolve(*candidates):
 REPO = resolve("~/podcast-knowledge-digest")
 PODFETCH = resolve("~/.podfetch")
 TRANSCRIPTS = resolve("~/podcast-transcripts")
+KBCORE = resolve("~/kb-core")
 
 
 # ---------------------------------------------------------------- 1. 資料檔
@@ -150,6 +151,14 @@ def check_showkeys():
             shows = set(json.load(open(os.path.join(PODFETCH, "shows.json"), encoding="utf-8")))
             unknown = sorted(newest_used - shows)
             retired = sorted((used - newest_used) - shows)
+            # **反方向**：現役節目還沒出過集數時，`used` 裡沒有它，上面那條 CSS 對帳
+            # 看不見它。而「加了節目卻忘了加色」恰好就發生在還沒出集數的那段期間——
+            # 等它第一次出集數，徽章當天就是沒有顏色的，而且不會有任何錯誤。
+            # 2026-08-20 加 fwdguidance 時三條 CSS 全漏，這支腳本當天跑過、判 PASS。
+            uncoloured = sorted(shows - bar)
+            if uncoloured:
+                log("WARN", "showKey CSS",
+                    f"現役節目沒有色條（第一次出集數那天會沒有顏色）：{uncoloured}")
             if unknown:
                 log("FAIL", "showKey 命名",
                     f"最新一份用到不在 shows.json 的鍵值（兩邊各取名字了）：{unknown}")
@@ -159,6 +168,43 @@ def check_showkeys():
                 log("PASS", "已移除節目", f"僅存在於歷史資料，屬預期：{retired}")
         except Exception as e:
             log("WARN", "showKey 命名", f"讀不到 shows.json：{e}")
+
+
+def check_shows_sync():
+    """`shows.json` 有**兩份**，這條是唯一在對它們帳的地方。
+
+    podfetch 執行時讀的是 `~/.podfetch/shows.json`（見 podfetch.py 的 SHOWS_PATH）；
+    版控的那份在 `kb-core/scripts/podcast/shows.json`，`patch_shows.py` 負責同步。
+    **兩份不同步的樣子是「什麼都沒發生」**——版控那份加了一檔節目，podfetch 照舊
+    不去抓它，日報少一檔，而所有檢查都是綠的，因為每一條都只讀得到其中一份。
+
+    2026-08-20 我拿版控那份算出「21 檔現役」並據此判 fwdguidance 缺 CSS——
+    **那個結論的前提是兩份一樣，而當時沒有任何東西在保證這件事。**
+    """
+    if not (PODFETCH and KBCORE):
+        log("WARN", "shows.json 兩份", "有一邊不在（沙箱通常如此），跳過對帳")
+        return
+    a = os.path.join(PODFETCH, "shows.json")
+    b = os.path.join(KBCORE, "scripts", "podcast", "shows.json")
+    try:
+        run = json.load(open(a, encoding="utf-8"))
+        vcs = json.load(open(b, encoding="utf-8"))
+    except Exception as e:
+        log("FAIL", "shows.json 兩份", f"讀不到其中一份：{e}")
+        return
+    only_run = sorted(set(run) - set(vcs))
+    only_vcs = sorted(set(vcs) - set(run))
+    if only_run or only_vcs:
+        log("FAIL", "shows.json 兩份",
+            f"鍵值不一致——只在執行檔：{only_run}／只在版控：{only_vcs}"
+            "（podfetch 讀的是執行檔那一份，版控那份不影響它抓什麼）")
+        return
+    diff = sorted(k for k in run if run[k] != vcs[k])
+    if diff:
+        log("WARN", "shows.json 兩份",
+            f"鍵值相同但內容有差（wpm／優先序之類）：{diff}")
+    else:
+        log("PASS", "shows.json 兩份", f"{len(run)} 檔，執行檔與版控完全一致")
 
 
 # ---------------------------------------------------------------- 3. podfetch
@@ -866,7 +912,7 @@ def collect_metrics():
 
 
 def main():
-    for fn in (check_data, check_showkeys, check_podfetch,
+    for fn in (check_data, check_showkeys, check_shows_sync, check_podfetch,
                check_transcripts, check_pending, check_observations,
                check_push, check_live, check_brief, collect_metrics):
         try:

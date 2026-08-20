@@ -497,3 +497,74 @@ WARN  podcast.completeness_band     iltb = 1.57
 還有一條更短的：**「這個檔案存在」與「這個檔案會被執行」是兩件事。**
 `podcast_verify.py`、`healthcheck.py` 都寫得很好，都在 repo 裡，都沒有在跑。
 `grep -rn <檔名>` 一秒鐘的事，而它問的是「除了我自己，誰在叫它」。
+
+## 2026-08-20 夜｜⑤ 定案：接上，不進 _attic —— 而它一接上就問出兩個新問題
+
+先前把 `healthcheck.py`（891 行）跟 `podcast_verify.py` 一起歸類成「留著不呼叫」，
+打算二選一：接到 kbwatch，或搬進 `_attic`。**跑一次它就知道不能搬。**
+
+### 它跟 `checks/podcast.py` 不是重疊，是互補
+
+檢查程式刻意**不做 IO**，只看當天那一份 payload；healthcheck **全部都是 IO**：
+
+| | `checks/podcast.py`（16 條） | `healthcheck.py` |
+|---|---|---|
+| 範圍 | 當天那一份 payload | 20 天全部日檔、repo、線上站台 |
+| IO | 不做 | 全部 |
+| 由誰跑 | doc 層 6 條由 `publish.py` 擋著 | 先前沒有人跑 |
+
+它抓到三樣我以為沒實作的東西：
+
+- **`推送鏈 local 與 origin 同雜湊`** —— 就是 `.kb-data-repo`、`index.html`
+  那種「改了但 `git add data` 沒帶到」的偵測器。
+- **`線上狀態`** 連 GitHub Pages —— 舊規格的 cache-buster 實地驗證。
+  我先前判斷「我們的失敗形態跟舊系統不同，這個儀式不必照搬」，
+  **那個判斷是對的，但結論下錯了**：不必照搬的是儀式，不是那條驗證，
+  而那條驗證一直都在，只是沒有人叫它。
+- `index.json 對應`、`觀察點記分板`、20 天日檔可解析。
+
+### 接上去之後才發現的兩件事
+
+**一、它今天不會抓到 `fwdguidance`。** 它的 CSS 對帳是「資料**用到**的 22 個
+showKey 都有色條」——fwdguidance 還沒出過集數，不在那 22 個裡。
+**「加了節目卻忘了加色」恰好只發生在還沒出集數的那段期間**，
+所以這條檢查對它唯一會發生的時機是盲的。補上反方向：`shows - bar`。
+
+**二、`shows.json` 有兩份，沒有任何東西在對帳。**
+podfetch 執行時讀的是 `~/.podfetch/shows.json`（`podfetch.py` 的 `SHOWS_PATH`），
+版控那份在 `kb-core/scripts/podcast/`。不同步的樣子是**什麼都沒發生**——
+版控那份加了一檔節目，podfetch 照舊不去抓，日報少一檔，
+而所有檢查都是綠的，因為每一條都只讀得到其中一份。
+
+**我今天早上就是拿版控那份算出「21 檔現役」，據此判 fwdguidance 缺 CSS。
+那個結論的前提是兩份一樣，而當時沒有任何東西在保證這件事。**
+結論後來是對的，但那是運氣。補上 `check_shows_sync`。
+
+兩條新檢查都被 `~/.podfetch` 擋在沙箱外，所以沙箱那次執行**對它們什麼都沒證明**。
+另外拿 fixture 逼出五種情形（兩份一致／版控多一檔／內容有差／現行 index.html 不該叫／
+加一檔無色節目要叫），五種都對，才算數。
+
+### 接法
+
+`launchd/kbwatch-podcast.sh` 一支 shell 跑兩件事，退出碼取較差的那個。
+**不塞進 `watch_sentinel.py`**：看門狗的依賴要比它守的東西少。
+watch_sentinel 只需要 `git fetch`；healthcheck 需要網路、`~/.podfetch`、逐字稿目錄。
+合併等於讓看門狗長出三個新的失敗點，任何一個壞掉都會讓看門狗自己變紅，
+**把真正的訊號埋掉**。
+
+排程釘整點（02／06／10／14／18／22）而不是照抄 advisory 的 `StartInterval 14400`：
+watch_sentinel 任何時刻問答案都一樣，healthcheck 的答案跟時點有關，
+而 `StartInterval` 的相位取決於載入時刻，遲早會漂到 03:00 的日報中間。
+
+同時補上 `com.kenny.kbwatch.podcast` 這個看門狗本身——**podcast 的哨兵先前沒有人看**。
+`watch.py` 存在的理由（GitHub 60 天無活動自動停用排程）對 podcast 一樣成立。
+它今天才第一次成功，60 天還很遠——**而「還很遠」正是這種東西不會被補上的原因。**
+
+### 通則
+
+> **「這個檔案存在」與「這個檔案會被執行」是兩件事**，
+> 而第二件事只要一行 `grep -rn <檔名>` 就問得出來：除了我自己，誰在叫它。
+
+還有一條更難看見的：**接上一個沉睡很久的檢查，第一件事不是相信它的綠燈，
+是問它「你這條是拿什麼算的」。** healthcheck 的 CSS 那條是綠的，
+而它綠的理由（只看用過的 key）正好讓它對唯一會出事的時機視而不見。

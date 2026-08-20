@@ -4,7 +4,7 @@
 兩邊會漂移，而且 launchd 不會告訴你——所以有 `watch.external_binaries`
 在讀實裝的 plist，還有下面那條對帳指令。
 
-## 四個工作
+## 五個工作
 
 | Label | 什麼時候 | 做什麼 |
 |---|---|---|
@@ -12,10 +12,32 @@
 | `com.kenny.kbpublish` | 每 60 秒 | 發布**投顧**：`~/outbox/` → `advisory-rewrite` |
 | `com.kenny.kbpublish.podcast` | 每 60 秒 | 發布**podcast**：`~/outbox/podcast/` → `podcast-knowledge-digest` |
 | `com.kenny.kbwatch` | 每 4 小時 | 看門狗：Actions 上的哨兵還活著嗎、本機程式有沒有漂移 |
+| `com.kenny.kbwatch.podcast` | 02／06／10／14／18／22 時 | podcast 的看門狗（`kbwatch-podcast.sh`）：哨兵＋`healthcheck.py` |
 
 **一個 plist 只發一套系統。** `publish.py` 的參數是 `(outbox, repo, 系統 id)`
 三件一組，沒有「多套」這個形態——一次只驗一組檢查、一個目的地，
 才不會有「我到底在發哪一套」這個問題。
+
+### 為什麼 podcast 那一支是釘整點，advisory 那一支是每 4 小時
+
+兩者問的問題對「什麼時候問」的敏感度不同。`watch_sentinel` 問「GitHub 上的哨兵
+活著沒」——任何時刻問答案都一樣，`StartInterval` 的相位無所謂。
+`healthcheck.py` 會去讀當天的日檔、逐字稿與線上站台，**答案跟時點有關**，
+而 `StartInterval` 的相位取決於載入時刻，遲早會漂到 03:00 的日報中間。
+
+釘在整點就沒有這個問題：**02:00** 在 podfetch（01:00）之後、官方稿（02:20）與
+日報（03:00）之前；**06:00** 是日報發完之後的第一次，人起床時已經有兩份報告了。
+
+### 為什麼 `healthcheck.py` 只掛在 podcast 這一支
+
+它是節目知識庫專屬的。兩支都掛的話它一天跑 12 次而不是 6 次，
+而且 advisory 那邊拿它一點用都沒有。
+
+### 為什麼是一支 shell 而不是把 healthcheck 塞進 `watch_sentinel.py`
+
+看門狗的依賴要**比它守的東西少**。`watch_sentinel` 目前只需要 `git fetch`；
+`healthcheck` 需要網路、`~/.podfetch`、逐字稿目錄。合併等於讓看門狗長出三個
+新的失敗點，而那三個之中任何一個壞掉，都會讓看門狗自己變紅、把真正的訊號埋掉。
 
 ## 安裝／重載
 
