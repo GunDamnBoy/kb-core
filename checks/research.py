@@ -494,3 +494,80 @@ register(Check(
                    {"title": "t", "grounding": ["share rose to 42% by 4Q'27"]}]}]}},
     suite="research",
 ))
+
+
+# ── 11. 報告層標籤：數量、字形、值域（值域尚未開啟）─────────────────
+def _tags_wellformed(p):
+    """標籤是**網站上找東西的那條軸**，所以它壞掉的樣子是「找不到」，不是「錯」。
+
+    找不到跟沒有長得一模一樣，而且沒有人會來回報 —— 所以這條在發布前就要擋。
+
+    `anchors.tags.vocab` 是 `null` 時**不驗值域**（前幾期刻意讓撰寫者自由下，
+    累積後再合併成受控詞表）。那不是這條檢查偷懶，是詞表要從真實內容長出來；
+    詞表一填進去，值域這一段就自動開始驗。
+    """
+    digest = p.get("digest")
+    if digest is None:
+        return skipped("這一輪沒有第 2 層產出（只跑了入庫）—— "
+                       "**跟「比對過、都對」是兩件事**")
+    T = _A(p, "tags")
+    lo, hi = T["per_report"]
+    vocab = T.get("vocab")
+    cnt, form, oov = [], [], []
+    seen = {}
+    for r in digest.get("reports") or []:
+        tags = r.get("tags") or []
+        slug = r.get("slug", "?")
+        if not lo <= len(tags) <= hi:
+            cnt.append(f"{slug[:34]} {len(tags)} 個")
+        for t in tags:
+            t = (t or "").strip()
+            # 空白與標點是「這是一句話不是一個名字」最便宜的訊號。
+            if not t or len(t) > 12 or re.search(r"[\s，。、；：,.;:!?！？]", t):
+                form.append(f"{slug[:24]}：「{t[:16]}」")
+            if vocab and t not in vocab:
+                oov.append(t)
+            seen[t] = seen.get(t, 0) + 1
+    if cnt:
+        return fail("；".join(cnt[:5]) + f" —— 每份要 {lo}–{hi} 個。"
+                    "**標籤太少的那份在網站上會跟誰都連不起來**，而它看起來很正常")
+    if form:
+        return fail("；".join(form[:5]) + " —— 標籤是**名詞不是句子**："
+                    "不帶空白標點、不超過 12 字。帶了方向的標籤會在立場反轉時變成錯的，"
+                    "而它看起來還是一個好好的標籤")
+    if oov:
+        return fail(f"不在受控詞表裡：{sorted(set(oov))[:6]} —— "
+                    "詞表的家在 `anchors.tags.vocab`")
+    n = len(seen)
+    once = sum(1 for v in seen.values() if v == 1)
+    msg = f"{len(digest.get('reports') or [])} 份、{n} 個相異標籤"
+    if vocab is None:
+        msg += "（詞表尚未訂，值域這一段沒驗）"
+    # 全部只出現一次 = 沒有任何一份連得到另一份，那時標籤等於沒有作用。
+    if n and once == n and n > 3:
+        return warn(msg + f"，但 {n} 個**全部只出現一次** —— "
+                    "標籤的用途是把報告連起來，全不重複等於這一期誰也連不到誰")
+    return ok(msg)
+
+
+register(Check(
+    id="research.tags_wellformed",
+    covers="digest 裡每份報告的 tags 數量在 anchors.tags.per_report 內、"
+           "每個標籤是不含空白標點且不超過 12 字的短詞；"
+           "`anchors.tags.vocab` 非 null 時另驗值域",
+    blind_to=[
+        "**標籤下得對不對** —— 這條只驗數量與字形，不驗它是否真的描述了這份報告",
+        "**同義詞分裂** —— 「資料中心」與「數據中心」在這裡是兩個合格的標籤"
+        "（詞表訂了以後才擋得住）",
+        "四類（地區／資產／主題／政策）有沒有各取一個 —— 那是取樣方向不是硬規則",
+        "跨期的標籤漂移（這條只看眼前這一期）",
+        "只跑入庫的輪次（SKIPPED）",
+    ],
+    run=_tags_wellformed,
+    fixture={"anchors": {"tags": {"per_report": [3, 6], "vocab": None}},
+             "digest": {"reports": [{"slug": "a", "tags": ["聯準會", "原油"]}]}},
+    near_miss={"anchors": {"tags": {"per_report": [3, 6], "vocab": None}},
+               "digest": {"reports": [{"slug": "a", "tags": ["聯準會", "原油", "美國"]},
+                                      {"slug": "b", "tags": ["聯準會", "日本", "公債"]}]}},
+    suite="research",
+))

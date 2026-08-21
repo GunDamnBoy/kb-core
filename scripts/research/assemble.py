@@ -34,6 +34,14 @@ def tier_of(pages):
     return A["summary_tiers"]["tiers"][-1]
 
 
+def _tag_map(reports):
+    m = {}
+    for r in reports:
+        for t in r.get("tags") or []:
+            m.setdefault(t, set()).add(r["slug"])
+    return m
+
+
 def render_charts(part, ex, outdir):
     """規格 → PNG／SVG。**渲染失敗不中止整期**，記進 chart 的 `render_error`。"""
     os.environ.setdefault("CHART_REPO", "/tmp")
@@ -104,10 +112,13 @@ def main(argv=None):
             "file_url": "file:///Users/macmini/broker-research/inbox/" + urllib.parse.quote(src),
             "tier_target": t["target"], "tier_band": [lo, hi],
             "summary": p["summary"], "summary_chars": n,
+            "tags": [t.strip() for t in (p.get("tags") or []) if t and t.strip()],
             "stances": p.get("stances") or [], "charts": p.get("charts") or [],
         })
         print(f"  {slug[:46]:<48} {n:>5} 字（目標 {t['target']}）"
-              f"　立場 {len(p.get('stances') or [])}　圖 {len(made)}/{len(p.get('charts') or [])}")
+              f"　立場 {len(p.get('stances') or [])}"
+              f"　圖 {len(made)}/{len(p.get('charts') or [])}"
+              f"　標籤 {len(p.get('tags') or [])}")
 
     prev = os.path.join(O, f"{a.week}.json")
     old = json.load(open(prev, encoding="utf-8")) if os.path.exists(prev) else {}
@@ -117,6 +128,10 @@ def main(argv=None):
         "reports_count": len(reports),
         "brokers": {b: sum(1 for r in reports if r["broker"] == b)
                     for b in sorted({r["broker"] for r in reports})},
+        # 標籤 → slug。**排序用「先出現次數、後筆畫」而不是 set 的順序**，
+        # 否則同一批資料每次組出來的順序都不同，diff 會滿是雜訊。
+        "tags": {t: sorted(sl) for t, sl in sorted(
+            _tag_map(reports).items(), key=lambda kv: (-len(kv[1]), kv[0]))},
         "reports": reports,
         "crosscut": old.get("crosscut", ""), "watch": old.get("watch", []),
         "notes": old.get("notes", []),
