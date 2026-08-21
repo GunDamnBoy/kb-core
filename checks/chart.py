@@ -359,12 +359,27 @@ def _freshness(p):
     day_bad, day_warn, mon_bad, mon_warn = [], [], [], []
     for c in _charts(p["doc"]):
         for s in c.get("series") or []:
-            pts = s.get("data") or s.get("points") or []
+            # **序列的真實形狀是 `dates`／`values` 兩個平行陣列。**
+            # 這條檢查原本只認 `data`／`points`，而 build_series.py 與
+            # render_day.py 從來沒有寫過那兩個鍵 —— 於是 `last` 永遠是 None、
+            # 每條序列都被 continue 掉，整條檢查回 ok()。2026-08-21 發現時，
+            # 它已經對著 13 天封存與當期產出「全綠」了一整輪都沒讀到一個數字。
+            # BRIEF 第六節第 3 條（序列落後超過硬失敗門檻）等於沒有守門人。
+            #
+            # 兩種形狀都認，因為 `pts` 那條路是給手工序列與未來圖型留的；
+            # 但 `dates` 擺在前面，那才是每天實際走的那一條。
             last = None
-            for pt in pts:
-                d = pt[0] if isinstance(pt, (list, tuple)) else pt.get("d") or pt.get("date")
-                if isinstance(d, str) and len(d) >= 10:
-                    last = d[:10] if last is None or d[:10] > last else last
+            dates = s.get("dates")
+            if isinstance(dates, list):
+                for d in dates:
+                    if isinstance(d, str) and len(d) >= 10:
+                        last = d[:10] if last is None or d[:10] > last else last
+            else:
+                pts = s.get("data") or s.get("points") or []
+                for pt in pts:
+                    d = pt[0] if isinstance(pt, (list, tuple)) else pt.get("d") or pt.get("date")
+                    if isinstance(d, str) and len(d) >= 10:
+                        last = d[:10] if last is None or d[:10] > last else last
             if not last:
                 continue
             monthly = last.endswith("-01")
@@ -391,9 +406,13 @@ def _freshness(p):
 
 register(Check(
     id="chart.series_freshness",
-    covers="每條 series 的末日與今天的距離，日頻與月頻各一套門檻（值在 anchors.freshness）",
+    covers="每條 series 的末日與今天的距離，日頻與月頻各一套門檻（值在 anchors.freshness）。"
+           "序列形狀認 `dates`（實際產出的那一種）與 `data`／`points`（手工序列）兩種",
     blind_to=[
         "**只看 timeseries 的 `series`**——scatter 的 pts、heatmap 的 matrix 沒有日期軸，這條看不到它們",
+        "**第三種序列形狀**——2026-08-21 之前它只認 `data`／`points`，而真實產出是 `dates`／`values`，"
+        "於是它對著 13 天封存全綠、一個數字都沒讀到。fixture 現在用真實形狀，但**再冒出第四種鍵名，"
+        "它一樣會安靜地全部跳過**；形狀變了要回來改這裡",
         "月頻的判準是「末日以每月 1 號標記」，**日頻資料剛好落在 1 號會被誤判成月頻**",
         "序列是新的但值是錯的",
         "末日很新但中間有缺口",
@@ -403,13 +422,16 @@ register(Check(
     fixture={"anchors": {"freshness": {"daily_warn_days": 2, "daily_fail_days": 5,
                                        "monthly_warn_periods": 2, "monthly_fail_periods": 3}},
              "now": "2026-08-20T12:00:00+08:00",
+             # **fixture 用的是實際產出的 `dates`／`values` 形狀**，不是 `data`。
+             # 舊 fixture 用 `data`，於是自檢照樣觸發、照樣 selftest OK，
+             # 而真實資料一條都讀不到 —— fixture 對得上程式、對不上產出。
              "doc": {"charts": [{"slug": "x", "series": [
-                 {"name": "s", "data": [["2026-08-01", 1], ["2026-08-10", 2]]}]}]}},
+                 {"name": "s", "dates": ["2026-08-01", "2026-08-10"], "values": [1, 2]}]}]}},
     near_miss={"anchors": {"freshness": {"daily_warn_days": 2, "daily_fail_days": 5,
                                          "monthly_warn_periods": 2, "monthly_fail_periods": 3}},
                "now": "2026-08-20T12:00:00+08:00",
                "doc": {"charts": [{"slug": "x", "series": [
-                   {"name": "s", "data": [["2026-08-19", 1], ["2026-08-20", 2]]}]}]}},
+                   {"name": "s", "dates": ["2026-08-19", "2026-08-20"], "values": [1, 2]}]}]}},
     suite="chart",
 ))
 

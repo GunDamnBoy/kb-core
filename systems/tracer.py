@@ -21,6 +21,7 @@ register(System(
     id="kb-tracer",
     suite="draft",
     build=lambda draft, repo: draft,
+    staged_paths=lambda doc, repo: ["data"],
     index_entry=index_entry,
     index_meta=index_meta,
 ))

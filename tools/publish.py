@@ -4,9 +4,10 @@
 用法：publish.py <outbox> <資料 repo> <系統 id>
 
 流程：目的地守門 → 掃 outbox → verify（閘門）→ 不可改寫守衛 → 原子寫入
-      data/ → 更新 index → pull --rebase → commit → push → 寫回執
+      data/ → 更新 index → add（依系統宣告）→ 對帳 → pull --rebase → commit
+      → push → 寫回執
 
-六條刻意的設計：
+七條刻意的設計：
 
 1. **verify 擋在寫入 data/ 之前。** 雲端那次 verify 是給 judge 段即時回饋，
    這一次才是閘門。同一份檢查程式跑兩次，不違反單錨。
@@ -33,6 +34,13 @@
 6. **「已經寫好了」不等於「已經發布了」。** 檔案存在且內容相同時，只跳過
    寫入，rebase/push 照跑。否則上一輪卡在 push 留下的本地 commit 會永遠
    推不出去，而回執說 exit 0——又一個每個訊號都說成功的靜默失效。
+
+7. **要 add 哪些路徑由系統宣告，而且宣告完要對帳。** publish 不知道任何一套
+   系統產出什麼形狀的東西——`data/` 是三套裡兩套的答案，不是通則。
+   宣告在 `System.staged_paths`；對帳在步驟 4b，問的是「這些路徑底下還有沒有
+   沒進版控的檔」。**宣告與量測分開**，因為 2026-08-21 那次的每一個訊號
+   （回執 exit 0、18 條檢查全綠、commit 推上去了）都說成功，而 charts/ 從來
+   沒被 add 過——`chart.png_present` 讀的是本機檔案系統，看不見遠端。
 """
 import datetime as dt
 import json
@@ -144,8 +152,34 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     atomic_write(idx_path, json.dumps(idx, ensure_ascii=False, indent=1))
 
     # 4. commit → rebase → push
-    git(repo, "add", "data")
+    #
+    # **要 add 哪些路徑是每套系統自己的事**（見 kbcore/system.py 的 staged_paths）。
+    # 這裡原本硬寫 `add "data"` —— 對投顧與 podcast 是對的，對每日五圖不是，
+    # 它每天還有 `charts/<date>/*.png|svg` 要推，而那是 House View 的 pptx
+    # 直接吃的路徑。2026-08-21 抓到：那些檔從 08-20 重建之後就沒有人推過。
+    paths = system.staged_paths(draft, repo)
+    git(repo, "add", "--", *paths)
     git(repo, "commit", "-m", f"data: publish {date}", check=False)
+
+    # 4b. 宣告與事實對帳。
+    #
+    # **這一段是量測，不是自述。** 上面那行 add 失敗（路徑不存在、權限、
+    # 被 .gitignore 吃掉）不會拋錯，commit 也照樣回 0（沒東西可 commit 是允許的），
+    # 於是宣告了、跑完了、回執寫 exit 0 —— 而檔案在遠端不存在。
+    # 這正是 2026-08-21 的形狀，只是當時連宣告都沒有。
+    #
+    # 問法是「這些路徑底下還有沒有沒進版控的檔」，不是「add 有沒有回 0」——
+    # 前者問的是結果，後者問的是我有沒有照做。
+    leftover = git(repo, "ls-files", "--others", "--exclude-standard", "--", *paths,
+                   check=False).stdout.strip()
+    if leftover:
+        n = len(leftover.splitlines())
+        head = "、".join(leftover.splitlines()[:3])
+        write_receipt(outbox, name, Exit.ENVIRONMENT, "static-outputs",
+                      f"宣告要推的路徑（{'、'.join(paths)}）底下還有 {n} 個檔沒進版控："
+                      f"{head}{' …' if n > 3 else ''} —— **不寫 exit 0**，"
+                      "下一輪會重試；連續幾輪都這樣就是 add 進不去，要人看")
+        return Exit.ENVIRONMENT
     rb = git(repo, "pull", "--rebase", check=False)
     if rb.returncode != 0:
         # **非零不等於衝突。** 沒設 upstream、網路不通、遠端不存在都會非零，

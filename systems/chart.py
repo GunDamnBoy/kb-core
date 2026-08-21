@@ -146,10 +146,29 @@ def index_meta(doc: dict) -> dict:
     }
 
 
+def staged_paths(doc: dict, repo: Path) -> list:
+    """這一期要進版控的路徑：`data/` 加上當天的靜態產出目錄。
+
+    `charts/<date>/` 與 `data/` 是**兩個都得推**的東西，不是一主一附：
+    `anchors.publish._charts_path_is_a_contract` 說得很清楚，House View 的 pptx
+    直接吃 `charts/<date>/*.png`，那是一個不在本 repo 重建範圍內的外部消費者。
+
+    **回傳的是宣告，不是事實。** publish 在 commit 之後會回頭驗這些路徑底下
+    還有沒有沒進版控的檔 —— 因為 2026-08-21 那次的教訓正是「宣告了、也 add 了、
+    回執說成功，而檔案在遠端不存在」。宣告與量測要分開，不然又是一次自述當證據。
+    """
+    date = doc.get("date", "")
+    out = ["data"]
+    if date and (repo / "charts" / date).is_dir():
+        out.append(f"charts/{date}")
+    return out
+
+
 register(System(
     id="chart-of-the-day",
     suite="chart",
     build=build,
+    staged_paths=staged_paths,
     index_entry=index_entry,
     index_meta=index_meta,
 ))

@@ -147,6 +147,9 @@ register(System(
     id="podcast-knowledge-digest",
     suite="podcast",
     build=build,
+    # podcast 只產 data/。Word 檔刻意留在所有 repo 外面（`~/Documents/podcast-reports`），
+    # 逐字稿也是 —— 那是一條結構性界線，不是 .gitignore，所以這裡不宣告它們。
+    staged_paths=lambda doc, repo: ["data"],
     index_entry=index_entry,
     index_meta=index_meta,
 ))

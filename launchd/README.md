@@ -4,7 +4,7 @@
 兩邊會漂移，而且 launchd 不會告訴你——所以有 `watch.external_binaries`
 在讀實裝的 plist，還有下面那條對帳指令。
 
-## 八個工作
+## 九個工作
 
 | Label | 什麼時候 | 做什麼 |
 |---|---|---|
@@ -16,10 +16,35 @@
 | `com.kenny.kbdocx.podcast` | 每天 04:00 | 把**已發布的**當日 JSON 排版成 Word（`kbdocx-podcast.sh`）→ `~/Documents/podcast-reports` |
 | `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
+| `com.kenny.kbcorepush` | 每 300 秒 | 推 **kb-core 自己**（`push_kbcore.py`），帶靜置與自檢閘門 |
 
 **一個 plist 只發一套系統。** `publish.py` 的參數是 `(outbox, repo, 系統 id)`
 三件一組，沒有「多套」這個形態——一次只驗一組檢查、一個目的地，
 才不會有「我到底在發哪一套」這個問題。
+
+### 為什麼 kb-core 要另外一支，而不是讓 publish 順手推
+
+三支 `kbpublish` 推的是**機器產生、發布後不可改寫**的 `data/`；
+`kbcorepush` 推的是**人與模型正在改的原始碼**，而且是另外三支
+**執行中所依賴**的那份原始碼。兩者的閘門問的是不同的問題：
+
+| | `kbpublish.*` | `kbcorepush` |
+|---|---|---|
+| 閘門 | 內容檢查（那一套系統的 suite） | `py_compile` ＋ 檢查自檢 |
+| 觸發 | outbox 有草稿 | 工作區靜置 5 分鐘且有未推的東西 |
+| 落後 origin | `pull --rebase` 續推 | **停下來報告，不自動 rebase** |
+
+最後一列是刻意的：在三套排程跑的同時改寫 kb-core 的工作區，
+等於讓它們的 `import checks` 有機會讀到一個寫到一半的檔。
+單一寫入者的 repo 落後 origin 本來就代表有人在別處動過，
+**那是需要人看的狀況，不是該自動化掉的狀況。**
+
+閘門三比前兩道重要：**推壞掉的 `checks/` 上去，三套系統的閘門會同時失效，
+而它們的回執還是會說成功。** 一個推不上去的 repo 只是不方便，
+一個推上去的壞閘門是靜默失效。
+
+回執在 `~/kb-core/.push-receipt.json`（已 gitignore —— 不擋掉的話它每輪重寫
+會讓工作區永遠是髒的，於是每 5 分鐘 commit 一次自己的回執）。
 
 ### 為什麼 podcast 那一支是釘整點，advisory 那一支是每 4 小時
 

@@ -49,6 +49,27 @@ class System:
     每套系統自己決定頂層要有什麼，publish 只負責 merge。
     """
 
+    staged_paths: Callable[[dict, Path], list]
+    """(草稿, 資料 repo 路徑) → 這一期要 `git add` 的 repo 相對路徑清單。
+
+    2026-08-21 加的，**同一道接縫漏掉的第三個維度**（前兩個是 `index_entry` 與
+    `index_meta`，理由逐字相同）。`publish.py` 原本硬寫 `git add "data"` ——
+    對投顧與 podcast 是對的，對每日五圖不是：它每天還產出
+    `charts/<date>/*.png|svg`，而那個路徑是**對外契約**
+    （House View 的 pptx 直接吃它，網站的「下載 PNG」也連它）。
+
+    那些檔案從 2026-08-20 重建之後就沒有任何人推過。重建前是靠一支掃全 repo 的
+    `com.kenny.dashpush` 順手帶上去的，重建時它退場，而「誰來推 charts/」
+    沒有任何一個檔案在負責 —— **不是有人改壞了，是這件事從來沒有主人。**
+
+    失效的樣子：回執 exit 0、檢查 18 PASS、commit 真的推上去了，
+    而 `chart.png_present` 讀的是**本機**檔案系統，五個檔確實在、也不是空白圖。
+    每一個訊號都說成功，下游拿到的是 404。
+
+    **沒有預設值是刻意的。** 給一個 `["data"]` 的預設，等於讓下一套系統
+    安靜地繼承錯的形狀 —— 那正是這個欄位存在的原因。
+    """
+
     index_entry: Callable[[dict], dict]
     """草稿 → `data/index.json` 的當日 entry。
 

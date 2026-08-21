@@ -247,7 +247,8 @@
       "charts/<date>/*.png（200dpi）",
       "charts/<date>/*.svg"
     ],
-    "_charts_path_is_a_contract": "**House View 的 pptx 直接吃 `charts/<date>/*.png` 的路徑。** 那是一個外部消費者，改路徑等於弄壞一個不在重建範圍內的下游。",
+    "_charts_path_is_a_contract": "**House View 的 pptx 直接吃 `charts/<date>/*.png` 的路徑。** 那是一個外部消費者，改路徑等於弄壞一個不在重建範圍內的下游。**不改路徑也可能弄壞它**：2026-08-21 發現 `charts/` 從 08-20 重建之後就沒有人 `git add` 過，被追蹤的日期停在 08-17 —— 舊制靠一支掃全 repo 的 dashpush 順手帶上去，重建時它退場而這件事沒有交接。修法是 `System.staged_paths` 由每套系統宣告要進版控的路徑，publish 在 commit 後對帳。",
+    "_who_stages_them": "`static_outputs` 是宣告，不是保證。**負責把它們送出去的是 `System.staged_paths`（kb-core/kbcore/system.py），負責證明送出去了的是 publish 步驟 4b 的對帳。** 這三者要一起看：改了這裡的清單就要回頭確認 staged_paths 涵蓋得到，否則又會回到「宣告了、沒人推、回執說成功」。",
     "source": "2026-08-20 重建時決定**沿用 chart-of-the-day 這個 repo**，理由就是上面那條，以及舊規格自己記著「新建的 repo 不會自動納入推送清單」——那個坑踩過兩次（podcast 8/02、chart 8/05），開新 repo 是把同一類設定風險再進一次。"
   },
   "rendering": {

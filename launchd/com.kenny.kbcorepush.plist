@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kenny.kbcorepush</string>
+
+  <!-- 2026-08-21 新增。kb-core 有 remote，但在這之前沒有任何一支工作推它 ——
+       重建前是 com.kenny.dashpush（掃全 repo add+commit+push）順手帶的，
+       08-20 重建時它退場，而「誰來推 kb-core」沒有交接給任何人。
+       同一天發現的 charts/ 沒被推是同一個病的另一個病灶。
+
+       **這一支跟三支 kbpublish 不是同一類。** 它們推的是機器產生、
+       發布後不可改寫的 data/；這一支推的是人與模型在改的原始碼，
+       而且是另外三套排程**正在執行中**的那份原始碼。
+       所以它的閘門是語法與檢查自檢，落後 origin 時停下來報告而不自動 rebase。
+       理由寫在 tools/push_kbcore.py 的 docstring。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/push_kbcore.py</string>
+    <string>/Users/macmini/kb-core</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <!-- 300 秒，跟腳本裡的 QUIET_MINUTES = 5 是一組的。
+       間隔比靜置窗短沒有意義（每一輪都會撞到靜置未到），
+       比它長則是白白拖延。**動一個就要回頭動另一個。** -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/kbcorepush.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/kbcorepush.log</string>
+</dict>
+</plist>

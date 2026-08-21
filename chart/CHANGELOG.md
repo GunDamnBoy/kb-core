@@ -1,5 +1,148 @@
 # 每日五圖｜重建紀錄
 
+## 2026-08-21｜靜態產出從來沒被推過：接縫漏掉的第三個維度
+
+首次無人值守輪次發布成功（回執 exit 0、commit `11a81d5`）之後，
+問了一句「網站更新了嗎」才發現：**`data/` 上去了，`charts/2026-08-21/` 沒有。**
+
+### 病灶
+
+`publish.py` 第 147 行硬寫 `git add "data"`。`charts/` 不在 `.gitignore`，
+只是從來沒有人 stage 它。讀 `.git/index` 確認：`data/` 有 14 筆含當天，
+`charts/` 被追蹤的日期停在 **2026-08-17** —— 那些是重建前推上去的。
+
+重建前是 `com.kenny.dashpush`（每 180 秒掃全 repo add+commit+push）順手帶上去的。
+08-20 重建時它退場，八個 launchd 工作裡沒有它，而「誰來推 charts/」
+**沒有交接給任何人**。不是有人改壞了，是這件事從那天起就沒有主人。
+
+諷刺的是本檔開篇第一句：「決定性的理由是 House View 的 pptx 直接吃
+`charts/<date>/*.png` 的路徑 —— 換 repo 等於弄壞一個沒有人在顧的下游。」
+**repo 沒換，下游還是壞了**，而且壞在同一條路徑上。
+
+### 為什麼四層防線一條都沒響
+
+| 訊號 | 當時說什麼 | 為什麼看不見 |
+|---|---|---|
+| 回執 | `exit 0 @ pushed` | push 真的成功了 —— 推的是 `data/` |
+| `chart_verify` | 18 PASS · 0 FAIL | 檢查全部跑在發布**之前** |
+| `chart.png_present` | 綠 | 讀的是**本機**檔案系統，五個檔確實在、200KB、不是空白圖 |
+| `sentinel.data_fresh` | 綠 | 問的是 `data/` 的年齡 |
+
+**檢查驗的是「有沒有畫出來」，沒有人驗「有沒有送出去」。**
+這是本系統反覆出現的那個形狀又一次：每一個訊號都說成功。
+
+### 修法：宣告 ＋ 對帳，兩件事分開
+
+1. `kbcore/system.py` 加 `staged_paths(draft, repo) -> list[str]`，**必填、無預設**。
+   這是同一道接縫漏掉的第三個維度 —— 前兩個是 `index_entry`（2026-08-20）
+   與 `index_meta`（同日），docstring 裡的理由逐字適用於這一個。
+   不給預設值是刻意的：`["data"]` 的預設會讓下一套系統安靜地繼承錯的形狀。
+2. 三套系統各自宣告：chart ＝ `data` ＋ `charts/<date>`（PNG 與 SVG 都推）；
+   advisory 與 podcast ＝ `data`（前者的 `raw/` 由 Actions 那一側自己 commit，
+   後者的 Word 與逐字稿刻意留在所有 repo 之外）。
+3. `publish.py` 步驟 4b **對帳**：commit 之後問
+   `git ls-files --others --exclude-standard -- <宣告的路徑>`，
+   非空就寫 `exit 14 @ static-outputs`，**不准寫 exit 0**。
+   問的是「這些路徑底下還有沒有沒進版控的檔」，不是「add 有沒有回 0」——
+   前者問結果，後者問我有沒有照做。`add` 失敗不拋錯、`commit` 沒東西可提交也回 0，
+   所以只驗前者等於沒驗。
+
+### 順帶修掉：`chart.series_freshness` 是一條沒有讀者的檢查
+
+同一輪發現。它讀 `s.get("data") or s.get("points")`，
+而 `build_series.py` 與 `render_day.py` 寫出來的序列欄位是 `dates`／`values` ——
+13 天封存與當期產出**全部都是**。也就是說它從來沒有讀到任何一個數字，
+每條序列都被 `continue` 掉，整條檢查回 `ok()`。
+`BRIEF` 第六節第 3 條（序列落後超過硬失敗門檻）等於沒有守門人。
+
+它通得過自檢，因為 **fixture 用的是 `data` 形狀** —— fixture 對得上程式、
+對不上產出。所以這次連 fixture 與 near_miss 一起換成真實形狀。
+
+### 量測
+
+- 修好後對當期（2026-08-21）：**17 PASS · 1 WARN · 0 FAIL · 0 SKIPPED**。
+  WARN 是 DGS30／兩條 BAML 落後 2 天、布蘭特落後 3 天 ——
+  這四筆本來就該是 WARN，當期的 subtitle、source 與 `window.note` 都已寫出實際基準日。
+- 檢查自檢（fixture／near_miss 兩側）0 失敗；`py_compile` 全數通過；
+  `build_series --selftest` 通過。
+- publish 端到端實測（`/tmp` 內另建 bare origin ＋ 工作 repo，**不碰真 repo、不留 index.lock**）：
+  `pushed` 一次推上 10 個靜態檔 ＋ 4 個 data 檔；
+  `already-published` 路徑重跑仍走 add／commit／push；
+  對帳器塞一個未追蹤檔進去會列出它，乾淨狀態下輸出為空。
+- 靜態產出體積：當期 1.5MB（PNG 944K ＋ SVG 568K），`charts/` 全目錄 22MB。
+  照此速率一年約 550MB，**Pages 的 1GB 軟上限大約兩年內會碰到** —— 記在待辦。
+
+### 怎麼倒回去
+
+`staged_paths` 是新增欄位，移除它並把 `publish.py` 的 `git add -- *paths`
+改回 `git add "data"`、刪掉步驟 4b 即可完全回到 08-21 之前的行為。
+`checks/chart.py` 的 freshness 改動獨立，可單獨倒回（倒回去它會恢復成永遠 PASS）。
+
+### 當時已知的風險
+
+- **回測舊期時 freshness 一定紅**：`now` 取的是執行當下，不是那一期的日期。
+  對 2026-08-14 回測會報 8–9 天落後 —— 那是這條檢查的形狀，不是舊期壞掉。
+- ~~`kb-core` 自己有 remote 但八個 launchd 工作裡沒有任何一支推它~~ ——
+  **同日解決，見下一節。**
+
+### 同日續：kb-core 自己也沒有人推（第三個病灶）
+
+前一節查 `charts/` 時順手發現：`kb-core` 有 remote，八個 launchd 工作裡
+沒有任何一支推它。跟 `charts/` 同一個病 —— dashpush 退場沒有交接。
+
+新增 `tools/push_kbcore.py` ＋ `launchd/com.kenny.kbcorepush.plist`（每 300 秒）。
+**刻意不併進 `publish.py`**：
+
+| | `kbpublish.*` | `kbcorepush` |
+|---|---|---|
+| 推的是 | 機器產生、發布後不可改寫的 `data/` | 人與模型正在改的原始碼 |
+| 閘門 | 那一套系統的內容檢查 | `py_compile` ＋ 檢查自檢 |
+| 觸發 | outbox 有草稿 | 工作區靜置 5 分鐘且有未推的東西 |
+| 落後 origin | `pull --rebase` 續推 | **停下來報告，不自動 rebase** |
+
+最後一列的理由：kb-core 是另外三套排程**執行中所依賴**的程式碼，
+在它們跑的時候改寫工作區，等於讓 `import checks` 有機會讀到半成品。
+單一寫入者的 repo 落後 origin 本來就代表有人在別處動過 —— 需要人看，不該自動化。
+
+閘門三比前兩道重要：**推壞掉的 `checks/` 上去，三套系統的閘門會同時失效，
+而回執照樣說成功。** 一個推不上去的 repo 只是不方便，
+一個推上去的壞閘門是靜默失效。
+
+`.push-receipt.json` 必須 gitignore ——不擋掉的話它每輪重寫會讓工作區永遠是髒的，
+於是每 5 分鐘 commit 一次自己的回執，而每次 commit 又產生新的回執。
+`newest_mtime()` 也把它排除，否則靜置永遠不成立。
+
+**六條路徑在 `/tmp` 實測（另建 bare origin ＋ 工作 repo，不碰真 repo）：**
+
+| 情境 | 退出碼 | 副作用 |
+|---|---|---|
+| 乾淨且未領先 origin | 13 空輪次 | 無 |
+| 有改動但靜置未到 | 13 空輪次 | 不 commit |
+| 靜置已過 ＋ 自檢綠 | 0 pushed | origin 前進，訊息標 `chore(auto)` |
+| 檢查自檢紅（把今天修的 freshness 改回去） | 10 gate | **origin 未被動到** |
+| 語法壞掉 | 10 gate | origin 未被動到 |
+| origin 被別處推進 | 15 diverged | **origin 未被覆蓋、無 rebase 狀態目錄** |
+
+第四條特別值得記：注入的回歸就是本節前半修掉的那個 bug，
+而它被抓到是因為**這一輪連 fixture 一起換成了真實形狀**。
+修 bug 順手把 fixture 修對，於是這個 bug 從此不可能再悄悄回來。
+
+### 同日續：維護文件的正本收進 kb-core
+
+`maintain` 技能的 `chart/MAIN.md` 與 `MODIFY.md` 停在重建之前 ——
+路徑寫 `/Users/kenny`、叫人跑已退休的 `tools/check_day.py`、
+把 `com.kenny.dashpush` 當成活的（它的殘骸在
+`chart-of-the-day/tools/_to_delete/dashpush-auto-push.sh`）。
+
+**一份把退休機制當成活的維護文件，會讓下一個人去修一個不存在的東西。**
+而它自己的第一條硬規矩就是「這份維護文件不持有會變的值」——
+漂掉的不是數字，是路徑與檔名。
+
+正本改放 `kb-core/skills/maintain/chart/{MAIN,MODIFY}.md`，
+跟 `skills/chart/SKILL.md` 同一個做法：**正本進版控，別處那份是副本。**
+技能的子檔無法由工作階段更新（`save_skill` 只取代 `SKILL.md`，
+其餘檔案原樣保留），所以副本要人工貼回去。
+
 ## 2026-08-20 深夜｜第四套系統上底盤：輸出契約、12 條檢查、系統註冊
 
 沿用既有的 `chart-of-the-day` 資料 repo，不開新的。
