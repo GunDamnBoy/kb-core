@@ -35,8 +35,8 @@
     <!-- **這一套的 payload 要讀 repo 以外的抽取文字**（原文與抽取文字永不進任何
          repo）。路徑寫在這裡而不是靠 `~` 展開，理由是 2026-08-21 實測撞到的：
          沙箱裡有一份同名的舊拷貝，兩邊算出不同的結果，**而兩邊看起來都很合理**。 -->
-    <key>RESEARCH_EXTRACTED</key>
-    <string>/Users/macmini/broker-research/extracted</string>
+    <key>BROKER_RESEARCH_ROOT</key>
+    <string>/Users/macmini/broker-research</string>
   </dict>
 
   <key>StartInterval</key>

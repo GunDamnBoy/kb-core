@@ -30,13 +30,12 @@ from pathlib import Path
 from kbcore.system import System, register
 
 ROOT = Path(__file__).resolve().parent.parent
-# **抽取目錄有兩個可能的家，而它們會給出不同的答案。**
-# 2026-08-21 實測：沙箱裡有一份 12:43 留下的舊拷貝住在 `~/broker-research/extracted`，
-# 真正在用的那份在別的路徑。`research_verify` 吃參數、這裡吃 `~`，於是同一批資料
-# 兩邊算出不同的結果 —— 一邊全綠、一邊擋下來，**而兩邊看起來都很合理**。
-# 環境變數讓「要驗哪一份」變成可以明講的東西，而不是各自預設。
-EXTRACTED = os.path.expanduser(
-    os.environ.get("RESEARCH_EXTRACTED", "~/broker-research/extracted"))
+# 路徑只有一個家：`BROKER_RESEARCH_ROOT`（見 `scripts/research/_paths.py` 的檔頭，
+# 那裡記著 2026-08-21 同一個坑咬三次的三種樣子）。**`~` 在不同執行環境展開到不同地方**，
+# 而它錯的時候輸出讀起來完全正常。
+EXTRACTED = os.path.join(
+    os.path.expanduser(os.environ.get("BROKER_RESEARCH_ROOT", "~/broker-research")),
+    "extracted")
 
 
 def build(draft: dict, repo: Path) -> dict:

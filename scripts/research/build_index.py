@@ -33,6 +33,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _paths  # noqa: E402   路徑只有一個家，見該檔的檔頭
+
 TPE = dt.timezone(dt.timedelta(hours=8))
 
 
@@ -94,8 +97,8 @@ def merge(old, new_entries, now):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False, allow_abbrev=False)   # 見 extract.py 的理由
-    ap.add_argument("src", nargs="?", default="~/broker-research/extracted")
-    ap.add_argument("--out", default="~/broker-research/index.json")
+    ap.add_argument("src", nargs="?", default=None)   # 見 _paths.py
+    ap.add_argument("--out", default=None)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     a, unknown = ap.parse_known_args(argv)
@@ -104,8 +107,8 @@ def main(argv=None):
             print(f"不認得的旗標 {unknown} —— **這裡刻意不猜**", file=sys.stderr); return 12
         print(__doc__); return 2
 
-    src = os.path.expanduser(a.src)
-    out = os.path.expanduser(a.out)
+    src = os.path.expanduser(a.src) if a.src else _paths.extracted()
+    out = os.path.expanduser(a.out) if a.out else _paths.under("index.json")
     files = sorted(glob.glob(os.path.join(src, "*.json")))
     if not files:
         print(f"{src} 沒有抽取結果 —— 空輪次，不是失敗"); return 13

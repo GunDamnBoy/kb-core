@@ -1,5 +1,43 @@
 #!/bin/bash
-# snapshot.sh — 把「不在 git 裡」的系統檔案存成一份快照。
+# snapshot.sh — **已退役（2026-08-22）。跑它不會做任何事。**
+#
+# 退役的理由不是它壞了，是**它保護的東西已經不在它以為的地方**：
+#
+# 它抄八個目標。2026-08-22 在 Mac 上實地清點 `~/.podfetch`，結果是
+#   podfetch.py／healthcheck.py／json2docx.py／fix-schedule.sh  → 不在那裡，住在 kb-core
+#   config.json／shows.json                                    → 是指向 kb-core 的 symlink
+#   snapshot.sh（它自己）                                        → 也住在 kb-core
+#   排程 SKILL.md                                              → 是 kb-core 裡 DIGEST-PROMPT.md 的副本
+# **八個目標有七個現在都在 kb-core 裡、有 git，而且 `com.kenny.kbcorepush`
+# 每 300 秒自動 commit＋push。** 2026-08-04 那次「SKILL.md 被整份覆寫、無法還原」
+# 的情境，在正本搬進 kb-core 之後不會再發生。
+#
+# 而**唯一真的在 git 之外的那個檔案，它從來沒有抄過**：`~/.podfetch/metrics.csv`。
+# 同一天連這個也解決了 —— 那份與 kb-core 那份合併成一份（見 `tools/podcast_metrics_merge.py`），
+# `~/.podfetch/metrics.csv` 改成 symlink，於是基線也進了 git。
+#
+# **所以現在沒有任何東西需要快照。** 留著這支不動、只讓它出聲的理由是：
+# 文件裡還會有指向它的舊指令（MAIN.md 的硬規矩、MODIFY.md 的驗證清單都寫過），
+# 而**一個照舊產生「快照完成」的退役腳本，會讓人以為還原點存在**——
+# 那正是本檔自己第 30 行記過的「空快照比沒有快照更危險」。
+#
+# 要看歷史或還原：`cd ~/kb-core && git log -- scripts/podcast/`。
+#
+# ────────────────────────────────────────────────────────────────
+cat >&2 <<'RETIRED'
+snapshot.sh 已於 2026-08-22 退役，沒有建立任何快照。
+
+  它抄的八個目標裡有七個現在住在 ~/kb-core，有 git，且每 5 分鐘自動推送。
+  唯一在 git 之外的 ~/.podfetch/metrics.csv 已合併進 kb-core 並改成 symlink。
+
+  要還原或看歷史：cd ~/kb-core && git log -- scripts/podcast/
+  完整理由見本檔開頭的註解。
+RETIRED
+exit 0
+# ────────────────────────────────────────────────────────────────
+# 以下為退役前的內容，保留供查閱，不會被執行。
+#
+# 原本的說明：把「不在 git 裡」的系統檔案存成一份快照。
 #
 # 為什麼需要：repo 內的 AGENT_BRIEF.md／MAINTENANCE.md／index.html 有 git，但
 # 這一週改動最頻繁的檔案全都在 repo 外——podfetch.py 至少改了 8 次、排程

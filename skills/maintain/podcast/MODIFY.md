@@ -12,7 +12,7 @@
 | 撰寫 subagent 的規則 | `kb-core/scripts/podcast/preamble.md` | 與 `BRIEF`／`anchors` 的重疊處兩邊都要改（見 `FILES.md`） |
 | 發布前檢查 | `kb-core/checks/podcast.py` | 見下方「新增檢查」 |
 | 節目清單、官方稿入口 | `AGENT_BRIEF.md` 第 1 節＋見下方「節目清單」 | `shows.json` **有兩份**（kb-core 與 `~/.podfetch/`），沙箱通常只看得到一份 |
-| podfetch 行為 | `~/.podfetch/` 的程式與設定 | 見下方「podfetch」 |
+| podfetch 行為 | `~/kb-core/scripts/podcast/` 的 `podfetch.py` 與 `config.json`（**不是 `~/.podfetch/`**，那裡只剩執行期狀態） | 見下方「podfetch」 |
 | 已知的坑與待辦 | `MAINTENANCE.md` 第 4、6 節 | |
 
 > **2026-08-22 改寫**：上一版第一列寫「規格與判斷規則 → `AGENT_BRIEF.md`」，
@@ -52,8 +52,8 @@
 
 **全數通過才算完成**；任何一項失敗就回上一步。
 
-1. 重跑 `python3 ~/.podfetch/healthcheck.py`，確認沒有新的 FAIL。
+1. 重跑 `python3 ~/kb-core/scripts/podcast/healthcheck.py`，確認沒有新的 FAIL。**在沙箱裡跑時，`shows.json 兩份`／`節目在文件裡`／`podfetch` 三條會固定 WARN 跳過，等於沒驗到**——動過那三條涵蓋的東西就要在 Mac 上再跑一次。
 2. **再叫一次子代理**照 [`SYNC-CHECKLIST.md`](SYNC-CHECKLIST.md) 獨立比對，確認這次改動沒有製造新的不同步、沒有弄丟關鍵規則、也沒有覆寫掉別場維護的成果。若這次改了任何指標、門檻或因果宣稱，明確指定子代理去讀程式確認那個值實際接到哪條分支——文件對讀查不出「理由寫錯」這種矛盾。
 3. 這次新增的任何量測或自動化，當場驗證它回傳非空結果（空值與 0 都算失敗）。
-4. `bash ~/.podfetch/snapshot.sh "收工後"`。
+4. ~~收工快照~~（2026-08-22 退役）。改成確認 kb-core 推得出去：`tail -5 ~/outbox/kbcorepush.log`。**若看到「檢查自檢有失敗的條目」就是新加的檢查沒過 `fixture`／`near_miss` 契約，它會擋住之後所有 kb-core 推送**——`fixture` 要能觸發檢查（非 PASS），`near_miss` 要剛好通過（PASS），兩者方向相反，很容易寫反。
 5. 驗線上狀態時，網址帶 cache-buster 並確認 `updatedLabel`。

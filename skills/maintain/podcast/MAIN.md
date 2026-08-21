@@ -18,7 +18,15 @@
 
 repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL.md`）**沒有 git**，快照是唯一還原點；排程 `SKILL.md` 還可能在對話進行中被別場維護整份覆寫。動手前重讀當下的檔案，只信這一秒讀到的內容——即使你認為自己就是上一個改它的人。
 
-全程繁體中文（台灣用語）。repo 根目錄 `~/podcast-knowledge-digest`，轉錄管線在 `~/.podfetch/`。
+全程繁體中文（台灣用語）。repo 根目錄 `~/podcast-knowledge-digest`。
+
+**轉錄管線住在 `~/kb-core/scripts/podcast/`，不是 `~/.podfetch/`（2026-08-22 實地清點訂正）。**
+`podfetch.py`／`healthcheck.py`／`json2docx.py`／`config.json`／`shows.json` 全在 kb-core，
+launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**：
+`gemini.key`、`state.json`、`podfetch.log`、`logs/`、`cache/`，
+外加兩個指回 kb-core 的 symlink（`config.json`、`shows.json`）與 `metrics.csv`。
+**舊文件裡所有 `~/.podfetch/<某支程式>` 的路徑都是過期的**——它們不會報錯，
+只會「找不到檔案」，而那跟「這台機器沒裝」看起來一樣。
 
 ## 硬規矩
 
@@ -26,7 +34,7 @@ repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL
   （**2026-08-21 更正**：上一版寫的是 `com.kenny.dashpush` 每 180 秒 ——
   那支在 2026-08-20 重建時退場，殘骸在 `chart-of-the-day/tools/_to_delete/dashpush-auto-push.sh`。
   九個 launchd 工作裡沒有它。）
-- **開工、收工各存一次快照**：`bash ~/.podfetch/snapshot.sh "開工前"`／`"收工後"`。**在 Cowork 沙箱裡跑會缺 `SKILL.md`**（沙箱看不到 `~/Documents/`）——**改過排程 `SKILL.md` 的場次，收工訊息一定要請使用者在 Mac 上補跑一次，並確認那筆快照真的含 `SKILL.md`**。沙箱那份只證明 `.podfetch/` 有備份。
+- **不再需要快照（2026-08-22 退役）。** `snapshot.sh` 抄的八個目標裡有七個現在住在 kb-core、有 git，且 `com.kenny.kbcorepush` 每 300 秒自動 commit＋push；唯一在 git 之外的 `~/.podfetch/metrics.csv` 已合併進 kb-core 並改成 symlink。**所以現在沒有任何東西需要快照。** 腳本留著但只會出聲、不建立任何東西——因為**一個照舊印「快照完成」的退役腳本會讓人以為還原點存在**。要還原或看歷史：`cd ~/kb-core && git log -- scripts/podcast/`。
 - **Word 報告與 `~/podcast-transcripts` 留在 repo 外**（repo 是 Public）。
 - **每個意義各有單一來源**：什麼算對的產出在 `kb-core/podcast/BRIEF.md`、每一個數字在 `kb-core/podcast/anchors.json`、每天怎麼跑在 `kb-core/scripts/podcast/DIGEST-PROMPT.md`、撰寫規則在 `kb-core/scripts/podcast/preamble.md`、節目清單與官方稿入口在 `AGENT_BRIEF.md` 第 1 節、事故與來歷在 `MAINTENANCE.md`。寫東西前先決定放哪一份；完整分工見 [`FILES.md`](FILES.md)。
   **兩份規則同時存在時，改到沒在跑的那一份不會有任何徵兆**——這就是 2026-08-21 到 08-22 之間 brief 被降級卻沒有人改本文件的那個縫。
@@ -37,14 +45,16 @@ repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL
 
 ## 第 1 步：載入現況
 
-1. 存開工快照：`bash ~/.podfetch/snapshot.sh "開工前"`。在 Cowork 沙箱裡跑會缺 `SKILL.md`；只能在沙箱裡跑就在報告中請使用者於 Mac 補跑一次。
+1. ~~存開工快照~~（2026-08-22 起不必做，理由見上方硬規矩）。改成確認 kb-core 推送鏈是活的：`tail -5 ~/outbox/kbcorepush.log`，看到最近的 `chore(auto)` 或「空輪次」都算正常。
 2. 跑健康檢查——機械式檢查一次做完，並自動把當日指標寫進 `metrics.csv`：
 
    ```
-   python3 ~/.podfetch/healthcheck.py
+   python3 ~/kb-core/scripts/podcast/healthcheck.py
    ```
 
-   沙箱路徑通常是 `/sessions/<name>/mnt/.podfetch/healthcheck.py`，腳本會自動偵測掛載點。連不到資料夾就用 `mcp__cowork__request_cowork_directory` 連三個資料夾再重跑。FAIL 與 WARN 全部帶進第 3 步的報告。
+   沙箱路徑是 `/sessions/<name>/mnt/kb-core/scripts/podcast/healthcheck.py`，腳本會自動偵測掛載點。連不到資料夾就用 `mcp__cowork__request_cowork_directory` 連四個資料夾再重跑。FAIL 與 WARN 全部帶進第 3 步的報告。
+
+   > **沙箱裡固定會有三則 WARN**（`shows.json 兩份`／`節目在文件裡`／`podfetch`），成因都是 `~/.podfetch` 沒被掛載，不是故障。**但也因此，那三條在沙箱裡等於沒跑**——要真的驗它們得在 Mac 上跑一次。
 3. 補**成本基線**的人工欄位：使用者若附了當日 token 分析報告，把**四個數字**抄進 `metrics.csv`——加權總量（千位）→ `eff_tokens_k`、子代理數 → `subagents`、子代理總回合數 → `agent_turns`、**子代理加權總量（千位）→ `subagent_tokens_k`**。這四欄機器量不到（排程執行不在本機留 transcript），**缺任何一欄 `healthcheck.py` 都會出聲**；healthcheck 不會洗掉人工值。每集成本那條曲線全靠這一步累積。
    > **要比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`。** 後者是整場工作階段，混了固定開銷與一次性維護動作，除以集數得到的數字**不可比**——08-15 與 08-17 都踩過這個坑。
 4. 讀 `~/podcast-knowledge-digest/MAINTENANCE.md`，尤其第 5 節（新增節目步驟表）、第 7 節（事故檔案）、第 12 節（登記簿）。第 4C 節（podfetch 的四個不要改的設計）只有要動 `podfetch.py` 時才需要讀。第 11 節（變更紀錄歸檔）是純歷史，要查「當初為什麼這樣改」時才回來讀。

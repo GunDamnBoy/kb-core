@@ -3,7 +3,15 @@
 
 把每次維護都要手動重跑的機械式檢查集中成一支腳本。
 對受檢的系統只做唯讀檢查，也絕不呼叫 git（背景推送會被 .git/index.lock 擋住）。
-唯一會寫的檔案是自己的 ~/.podfetch/metrics.csv（每日指標，只追加當天一列）。
+唯一會寫的檔案是 metrics.csv（每日指標，只追加當天一列）。
+**2026-08-22 起它只有一份**：實體檔在 ~/kb-core/scripts/podcast/metrics.csv（有 git），
+~/.podfetch/metrics.csv 是指向它的 symlink。在那之前兩邊各寫各的——
+本程式寫 ~/.podfetch/ 那份，而每日排程照 DIGEST-PROMPT 第 8 步把人工四欄
+寫進 kb-core 那份。2026-08-22 實測：兩份都是 22 天、內容大致相同，
+但**已有 6 天在特定儲存格上漂移**，而衝突時沒有人仲裁——
+本程式的回填與排序只作用在自己那一份，另一份會慢慢落後。
+**基線有兩份，就沒有一份是權威的。**
+本程式是就地寫入（open(path,"w")），不是 temp+rename，所以 symlink 不會被換掉。
 
 用法：
     python3 ~/.podfetch/healthcheck.py

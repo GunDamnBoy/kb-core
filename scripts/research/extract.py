@@ -40,6 +40,9 @@ import subprocess
 import sys
 import unicodedata
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _paths  # noqa: E402   路徑只有一個家，見該檔的檔頭
+
 _KB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 A = json.load(open(os.path.join(_KB, "research", "anchors.json"), encoding="utf-8"))
 
@@ -262,7 +265,7 @@ def main(argv=None):
     # **我為了防那個錯而寫的守衛，被它底下那一層的預設架空了。**
     ap = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     ap.add_argument("inbox", nargs="?")
-    ap.add_argument("--out", default="~/broker-research/extracted")
+    ap.add_argument("--out", default=None)   # 見 _paths.py：`~` 會展開到別的地方
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--prune", action="store_true")
@@ -282,7 +285,7 @@ def main(argv=None):
               "  ~/.venvs/kb/bin/pip install pdfplumber", file=sys.stderr)
         return 14
     inbox = os.path.expanduser(a.inbox)
-    out = os.path.expanduser(a.out)
+    out = os.path.expanduser(a.out) if a.out else _paths.extracted()
     if not os.path.isdir(inbox):
         print(f"找不到 {inbox} —— 跟「資料夾是空的」是兩件事", file=sys.stderr); return 12
     pdfs = sorted(os.path.join(inbox, f) for f in os.listdir(inbox) if f.lower().endswith(".pdf"))

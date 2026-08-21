@@ -14,6 +14,9 @@
 from __future__ import annotations
 import argparse, datetime as dt, glob, json, os, re, shutil, sys, urllib.parse
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _paths  # noqa: E402   路徑只有一個家，見該檔的檔頭
+
 _KB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 A = json.load(open(os.path.join(_KB, "research", "anchors.json"), encoding="utf-8"))
 sys.path.insert(0, os.path.join(_KB, "scripts", "chart"))
@@ -25,6 +28,23 @@ def count(s):
     s = re.sub(r"^#{1,6}\s*", "", s or "", flags=re.M)
     s = re.sub(r"\*\*|__|`|\*|^[-–—]\s*", "", s, flags=re.M)
     return len(re.sub(r"\s+", "", s))
+
+
+def week_of(datestr):
+    y, w = dt.date.fromisoformat(datestr).isocalendar()[:2]
+    return f"{y}-W{w:02d}"
+
+
+def week_range(week):
+    """`2026-W34` → `["2026-08-17", "2026-08-23"]`。
+
+    **從週次算出來，不從報告日期的最小最大值算。** 兩者在一批報告剛好
+    橫跨整週時看起來一樣，而在只收到一份的那週差很多 ——
+    後者會讓「本期區間」變成「那一份的日期」，讀起來像這一週只有那一天。
+    """
+    y, w = int(week[:4]), int(week.split("W")[1])
+    mon = dt.date.fromisocalendar(y, w, 1)
+    return [mon.isoformat(), (mon + dt.timedelta(6)).isoformat()]
 
 
 def tier_of(pages):
@@ -69,9 +89,9 @@ def render_charts(part, ex, outdir):
 def main(argv=None):
     ap = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     ap.add_argument("week", nargs="?")
-    ap.add_argument("--parts", default="~/broker-research/digest/_parts")
-    ap.add_argument("--out", default="~/broker-research/digest")
-    ap.add_argument("--extracted", default="~/broker-research/extracted")
+    ap.add_argument("--parts", default=None)   # 見 _paths.py
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--extracted", default=None)
     ap.add_argument("--no-charts", action="store_true")
     ap.add_argument("--outbox", default="~/outbox/research")
     ap.add_argument("--repo", default="~/broker-research-digest")
@@ -82,11 +102,35 @@ def main(argv=None):
     if a.help or not a.week:
         print(__doc__); return 2
 
-    P, O, E = (os.path.expanduser(x) for x in (a.parts, a.out, a.extracted))
+    P = os.path.expanduser(a.parts) if a.parts else os.path.join(_paths.digest(), "_parts")
+    O = os.path.expanduser(a.out) if a.out else _paths.digest()
+    E = os.path.expanduser(a.extracted) if a.extracted else _paths.extracted()
     parts = {json.load(open(f, encoding="utf-8"))["slug"]: json.load(open(f, encoding="utf-8"))
              for f in sorted(glob.glob(os.path.join(P, "*.json")))}
     ex = {os.path.basename(f)[:-5]: json.load(open(f, encoding="utf-8"))
           for f in sorted(glob.glob(os.path.join(E, "*.json")))}
+    # **這一期只收這一週的報告。** 一批丟進來的報告可能橫跨好幾週
+    # （2026-08-21 實測：18 份橫跨 5 個 ISO 週），全部組進同一期
+    # 會讓六月的報告出現在八月那一期裡。
+    #
+    # **被篩掉的一定要印出來。** 安靜地少收幾份，跟「那幾週本來就沒有報告」
+    # 在輸出上長得一模一樣 —— 而後者不需要任何人再做什麼。
+    other = {}
+    for slug in list(ex):
+        w = week_of(ex[slug]["date"])
+        if w != a.week:
+            other.setdefault(w, []).append(slug)
+            del ex[slug]
+    if other:
+        print(f"  （不屬於 {a.week}，這一期不收）")
+        for w in sorted(other):
+            print(f"    {w}  {len(other[w])} 份：" + "、".join(x[:40] for x in other[w]))
+        print(f"    **那幾週要各自跑一次 assemble.py**，不然它們永遠不會被收錄，"
+              f"而且沒有任何東西會提醒你\n")
+    if not ex:
+        print(f"{a.week} 底下沒有任何報告 —— 空輪次，不是失敗", file=sys.stderr)
+        return 13
+
     miss = sorted(set(ex) - set(parts))
     if miss:
         print(f"**{len(miss)} 份有抽取結果但沒有精華**：{miss}\n"
@@ -124,9 +168,8 @@ def main(argv=None):
 
     prev = os.path.join(O, f"{a.week}.json")
     old = json.load(open(prev, encoding="utf-8")) if os.path.exists(prev) else {}
-    dates = sorted(r["date"] for r in reports)
     digest = {
-        "week": a.week, "range": old.get("range") or [dates[0], dates[-1]],
+        "week": a.week, "range": week_range(a.week),
         "reports_count": len(reports),
         "brokers": {b: sum(1 for r in reports if r["broker"] == b)
                     for b in sorted({r["broker"] for r in reports})},
@@ -200,6 +243,8 @@ def write_draft(digest, outbox, digest_dir, repo):
     for r in d.get("reports") or []:
         r.pop("file", None)
         r.pop("file_url", None)
+    # publish 用 `date` 命名 `data/<date>.json` 並據以排序。
+    # **取該週的週日**，那是從週次算出來的、唯一且可排序的 key。
     d["date"] = (d.get("range") or ["", ""])[1]
     if not d["date"]:
         return ["  草稿沒寫：digest 沒有 range，**取不到週日就沒有檔名**"]

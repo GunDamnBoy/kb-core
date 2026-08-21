@@ -36,7 +36,9 @@ REQUIRED = ["brokers", "extract", "page_one_is_the_thesis"]
 
 
 def main(argv):
-    out = os.path.expanduser(argv[1] if len(argv) > 1 else "~/broker-research/extracted")
+    out = (os.path.expanduser(argv[1]) if len(argv) > 1
+           else os.path.join(os.path.expanduser(
+               os.environ.get("BROKER_RESEARCH_ROOT", "~/broker-research")), "extracted"))
     if not os.path.isdir(out):
         print(f"找不到 {out} —— **跟「抽過但沒有東西」是兩件事**", file=sys.stderr)
         return Exit.BAD_INPUT
