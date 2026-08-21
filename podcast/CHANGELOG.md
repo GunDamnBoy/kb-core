@@ -865,3 +865,40 @@ podfetch 與 `podcast_verify` import 同一份，門檻一律讀 anchors：
 
 在此之前它只活在排程框裡 —— advisory 有 SKILL.md、chart 有 RUN-PROMPT.md，
 podcast 什麼都沒有。正本現在在 `scripts/podcast/DIGEST-PROMPT.md`。
+
+## 2026-08-21 下午｜維護稽核：AGENT_BRIEF 的一半、與四個沒有定義的欄位
+
+### 一、`AGENT_BRIEF.md` 掛上了「只剩一半是權威」的橫幅
+
+`skills/maintain/podcast/MAIN.md` 把「這份 brief 有沒有失效橫幅」列為
+下次維護第一件要查的事。查了：**沒有**。而且是真的雙寫 ——
+第 3 節的篇幅層級（1,200–1,800／2,000–3,000／2,500–4,000／4,000–6,500）
+與 `anchors.length_tiers` **逐字相同，沒有任何機制在維持那個相同**。
+
+橫幅刻意不寫成「整份作廢」，因為它不是：
+**第 1 節的節目清單仍然被 `healthcheck.py` 的「節目在文件裡」那條實際讀著**，
+第 2 節的 podfetch 讀法與排查、第 6 節基礎設施備忘也沒有別的家。
+所以橫幅是一張分工表 —— 數字歸 kb-core，管線與清單留在原地，衝突時 kb-core 為準。
+
+> 五圖那份掛的是「整份失效」，這份不能照抄。**把還活著的東西宣告成死的，
+> 跟把死的當成活的一樣糟** —— 前者會讓人去別的地方找一個不存在的答案。
+
+### 二、`metrics.csv` 有了欄位定義的家
+
+新增 `scripts/podcast/metrics-columns.md`。在此之前沒有這份文件，
+於是四欄的定義只存在於最早寫它們的那場對話裡 —— 08-21 要補兩列時就推不出來
+（`brief_kb=55` 對不上 `BRIEF.md` 當時的 7.9 KB，差七倍）。
+
+`brief_kb`／`skill_kb`／`segments_done`／`podfetch_minutes` **退休，一律留空**。
+欄位保留是為了不改寫既有列 —— 舊值仍是當時量到的東西，只是沒有人說得出量的是什麼。
+前兩欄尤其失去意義：規格 08-20 搬進 kb-core，「brief 有多大」問的已不是同一份檔案。
+
+> 復活任何一欄之前，先在那份文件寫下定義與量法再開始填。
+> **順序反過來就是這四欄當初的下場。**
+
+### 三、`quotes_grounded` 在 Mac 上是真的有在守
+
+讀取追蹤顯示它在沙箱回 SKIPPED、一個欄位都沒讀 —— 那是沙箱看不到 `~/podcast-transcripts`。
+拿真路徑重跑：**8 集的 `showKey-trackId.md` 全部對上、0 條金句對不上逐字稿**。
+`quote_misses` 的設計是「有一集找不到稿就整輪回 None、不做半套」，
+所以 SKIPPED 與「驗過沒問題」在報告上分得出來，這一點是對的。

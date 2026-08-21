@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 2026-08-21 新增。**在此之前 chart 是三套裡唯一沒有任何守望的。**
+     兩支既有的 kbwatch 一支看 advisory、一支看 podcast，而 kbwatch 一次
+     只看得了一套系統（參數是 repo ＋ 系統 id 一組）。於是 chart 的哨兵
+     從 08-20 建立起一次都沒成功跑過（唯一那次 startup_failure），
+     **而沒有人在問它為什麼沒有心跳。**
+
+     這一支只跑 watch_sentinel，不掛 healthcheck —— chart 沒有那種東西，
+     而且看門狗的依賴要比它守的東西少。 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kenny.kbwatch.chart</string>
+
+  <!-- 2026-08-20 改：由 kb-tracer 改為投顧知識庫。
+
+       原值 (/Users/macmini/kb-tracer, kb-tracer) 是第 5 片留下來的，之後
+       一直沒改。它造成的失效很安靜：四條檢查裡只有兩條失準 ——
+       `sentinel_alive` 與 `sentinel_verdict` 讀的是 tracer 的 heartbeat，
+       而 `no_code_drift`（看 kb-core 自己）與 `external_binaries`（讀 plist）
+       照常正確。**所以它不會全紅，只會缺一半**，那正是它撐了兩天沒被發現的原因。
+
+       教訓不是「要記得改參數」，是**看門狗自己需要有人看**：這個錯誤只能
+       靠人去讀 plist 才發現，沒有任何自動訊號會說「你在看錯的東西」。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/watch_sentinel.py</string>
+    <string>/Users/macmini/chart-of-the-day</string>
+    <string>chart-of-the-day</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <!-- 釘整點而不是 StartInterval：chart 的哨兵在台北 15:20 跑，
+       而 StartInterval 的相位取決於載入時刻，遲早會漂到那一分鐘上，
+       量到一個「正在寫」的中間狀態。16:00 是哨兵之後的第一次。 -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/chart/watch.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/chart/watch.log</string>
+</dict>
+</plist>

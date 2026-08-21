@@ -13,6 +13,7 @@
 | `com.kenny.kbpublish.podcast` | 每 60 秒 | 發布**podcast**：`~/outbox/podcast/` → `podcast-knowledge-digest` |
 | `com.kenny.kbwatch` | 每 4 小時 | 看門狗：Actions 上的哨兵還活著嗎、本機程式有沒有漂移 |
 | `com.kenny.kbwatch.podcast` | 02／06／10／14／18／22 時 | podcast 的看門狗（`kbwatch-podcast.sh`）：哨兵＋`healthcheck.py` |
+| `com.kenny.kbwatch.chart` | 00／04／08／12／16／20 時 | chart 的看門狗：只跑 `watch_sentinel.py`（chart 沒有 healthcheck） |
 | `com.kenny.kbdocx.podcast` | 每天 04:00 | 把**已發布的**當日 JSON 排版成 Word（`kbdocx-podcast.sh`）→ `~/Documents/podcast-reports` |
 | `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
@@ -198,8 +199,11 @@ pmset -g sched && pmset -g custom | grep -E '^ *(sleep|displaysleep|disksleep|wo
   於是四條檢查裡有兩條（`sentinel_alive`、`sentinel_verdict`）讀的是靶子的
   heartbeat，另外兩條照常正確——**不會全紅，只會缺一半**，所以撐了兩天沒被發現。
   podcast 那一支已經另外建了 `com.kenny.kbwatch.podcast`。
-  **chart 目前沒有任何看門狗** —— 它的哨兵還沒建，所以「發布鏈斷掉」在 chart 這一套
-  仍然是靜默的。
+  chart 那一支在 2026-08-21 補上（`com.kenny.kbwatch.chart`）。
+- **可重用 workflow 的 caller 一定要自己給 `permissions`。** chart 的 `sentinel.yml`
+  漏了那一段，於是從 08-20 建立到 08-21 一次都沒成功跑過（唯一那次 `startup_failure`），
+  `sentinel/heartbeat.json` 在遠端是 404。**而沒有心跳跟「哨兵判綠」在遠端看起來
+  都是「沒有紅字」** —— 真正發現它的是「為什麼這個檔不存在」，不是任何一條檢查。
 - **`launchd` 的環境是空的**：`PATH=/usr/bin:/bin:/usr/sbin:/sbin`、`cwd=/`。
   所以每個 plist 都明寫 `PATH`、`HOME`、`WorkingDirectory`，程式路徑一律絕對路徑。
 - `com.kenny.podfetch` 的 `PATH` 多帶了 `/opt/homebrew/bin`，
