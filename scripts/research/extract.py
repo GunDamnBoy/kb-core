@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import collections
 import datetime as dt
+import glob
 import hashlib
 import json
 import os
@@ -196,14 +197,25 @@ def extract(path):
     before = sum(len((p or "").splitlines()) for p in pages)
     p1 = kept[0] if kept else ""
 
-    # **辨識要在剃頁首之前做，因為券商名就寫在頁首。**
-    # 第一版先剃再認，於是野村兩份與花旗一份變成「認不出」—— 7/7 掉到 4/7。
-    # 我把雜訊跟訊號一起剃掉了，而輸出只說「認不出」，不會說「我剛剛把它刪了」。
-    # `hf` 本身也一起找：那組字串正是頁首，券商名一定在裡面。
-    id_src = "\n".join([(pages[i] or "")[:600] for i in range(min(4, npage))] + sorted(hf))
+    # **辨識在剃頁首之前做，因為券商名就寫在頁首**（先剃再認會讓 7/7 掉到 4/7 ——
+    # 我把雜訊跟訊號一起剃掉，而輸出只說「認不出」，不會說「我剛剛把它刪了」）。
+    #
+    # 但窗口式的「前 N 頁前 600 字」也不行：Top of Mind 的 `Goldman` 第一次出現
+    # 在第 4,082（pdfplumber）／6,472（pdftotext）個字元。第一版靠 `hf` 補救，
+    # 而 `hf` 本身是**抽取器相依**的 —— 於是同一份檔在沙箱認得出、在發布機認不出。
+    # **我把辨識建在一個會隨工具變的東西上。**
+    id_src = "\n".join(pages)
     p1_raw = pages[0] if pages else ""
 
-    broker = next((n for n, rx in BROKERS if rx.search(id_src)), None)
+    # **計次取最大，不是首次命中。** 掃全文會撞到互相引用（這份 Top of Mind 的
+    # 圖表來源就寫著 `Goldman Sachs GIR`，而花旗的報告也可能引用高盛）。
+    # 自己家的名字會出現在頁首、頁尾、免責聲明、法律實體名裡，數十次起跳；
+    # 被引用的那家通常只有個位數。差距本身就是證據，所以把計數留在輸出裡備查。
+    tally = {n: len(rx.findall(id_src)) for n, rx in BROKERS}
+    top = max(tally, key=tally.get)
+    margin = A["brokers"]["min_margin"]
+    second = sorted(tally.values(), reverse=True)[1] if len(tally) > 1 else 0
+    broker = top if tally[top] >= A["brokers"]["min_hits"] and tally[top] >= second * margin else None
     date = None
     for rx, fmt in DATE_RX:
         m = rx.search(p1_raw)
@@ -219,7 +231,7 @@ def extract(path):
 
     return {
         "slug": f"{date or 'undated'}-{slugify(broker or 'unknown')}-{slugify(product)}",
-        "broker": broker, "product": product, "date": date,
+        "broker": broker, "broker_tally": tally, "product": product, "date": date,
         "title": base, "source_file": os.path.basename(path),
         "pages": npage, "claimed_pages": claimed and int(claimed), "issue": issue,
         "sha256": hashlib.sha256(open(path, "rb").read()).hexdigest(),
@@ -240,11 +252,20 @@ def extract(path):
 
 def main(argv=None):
     global ENGINE
-    ap = argparse.ArgumentParser(add_help=False)
+    # **allow_abbrev=False 是這一行存在的全部理由。**
+    # argparse 預設做前綴展開：`--dry` → `--dry-run`、`--pr` → `--prune`（會刪檔）、
+    # `--f` → `--force`。於是底下那個「不認得的旗標就中止」的守衛**永遠不會觸發** ——
+    # argparse 保證 `unknown` 是空的。
+    #
+    # 那個守衛正是為了 2026-08-20 的事故寫的（有人把 `--dry-run` 打成 `--dry`，
+    # 於是它被當成沒有旗標、安靜地改寫了一份已發布的封存）。
+    # **我為了防那個錯而寫的守衛，被它底下那一層的預設架空了。**
+    ap = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     ap.add_argument("inbox", nargs="?")
     ap.add_argument("--out", default="~/broker-research/extracted")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--prune", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     a, unknown = ap.parse_known_args(argv)
     if a.help or not a.inbox:
@@ -273,6 +294,7 @@ def main(argv=None):
     if not a.dry_run:
         os.makedirs(out, exist_ok=True)
     bad = 0
+    fresh_files = set()          # 這一輪**應該存在**的輸出路徑
     for p in pdfs:
         d = extract(p)
         s = d["strip_report"]
@@ -289,10 +311,39 @@ def main(argv=None):
               f"剃{s['header_footer_lines_removed']:>4}行({s['removed_pct']:>4.1f}%){flag}")
         if not a.dry_run:
             f = os.path.join(out, d["slug"] + ".json")
+            # **先登記再判斷要不要重寫。** 跳過重寫的檔案照樣是「這一輪該有的」，
+            # 漏掉這一行會讓沒更動的檔全部被當成孤兒。
+            fresh_files.add(os.path.abspath(f))
             if os.path.exists(f) and not a.force and os.path.getmtime(f) > os.path.getmtime(p):
                 print("      （已是最新，跳過）"); continue
             with open(f, "w", encoding="utf-8") as fh:
                 json.dump(d, fh, ensure_ascii=False, indent=1)
+    # **孤兒**：輸出檔名是從 slug 來的，而 slug 是**衍生值**（日期＋券商＋產品線）。
+    # 辨識規則一改，同一份 PDF 就換一個檔名，舊的留在原地 ——
+    # 2026-08-21 修好 Top of Mind 的券商辨識之後，`extracted/` 裡同時有
+    # `unknown-top-of-mind` 與 `goldman-sachs-top-of-mind`，內容一樣。
+    #
+    # 判準是「**這個檔是不是這一輪寫出來的**」，不是「它的 sha256 還在不在這一批」。
+    # 第一版用了後者，於是那份孤兒永遠測不出來 —— 它是同一份 PDF，sha256 當然在。
+    # **我答了另一個問題**（內容還在嗎），而要問的是檔案的來歷。
+    #
+    # 這個判準同時涵蓋第二種情況：某份 PDF 從 inbox 拿掉了，它的輸出也該是孤兒。
+    #
+    # 預設只報不刪：刪除要明確。`--prune` 才真的動手。
+    if not a.dry_run:
+        orphans = [f for f in sorted(glob.glob(os.path.join(out, "*.json")))
+                   if os.path.abspath(f) not in fresh_files]
+        if orphans:
+            print(f"\n**{len(orphans)} 份孤兒**（不是這一輪寫的）："
+                  f"{[os.path.basename(x) for x in orphans]}")
+            if a.prune:
+                for f in orphans:
+                    os.remove(f)
+                print("  已刪除（--prune）")
+            else:
+                print("  留著。確認過就加 --prune 重跑，或自己刪。"
+                      "**留著的話 research_verify 會判 FAIL**，那是對的。")
+                bad += 1
     return 10 if bad else 0
 
 
