@@ -59,6 +59,12 @@ def render(d, charts_dir="charts"):
                  f"{r.get('summary_chars',0):,} 字</sub>")
     L.append("")
 
+    tg = d.get("tags") or {}
+    if tg:
+        L += ["## 本期標籤", "",
+              "　".join(f"`{t}`（{len(sl)}）" if len(sl) > 1 else f"`{t}`"
+                       for t, sl in tg.items()), ""]
+
     if d.get("crosscut"):
         L += ["## 交叉觀察", "", d["crosscut"].strip(), ""]
 
@@ -80,6 +86,8 @@ def render(d, charts_dir="charts"):
             meta.append(str(r["issue"]))
         L.append("　·　".join(meta))
         L.append("")
+        if r.get("tags"):
+            L += ["　".join(f"`{t}`" for t in r["tags"]), ""]
         if r.get("file_url"):
             L += [f"📄 [開啟原始報告]({r['file_url']})　"
                   f"<sub>`{r.get('file','')}`</sub>", ""]

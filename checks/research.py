@@ -11,13 +11,17 @@ payload 形狀（由 `tools/research_verify.py` 組出來，檢查本身不做 I
 去重與 slug 唯一性是**跨檔**的問題，單份看不出來：同一份報告用兩個檔名各抽一次，
 每一份自己都完全合格。週頻的產出本來就是一批，形狀跟著問題走。
 
-## 這一套沒有註冊成 `System`
+## 註冊成 `System` 是 2026-08-21 才發生的事
 
-`System` 有五個必填欄位，其中 `index_entry`／`index_meta`／`staged_paths` 全是為
-**發布**設計的，而這一套刻意不發布（原文逐頁蓋有可追溯到個人的浮水印）。
-`kbcore/system.py` 自己寫著「沒有預設值是刻意的 —— 給預設等於讓下一套系統
-安靜地繼承錯的形狀」。填三個假的 callable 只為了形狀一致，正是它在防的事。
-哪天衍生層真的要發布，那時才註冊，而且那時 `staged_paths` 會有真的答案。
+原本刻意不註冊：`index_entry`／`index_meta`／`staged_paths` 全是為發布設計的，
+而這一套不發布。當時寫著「哪天衍生層真的要發布，那時才註冊，
+**而且那時 `staged_paths` 會有真的答案**」—— 那天就是同一天下午。
+
+**界線沒有移動：發布的是衍生層（精華、原句、標籤、重製圖），
+原文與抽取文字仍然永不進任何 repo。** 那條界線是結構性的，不是 `.gitignore`。
+
+於是 `systems/research.py` 的 `build()` 要去 repo 以外讀抽取文字 ——
+那是這五套裡唯一一個這樣的 payload，理由與它最危險的失效模式都寫在那個檔頭。
 """
 import datetime as dt
 import re

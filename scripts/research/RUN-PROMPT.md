@@ -5,8 +5,12 @@
 
 ## 這一期是哪一週
 
-**週次取「昨天」所屬的 ISO 週**，不是今天的。排程在週一早上跑，
-而要盤點的是**剛結束的那一週**（週一到週日）—— 取今天會開一個空的新週。
+**週次取「昨天」所屬的 ISO 週**，不是今天的。
+
+排程在**週日 23:00（台北）**跑，那是 ISO 週的最後一天，所以今天與昨天同屬一週 ——
+這條規則兩種情況都對。寫成「昨天」而不是「今天」，是因為**排程時間會搬**
+（它從週一早上搬過來就是一例），而搬到週一之後「今天」會開一個空的新週。
+**取昨天，這條規則就不隨排程時間改變。**
 
 ```
 ~/.venvs/kb/bin/python -c "import datetime as d;print('%d-W%02d'%(d.date.today()-d.timedelta(1)).isocalendar()[:2])"
@@ -16,10 +20,12 @@
 
 ## 第 0 步：連資料夾
 
-需要兩個 —— `kb-core`（規格、門檻、程式）、`broker-research`（報告與抽取結果）。
+需要四個 —— `kb-core`（規格、門檻、程式）、`broker-research`（報告與抽取結果）、
+`outbox`（發布草稿）、`broker-research-digest`（資料 repo，圖要放進去）。
 
-**沒有 `outbox`，這一套不發布。** 原文逐頁蓋有可追溯到個人的浮水印，
-所以原文與抽取文字永不進任何 repo。要交的東西寫在 `broker-research/digest/`。
+**這一套會發布，但發布的是衍生層。** 原文逐頁蓋有可追溯到個人的浮水印，
+所以**原文與抽取文字永不進任何 repo** —— 那條界線是結構性的（檔案住在
+所有 repo 之外），不是 `.gitignore`。上網的是精華、原句、標籤與重製圖。
 
 讀不到就自己連：`mcp__cowork__request_cowork_directory`，一次連一個。
 **連不上就停下來具名回報是哪一個** —— 那跟「這週沒有新報告」在輸出上長得一樣。
@@ -54,6 +60,12 @@
 2. 該份報告的 `extracted/<slug>.json` 路徑，與它的 `pages`
 3. 交件路徑 `~/broker-research/digest/_parts/<slug>.json`
 
+**標籤要串起來，所以派工要分批。** 每份報告 3–6 個關鍵字標籤（`tags`），
+而**同義的近義詞會讓網站上同一個主題散成兩堆**（「資料中心」與「數據中心」）。
+所以不要七份一次全部平行派出去：分兩到三批，
+**每一批的派工指示都附上前面幾批已經用過的標籤清單**，要求先從清單裡挑。
+主題重疊的兩份（例如兩份石油、兩份談聯準會）刻意排在不同批。
+
 **派工指示不要重寫 preamble 裡已經寫過的規則。** 2026-08-21 首輪就是這樣壞的 ——
 我在派工時多寫了一句「表格也算報告內容，寫明是第幾頁的表」，
 跟 preamble 對 `grounding` 的要求相牴觸，那個子代理照我的寫，於是整份圖被擋下。
@@ -74,8 +86,13 @@
 ~/.venvs/kb/bin/python ~/kb-core/scripts/research/assemble.py <YYYY-Www>
 ```
 
-它做四件機械的事：覆寫 `summary_chars`、渲染圖表、組出 `file_url`、
-產生給人讀的 `<YYYY-Www>.md`。**這四件都不由撰寫者填。**
+它做六件機械的事，**沒有一件由撰寫者填**：覆寫 `summary_chars`、渲染圖表、
+組出 `file_url`、產生本機的 `.md` 與 `.html`（圖已內嵌）、
+組出跨期的標籤索引、寫發布草稿到 `~/outbox/research/` 並把圖複製進資料 repo。
+
+跑完它會列出**孤兒圖檔**（不在這一期 digest 裡、卻還躺在 `charts/` 的檔）。
+那些檔會跟著發布推上去，變成沒有任何頁面連到、卻公開在網路上的東西。
+**這支不刪檔** —— 自己 `mv` 到 `_to_delete/`。
 
 `crosscut`、`watch`、`notes` 三欄由組檔程式從上一版沿用 —— 首次組檔時是空的，
 **主代理在這一步把它們寫進 `<YYYY-Www>.json`，然後重跑一次 `assemble.py`**
@@ -87,11 +104,25 @@
 ## 第 5 步：閘門
 
 ```
-~/.venvs/kb/bin/python ~/kb-core/tools/research_verify.py
+~/.venvs/kb/bin/python ~/kb-core/tools/research_verify.py ~/broker-research/extracted
 ```
 
 **全綠才算完成。**（`summary_length` 出 WARN 不擋，但要在回報裡說是哪幾份、超出多少。）
 紅的就回去改產出，不要改檢查。
+
+## 第 6 步：發布
+
+`assemble.py` 已經把發布草稿寫到 `~/outbox/research/<週日>.draft.json`、
+把圖複製到 `~/broker-research-digest/charts/<週次>/`。**你不用推任何東西** ——
+`com.kenny.kbpublish.research` 每分鐘會來收，走的是跟另外三套一模一樣的發布路徑
+（閘門 → 不可改寫守衛 → 原子寫入 → add → 對帳 → rebase → push）。
+
+**發布用的草稿跟本機那份不是同一個東西**：`file` 與 `file_url`
+（`file:///Users/…`）被拿掉了，因為它們對讀者沒有用，而且會把使用者的帳號名
+與目錄結構寫在公開頁面上。
+
+跑完幾分鐘後看一眼 `~/outbox/research/<週日>.receipt.json`：
+**exit 0 才算上線；沒有回執代表 publish 根本沒跑**，那跟「回執說失敗」是兩件事。
 
 ## 這一輪不做的事
 
@@ -108,6 +139,7 @@
 畫了幾張圖（以及有沒有渲染失敗）、寫了幾筆立場與幾條 `crosscut`、
 `research_verify` 的完整結果，以及**你判斷不了而跳過的東西**。
 
-最後把 `~/broker-research/digest/<YYYY-Www>.md` 的路徑交出來 —— **那是要讀的那一份。**
+最後交出兩樣：`~/broker-research/digest/<YYYY-Www>.html`（本機、圖已內嵌）
+與**發布回執的 exit code**。
 
 **回報你實際做到的，不是你打算做到的。**

@@ -53,6 +53,15 @@ REQUIRED_BY_LABEL = {
     # git 要列，因為 watch_sentinel 會 fetch，而 healthcheck 明訂不碰 git。
     "com.kenny.kbwatch.podcast":   ["git"],
     "com.kenny.kbpublish.chart":   ["git"],
+    "com.kenny.kbwatch.chart":     ["git"],
+    "com.kenny.kbpublish.research": ["git"],
+    # 2026-08-21：下面四支裡有三支是 08-20／08-21 裝上去的，而**沒有一支被登記進來**。
+    # 這個機制是對的（沒登記就 FAIL），漏的是有人去登記 —— 兩件事。
+    "com.kenny.kbcorepush":        ["git"],   # push_kbcore.py 自動 commit kb-core
+    # 這兩支只跑 venv 裡的 python（絕對路徑），不叫任何外部指令。
+    # **空陣列不是「還沒想」，是「想過了，答案是零」** —— 沒登記才是紅的。
+    "com.kenny.kbprefetch.chart":  [],
+    "com.kenny.kbdocx.podcast":    [],
 }
 
 # **有比較好，沒有也能跑。** 缺席是 WARN 不是 FAIL —— 把降級判成失敗，

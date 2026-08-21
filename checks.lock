@@ -65,6 +65,7 @@ research.page_one_substantial
 research.stance_grounded
 research.strip_bounded
 research.summary_length
+research.tags_wellformed
 research.theme_in_domain
 sentinel.data_fresh
 sentinel.ledger_overdue

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 2026-08-21 新增：外資報告週摘是第五套系統。形狀與另外三支 kbpublish 一致 ——
+       publish.py 的參數是 (outbox, repo, 系統 id) 三件一組，一個 plist 只發一套。
+
+       **outbox 是 ~/outbox/research/ 這個子目錄，不是 ~/outbox/。**
+       publish 的 glob 是 `*.draft.json` 且非遞迴，所以各套系統的草稿放在不同層
+       就互相看不見。這是物理隔離，不靠紀律。
+
+       這一套是**週頻**的，所以絕大多數輪次都會是空輪次。那是正常的：
+       「沒有草稿」跟「草稿發失敗」在 log 裡長得不一樣，而前者一週會出現一萬次。 -->
+  <key>Label</key>
+  <string>com.kenny.kbpublish.research</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/publish.py</string>
+    <string>/Users/macmini/outbox/research</string>
+    <string>/Users/macmini/broker-research-digest</string>
+    <string>broker-research-digest</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+    <!-- **這一套的 payload 要讀 repo 以外的抽取文字**（原文與抽取文字永不進任何
+         repo）。路徑寫在這裡而不是靠 `~` 展開，理由是 2026-08-21 實測撞到的：
+         沙箱裡有一份同名的舊拷貝，兩邊算出不同的結果，**而兩邊看起來都很合理**。 -->
+    <key>RESEARCH_EXTRACTED</key>
+    <string>/Users/macmini/broker-research/extracted</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/research/publish.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/research/publish.log</string>
+</dict>
+</plist>

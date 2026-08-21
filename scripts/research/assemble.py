@@ -12,7 +12,7 @@
 3. **`file_url` 由檔名組出來**，不由撰寫者填 —— 那是機械的事。
 """
 from __future__ import annotations
-import argparse, datetime as dt, glob, json, os, re, sys, urllib.parse
+import argparse, datetime as dt, glob, json, os, re, shutil, sys, urllib.parse
 
 _KB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 A = json.load(open(os.path.join(_KB, "research", "anchors.json"), encoding="utf-8"))
@@ -73,6 +73,8 @@ def main(argv=None):
     ap.add_argument("--out", default="~/broker-research/digest")
     ap.add_argument("--extracted", default="~/broker-research/extracted")
     ap.add_argument("--no-charts", action="store_true")
+    ap.add_argument("--outbox", default="~/outbox/research")
+    ap.add_argument("--repo", default="~/broker-research-digest")
     ap.add_argument("-h", "--help", action="store_true")
     a, unknown = ap.parse_known_args(argv)
     if unknown:
@@ -141,6 +143,22 @@ def main(argv=None):
     tmp = prev + ".tmp"
     json.dump(digest, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     os.replace(tmp, prev)
+    # 孤兒圖檔。**用路徑比對，不用「這一輪畫了幾張」。**
+    # 每份從三張改成一張之後，舊的 -2 -3 還躺在 charts/ 裡，
+    # 而它們不在 digest 裡、卻會跟著 `staged_paths` 一起被推上遠端 ——
+    # 一個沒有任何頁面連到、卻公開在網路上的檔案。
+    if not a.no_charts:
+        live = {c[k] for r in reports for c in r["charts"]
+                for k in ("png", "svg") if c.get(k)}
+        orph = sorted(f for f in os.listdir(cdir)
+                      if f.endswith((".png", ".svg")) and f not in live)
+        if orph:
+            print(f"\n**{len(orph)} 個孤兒圖檔**（不在這一期 digest 裡，"
+                  f"但仍在 {cdir}）：\n    " + "、".join(orph[:8])
+                  + (" …" if len(orph) > 8 else "")
+                  + "\n  這支不刪檔。要清就自己 mv 到 _to_delete/，"
+                  "**留著會跟著發布推上去**")
+
     tot = sum(r["summary_chars"] for r in reports)
     ncharts = sum(len(r["charts"]) for r in reports)
     err = [c.get("render_error") for r in reports for c in r["charts"] if c.get("render_error")]
@@ -158,7 +176,60 @@ def main(argv=None):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import render
     print("\n".join(render.write_all(digest, os.path.splitext(prev)[0] + ".md")))
+    print("\n".join(write_draft(digest, os.path.expanduser(a.outbox), O,
+                                 os.path.expanduser(a.repo))))
     return 0
+
+
+def write_draft(digest, outbox, digest_dir, repo):
+    """發布用的草稿。**跟本機那一份不是同一個東西，差別是刻意的。**
+
+    1. **`file` 與 `file_url` 拿掉。** 它們是 `file:///Users/…` ——
+       對讀者沒有用，而且會把使用者的帳號名與目錄結構寫在公開頁面上。
+       本機的 `.html` 保留它們，那份不上網。
+    2. **`grounding` 留著。** 那是圖裡每個數字的出處，是「這張圖不是我們編的」
+       唯一的憑據。它短，而且拿掉之後 `research.chart_grounded` 在發布閘門
+       就沒有東西可以比對 —— **閘門會變成永遠 PASS。**
+    3. **`date` 是該週的週日**，因為 publish 用 `draft["date"]` 命名檔案並排序。
+
+    圖檔另外複製到 `charts/<週>/`：資料 repo 的路徑形狀由 `staged_paths` 宣告，
+    而它宣告的是 `charts/<週>/`，不是本機那個平坦的 `charts/`。
+    """
+    lines = []
+    d = json.loads(json.dumps(digest))          # 深拷貝，不動本機那一份
+    for r in d.get("reports") or []:
+        r.pop("file", None)
+        r.pop("file_url", None)
+    d["date"] = (d.get("range") or ["", ""])[1]
+    if not d["date"]:
+        return ["  草稿沒寫：digest 沒有 range，**取不到週日就沒有檔名**"]
+    os.makedirs(outbox, exist_ok=True)
+    f = os.path.join(outbox, f"{d['date']}.draft.json")
+    tmp = f + ".tmp"
+    open(tmp, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=1))
+    os.replace(tmp, f)
+    lines.append(f"→ {f}（發布草稿，已拿掉 file:// 本機路徑）")
+
+    # 圖檔進**資料 repo**，不是 outbox —— publish 只搬草稿，
+    # `staged_paths` 宣告的 `charts/<週>/` 得先有東西在那裡它才推得動。
+    # 每日五圖 2026-08-21 那次就是這一格沒有主人：檢查讀本機、全綠，讀者拿到 404。
+    src = os.path.join(digest_dir, "charts")
+    want = {c[k] for r in d.get("reports") or [] for c in (r.get("charts") or [])
+            for k in ("png", "svg") if c.get(k)}
+    if not os.path.isdir(repo):
+        lines.append(f"  **圖沒有進 repo**：{repo} 不存在。草稿已經寫好了，"
+                     "但這一期發布出去會是 7 張 404 —— repo 建好之後重跑這支")
+        return lines
+    dst = os.path.join(repo, "charts", d["week"])
+    os.makedirs(dst, exist_ok=True)
+    miss = [n for n in sorted(want) if not os.path.exists(os.path.join(src, n))]
+    for n in sorted(want):
+        f2 = os.path.join(src, n)
+        if os.path.exists(f2):
+            shutil.copy2(f2, os.path.join(dst, n))
+    lines.append(f"→ {dst}（{len(want) - len(miss)}/{len(want)} 個圖檔）"
+                 + (f"　**{len(miss)} 個在本機也找不到：{miss[:3]}**" if miss else ""))
+    return lines
 
 
 if __name__ == "__main__":

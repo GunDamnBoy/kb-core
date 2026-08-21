@@ -8,12 +8,15 @@
 去重與 slug 唯一性是**跨檔**的問題，單份看不出來：同一份報告用兩個檔名各抽一次，
 每一份自己都完全合格。週頻的產出本來就是一批。
 
-## 為什麼不經過 `systems/`
+## 這支跟 `systems/research.py` 的關係
 
-這一套沒有註冊成 `System` —— 它不發布，而 `System` 的三個必填欄位
-（`index_entry`／`index_meta`／`staged_paths`）全是為發布設計的。
-payload 的組法就在這裡，是唯一的家；哪天衍生層真要發布，那時再搬過去，
-**而且那時 `staged_paths` 會有真的答案**。
+2026-08-21 起這一套會發布，payload 的正本因此搬到 `systems/research.py` 的
+`build()`（publish 的閘門走那條）。**這支留下來，因為它是不寫檔的那一條路**：
+組檔中途、還沒打算發布的時候要看檢查結果，走這裡。
+
+兩邊組出來的 payload 形狀要一致 —— 不一致的樣子是「這裡全綠、publish 擋下來」，
+或更糟的反過來。差別只有一個且是刻意的：這支自己去 digest 目錄撈最新一期，
+`build()` 則吃 publish 交給它的那份草稿。
 """
 import datetime as dt
 import glob
