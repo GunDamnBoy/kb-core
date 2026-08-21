@@ -1,0 +1,97 @@
+{
+  "_": "外資報告資料庫的每一個數字。**2026-08-21 用七份真檔量出來的**，不是猜的——估算值標 ~，未量測的標 null 並寫明為什麼還沒量。",
+  "_source_rule": "每一組都帶 source。門檻改動要留痕：舊值、新值、以及逼出這次改動的那份報告。**禁止在兩個實測點之間內插。**",
+  "identity": {
+    "id": "broker-research",
+    "cadence": "weekly",
+    "inbox": "~/broker-research/inbox",
+    "archive": "~/broker-research/filed",
+    "source": "2026-08-21 建立。人工把 PDF 丟進 inbox，處理後移進 filed/<YYYY-MM>/。取得靠人、處理全自動——**這條界線讓它不必登入任何服務**，跟五圖的瀏覽器備援是相反的選擇。"
+  },
+  "privacy": {
+    "_": "**原文與抽取文字永不進任何 repo。** 這不是 .gitignore 擋的，是結構性的：inbox 與 filed 都在所有 repo 之外，跟逐字稿和 Word 報告同一條界線。",
+    "watermark_is_pii": "報告逐頁蓋有個人化浮水印，內含**收件人的公司信箱**與逐份追蹤雜湊。抽取層要在**最早的那一步**剝掉，讓它連進到中間檔的機會都沒有——不是產出前才過濾。",
+    "watermark_two_forms": "同一段浮水印有兩種形態，取決於抽取器怎麼處理旋轉文字：`pdftotext` 讀成正的（`For the exclusive use of …`、`Prepared for …`），`pdfplumber` 讀成**逐段反轉**（`evisulcxe`、`deraperP`、`semaJ`，雜湊也整串反轉）。**兩種都要剃**，因為兩條抽取路徑都可能被走到。",
+    "analyst_contacts": "第一頁通常附分析師姓名、公司信箱、電話。那是已公開的職務聯絡方式，但**不進結構化封存**——留在原文即可，庫裡沒有它的用途。",
+    "source": "2026-08-21 實測七份：高盛三份每頁蓋 `exclusive use of <信箱>` ＋ 32 字元雜湊，花旗兩份蓋 `Prepared for <姓名>`，野村兩份無浮水印但有 `Nomura |<產品線>` 頁首。"
+  },
+  "extract": {
+    "engine_order": [
+      "pdftotext",
+      "pdfplumber",
+      "pypdf"
+    ],
+    "engine_note": "**系統執行檔是選配，純 python 是底線。** 2026-08-21 第一版只認 `pdftotext`，而那支在發布機上不存在——沙箱有、Mac 沒有，於是七份報告回報七次一模一樣的 FileNotFoundError，看起來像七份檔案各有問題。跟 podfetch 對 ffmpeg 的處理同一條。",
+    "engine_differs_on_rotation": "**兩個抽取器對旋轉文字的結果不同**，而那正是浮水印所在。挑抽取器不是效能選擇，是會改變輸出內容的選擇。",
+    "text_layer_min_chars_per_page": 200,
+    "text_layer_good_chars_per_page": 800,
+    "text_layer_source": "門檻是估的（~），七份實測每頁 6,588–9,637 字元，**全部遠高於上界，所以這兩個門檻還沒有被真正測試過**。第一份掃描檔進來時才會知道它們對不對。",
+    "short_line_heuristic_retired": "曾用「偏短行過半 ＝ 兩欄排版」判版面，**2026-08-21 證明是錯的**：Global Credit Trader 55%、Oil Monitor 59%，看起來都成立，實際讀原文兩份都是**單欄窄文字欄 ＋ 大量表格與圖說**。表格的每一列也是短行——同一個百分比被兩個原因推高，而兩者的處置相反。**我用測 A 的方法宣告了 B。**"
+  },
+  "brokers": {
+    "roster": [
+      "Nomura",
+      "Goldman Sachs",
+      "Citi"
+    ],
+    "fingerprint_where": "頁首（前四頁各取前 400 字元）。**不要只看第一頁**——高盛的第 1 頁沒有 `Goldman Sachs` 字樣，指紋在第 2 頁之後的頁首。",
+    "product_from_filename": "檔名冒號前那一段就是產品線（`Top of Mind`、`Oil Analyst`、`Global Credit Trader`）。**macOS 把 `:` 存成 `_`**，所以判斷點是第一個底線。產品線名稱比內文的 logo 穩定——排版每年都在變，刊物名不變。",
+    "filename_needs_normalising": "實測檔名帶尾隨空白（`Economic Insights .pdf`）與全形破折號。入庫前要正規化，否則同一份會變成兩筆。",
+    "hit_rate": "7/7（2026-08-21 實測）",
+    "source": "三家是這一批的全部。**清單會長**，加新券商時要同時加指紋與日期格式，並回頭跑一次舊檔確認沒有誤判。"
+  },
+  "dates": {
+    "formats": [
+      "%d %B %Y",
+      "%d %b %Y",
+      "%B %d, %Y"
+    ],
+    "where": {
+      "Nomura": "頁首右（`20 August 2026`）",
+      "Citi": "第一行（`20 Aug 2026 08:09:26 ET │ 26 pages`）",
+      "Goldman Sachs": "頁首右的期號行（`ISSUE 151 | August 19, 2026 | 1:30 PM EDT`）；另有頁尾也帶日期"
+    },
+    "hit_rate": "7/7（2026-08-21 實測，日期落在 08-19 與 08-20）",
+    "source": "三家三種格式、三個位置。**日期一律取自第一頁**，不取檔案系統的時間戳——那個是下載時間不是發布時間。"
+  },
+  "page_one_is_the_thesis": {
+    "_": "**第一頁就是那份報告的立場**，而且是分析師自己寫的，不是我們壓縮出來的。",
+    "labels": {
+      "Nomura": "標題 ＋ 一句話主張（`… suggests …`）＋ 三條 bullet ＋ 券商自己的分類行（`Economics - ASEAN/Asia ex-Japan`）",
+      "Goldman Sachs": "整段導言，Top of Mind 另帶 `ISSUE <n>` 期號",
+      "Citi": "**`CITI'S TAKE`** —— 直接標示的立場段"
+    },
+    "p1_chars_measured": [
+      5609,
+      6441
+    ],
+    "p1_chars_note": "`layout=True` 會用空白補齊版面，所以這個數字**含大量填充空白**，實際文字量遠低於它。要量真正的字數得先塌縮空白——尚未量。",
+    "why_it_matters": "七份合計 128 萬字元，而主張住在七頁裡。**摘譯層從一開始就不整份讀**——2026-08-21 podcast 那一輪有一集因為「整份逐字稿每輪重新進場」吃掉當天三分之一的成本，這一套不重蹈。",
+    "source": "2026-08-21 三家各抽第 1 頁實看。"
+  },
+  "integrity": {
+    "claimed_pages": "花旗在第一行自報頁數（`26 pages`）。實測 2/2 與抽到的頁數相符——**有就要比對**，對不上代表抽取器漏頁或檔案不完整。高盛與野村不提供，那時這條回 SKIPPED 不是 PASS。",
+    "source": "2026-08-21 實測。"
+  },
+  "themes": {
+    "domain_home": "advisory/anchors.json 的 groups",
+    "_": "**主題值域的家在投顧那份，這裡不抄。** 跟每日五圖的 `chart.theme_unique` 同一條——改組名會讓兩套系統同時變紅，那是設計成這樣的。",
+    "assignment_is_judgement_not_extraction": "野村有券商自己的分類行，高盛與花旗沒有。**所以主題對映一定是判斷**，不能寫成正規表示式。這條 seam 要守住：抽取層不猜主題，判斷層不碰 PDF。",
+    "source": "2026-08-21：七份裡只有兩份（野村）帶券商自訂分類。"
+  },
+  "stance": {
+    "_": "總經與策略報告**沒有目標價與評等**，所以要追的是立場，不是數字。",
+    "vocab_home": "尚未定案 —— 候選是沿用 advisory 的 `card_vocab.tone`，但那套是為新聞卡片訂的，未必接得住「對利率路徑的看法」這種形態。**第一批入庫之後拿真實的立場句來校準再定。**",
+    "source": "2026-08-21：刻意留空。在看過至少三週的真實立場句之前訂受控詞表，會訂出一個天天被違反的規格——投顧的 headline 長度就是這樣訂錯過一次（規格 20–30，實測 6/13 天界外）。"
+  },
+  "publish": {
+    "raw_never": "原文、抽取文字、浮水印一律不進 repo。",
+    "derived_only": "可發布的只有**我們自己寫的判斷**（立場軌跡、共識盤點），且要能指名出處而不重製原文。",
+    "source": "2026-08-21 決定。理由不是合規判斷，是資料處理：這些檔案逐份可追溯到個人。"
+  },
+  "known_limits": {
+    "_": "已知但**還沒修**的缺陷。跟 `known_exceptions` 不同：那是舊期豁免，這個是「現在就是這樣」。",
+    "page_one_column_bleed": "**第一頁右側的分析師欄會插進左欄的主張裡。** 2026-08-21 實測野村 Asia Insights：標題與「… suggests …」那句主張之間插進了 `Lattakit Lapudomkarn - NSL`。成因是 `-layout` 逐行合併，右欄與左欄同一行的內容被接在一起。\n**這是下午退休掉的那個「兩欄」判斷的真身**——它不在內文，在第一頁。電話與信箱已剃掉，剩下的是人名，讀得懂但有雜訊。\n**還沒修。** 正解是用 `pdfplumber` 的字級座標切欄，而不是靠文字啟發式——但那要拿多家多期的版面驗過才算數，不是今晚盲改得完的事。",
+    "tables_are_mostly_chart_frames": "`extract_tables` 的原始數字大量是**圖框**不是資料表。實測：Oil Analyst 14 個原始→過濾後 0、Global Credit Trader 178→38、Top of Mind 88→61。過濾條件是「至少兩列且列內有非空儲存格」。**原始數字是一個看起來很有說服力的錯數字**，探測程式當初就報過它，所以兩個數字一律並列。"
+  }
+}
