@@ -108,6 +108,20 @@ launchctl list | grep kenny
 `kbdocx.podcast` 在沒有回執、或回執非 0 的那一天回 `13`（EMPTY_ROUND），那也是設計上的正常。
 **別養成看 `launchctl list` 判死活的習慣**，那是哨兵的工作。
 
+## 手動 commit 資料 repo 之前，先 `pull --rebase`
+
+三個資料 repo 的哨兵**每天各會在遠端多寫一個 commit**（`sentinel/heartbeat.json`
+與 `report.md`），而本機不會自動拉。`publish.py` 內建 `pull --rebase` 所以不受影響，
+**手動 commit 不會** —— 2026-08-21 在 podcast 與 chart 各撞了一次
+`! [rejected] main -> main (fetch first)`。
+
+```bash
+cd ~/<資料 repo> && git pull --rebase && git push
+```
+
+被 reject 是**好的那一種失敗**：它擋下的正是「本機把遠端的心跳蓋掉」。
+真正該擔心的是 `--force`。
+
 ## 跟版控對帳
 
 實裝的 plist 與這裡不一致時沒有任何自動訊號，所以要手動問：
