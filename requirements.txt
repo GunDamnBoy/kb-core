@@ -13,3 +13,14 @@ openpyxl==3.1.5
 # 哨兵、檢查同一個直譯器。換成 Node 等於為了一個檔案格式在排程環境裡多養一套
 # 工具鏈，而 launchd 的 PATH 是明寫的四個目錄——多一個相依就多一個會在半夜壞掉的東西。
 python-docx
+
+# 外資報告的抽取層（tools/probe_research.py 與之後的入庫程式）。
+#
+# 選 pdfplumber 而不是靠 `pdftotext`：**那支在發布機上不存在。**
+# 2026-08-21 第一版探測程式只認 pdftotext，沙箱有、Mac 沒有，
+# 於是七份報告回報七次一模一樣的 FileNotFoundError——看起來像七份檔案各有問題。
+#
+# 跟 podfetch 對 ffmpeg 的處理同一條：**系統執行檔是選配，純 python 是底線。**
+# pdftotext 的版面保留最好，有就用；沒有就走這裡，不會整條管線停擺。
+# 它同時是唯一抽得到表格的一條（pypdf 抽不到），而外資報告的數字大量住在表格裡。
+pdfplumber
