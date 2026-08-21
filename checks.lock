@@ -56,6 +56,7 @@ podcast.window_sane
 podfetch.no_block_repetition
 repo.brief_budget
 repo.no_pull_request_target
+research.chart_grounded
 research.identified
 research.no_duplicates
 research.no_pii
@@ -63,6 +64,7 @@ research.page_count
 research.page_one_substantial
 research.stance_grounded
 research.strip_bounded
+research.summary_length
 research.theme_in_domain
 sentinel.data_fresh
 sentinel.ledger_overdue

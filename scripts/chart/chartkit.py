@@ -390,7 +390,16 @@ def _draw_gauge(ch: Chart, ax):
     ax.set_aspect("equal"); ax.axis("off")
 
 
-def render_static(ch: Chart, outdir: str, basename: str) -> dict:
+BRAND = "每日五圖 · Chart of the Day"
+
+
+def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> dict:
+    """`brand` 是右下角那行字。**它是出品方，不是繪圖引擎的一部分。**
+
+    外資報告週摘也用這支繪圖，若沿用預設值，一張依券商報告重製的圖會掛上
+    每日五圖的品牌 —— 圖被複製出去以後，看的人無從分辨那是誰的主張。
+    給空字串就不畫。
+    """
     apply_style()
     _label_slots.clear()
     fig, ax = plt.subplots(figsize=(8.6, 4.9))
@@ -537,8 +546,9 @@ def render_static(ch: Chart, outdir: str, basename: str) -> dict:
             fig.text(0.075, 0.012 + k * 0.024, line, fontsize=8, color=FAINT, va="bottom")
     else:
         fig.text(0.075, 0.035, foot, fontsize=8, color=FAINT, va="bottom")
-        fig.text(0.925, 0.035, "每日五圖 · Chart of the Day", fontsize=8,
-                 color=FAINT, va="bottom", ha="right")
+        if brand:
+            fig.text(0.925, 0.035, brand, fontsize=8,
+                     color=FAINT, va="bottom", ha="right")
 
     os.makedirs(outdir, exist_ok=True)
     png = os.path.join(outdir, basename + ".png")

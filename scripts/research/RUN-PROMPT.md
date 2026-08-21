@@ -3,6 +3,17 @@
 **正本在 `kb-core/scripts/research/RUN-PROMPT.md`。** 排程裡那份是副本，
 改動一律先改版控那份再整份貼過去。
 
+## 這一期是哪一週
+
+**週次取「昨天」所屬的 ISO 週**，不是今天的。排程在週一早上跑，
+而要盤點的是**剛結束的那一週**（週一到週日）—— 取今天會開一個空的新週。
+
+```
+~/.venvs/kb/bin/python -c "import datetime as d;print('%d-W%02d'%(d.date.today()-d.timedelta(1)).isocalendar()[:2])"
+```
+
+手動觸發時如果要補的是更早的一週，直接把週次寫死在指令裡。
+
 ## 第 0 步：連資料夾
 
 需要兩個 —— `kb-core`（規格、門檻、程式）、`broker-research`（報告與抽取結果）。
@@ -24,7 +35,7 @@
 **第一支報孤兒時不要自己加 `--prune`**，先看它列出什麼、確認那些真的是舊 slug
 留下的，再決定。刪除要明確。
 
-`research_verify` 這時應該只剩兩條 SKIPPED（第 2 層還沒做）。**有 FAIL 就停在這裡**
+`research_verify` 這時第 2 層那幾條會是 **SKIPPED 不是 PASS**（還沒做）。**有 FAIL 就停在這裡**
 —— 抽取層的問題不會因為往下做而變好，只會被寫進盤點裡。
 
 ## 第 2 步：讀規格
@@ -32,33 +43,43 @@
 `kb-core/research/BRIEF.md`（什麼算對的產出）與 `research/anchors.json`（每一個數字）。
 **每一個門檻都從 anchors 讀，不要照印象填。**
 
-## 第 3 步：讀第一頁，不要讀全文
+## 第 3 步：一份報告派一個子代理
 
-每份報告的立場住在 `extracted/<slug>.json` 的 `page_one`。
-七份合計 128 萬字元，而主張住在七頁裡 —— **這一套從第一天就不整份讀。**
+**這一套的成本結構就靠這一步。** 七份報告合計約 128 萬字元；
+主代理若自己讀，一輪就爆掉。所以：**每份報告一個子代理，主代理不讀報告內文。**
 
-`body` 只在你需要查證某個數字時才進去，而且是**指名去找那一段**，不是整份載入。
+派工時給子代理三樣東西，缺一不可：
 
-## 第 4 步：寫盤點
+1. `kb-core/scripts/research/preamble.md` 的**全文**（撰寫規則的正本）
+2. 該份報告的 `extracted/<slug>.json` 路徑，與它的 `pages`
+3. 交件路徑 `~/broker-research/digest/_parts/<slug>.json`
 
-寫到 `~/broker-research/digest/<YYYY-Www>.json`（例：`2026-W34.json`）。形狀：
+**派工指示不要重寫 preamble 裡已經寫過的規則。** 2026-08-21 首輪就是這樣壞的 ——
+我在派工時多寫了一句「表格也算報告內容，寫明是第幾頁的表」，
+跟 preamble 對 `grounding` 的要求相牴觸，那個子代理照我的寫，於是整份圖被擋下。
+**兩份指示打架的時候，子代理聽的是比較近的那一份。**
+
+交件形狀（就四個鍵）：
 
 ```
-{"week": "2026-W34", "range": ["2026-08-17","2026-08-23"], "reports": 7,
- "stances": [{"slug":…, "broker":…, "theme":…, "quote":…, "quote_zh":…,
-              "label": null, "page": 1}],
- "crosscut": "…", "watch": […]}
+{"slug": "…", "summary": "…（Markdown）", "stances": [ … ], "charts": [ … ]}
 ```
 
-四條硬規則：
+篇幅由頁數決定（`anchors.summary_tiers`：≤10 頁 3,000／11–30 頁 4,000／>30 頁 5,000 字），
+**但字數怎麼算不歸子代理管** —— `assemble.py` 會覆寫。派工時給目標，不要給算法。
 
-- **`quote` 是分析師的原句，一字不改。** 檢查會拿它回頭比對抽取文字，
-  對不上就整輪擋下。**這是這一套唯一的防線** —— 原文不進版控，
-  未來的人手上只有我們寫的東西，所以「這是他說的」與「這是我們歸納的」要永遠分得開。
-- **`label` 一律填 `null`。** 立場受控詞表還沒訂，而現在訂就是訂錯
-  （理由在 BRIEF 第五節）。先累積分析師自己的話。
-- **`theme` 是投顧那十五組之一**，值域的家在 `advisory/anchors.json` 的 `groups`。
-- **沒有原句的判斷歸到 `crosscut`**，那裡本來就是我們的話。
+## 第 4 步：組檔
+
+```
+~/.venvs/kb/bin/python ~/kb-core/scripts/research/assemble.py <YYYY-Www>
+```
+
+它做四件機械的事：覆寫 `summary_chars`、渲染圖表、組出 `file_url`、
+產生給人讀的 `<YYYY-Www>.md`。**這四件都不由撰寫者填。**
+
+`crosscut`、`watch`、`notes` 三欄由組檔程式從上一版沿用 —— 首次組檔時是空的，
+**主代理在這一步把它們寫進 `<YYYY-Www>.json`，然後重跑一次 `assemble.py`**
+（那三欄是主代理唯一該寫的內容，因為只有它同時看過七份的摘要）。
 
 `crosscut` 的收錄標準只有一條：**兩家對同一件事給了不同答案，而且答案寫得出來。**
 沒有分歧就寫「本週無」。**不要為了有東西寫而把「都看多」寫成分歧。**
@@ -69,8 +90,8 @@
 ~/.venvs/kb/bin/python ~/kb-core/tools/research_verify.py
 ```
 
-**全綠才算完成**（`research.stance_grounded` 與 `research.theme_in_domain`
-這時應該從 SKIPPED 變成 PASS）。紅的就回去改盤點，不要改檢查。
+**全綠才算完成。**（`summary_length` 出 WARN 不擋，但要在回報裡說是哪幾份、超出多少。）
+紅的就回去改產出，不要改檢查。
 
 ## 這一輪不做的事
 
@@ -83,7 +104,10 @@
 ## 回報
 
 收了幾份、每份的券商與日期、**抽取器是哪一支**（兩軌對同一份檔可能給不同答案）、
-剃除佔比與辨識的計次差距、有沒有孤兒、寫了幾筆立場與幾條 `crosscut`、
+剃除佔比與辨識的計次差距、有沒有孤兒、**每份的精華字數與它的目標區間**、
+畫了幾張圖（以及有沒有渲染失敗）、寫了幾筆立場與幾條 `crosscut`、
 `research_verify` 的完整結果，以及**你判斷不了而跳過的東西**。
+
+最後把 `~/broker-research/digest/<YYYY-Www>.md` 的路徑交出來 —— **那是要讀的那一份。**
 
 **回報你實際做到的，不是你打算做到的。**

@@ -272,9 +272,15 @@ register(Check(
 
 
 # ── 7. 立場的原句要在報告裡找得到 ────────────────────────────────────
+# 排版標點的等價類。撰寫者用直引號打字、PDF 裡是彎引號，這是字形差異不是內容差異，
+# 跟空白同一類：不折疊就會出現「原句明明在報告裡、機械比對卻說找不到」的假性失敗。
+_PUNCT = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+                        "\u2013": "-", "\u2014": "-", "\u2212": "-", "\u00a0": " "})
+
+
 def _norm(s):
-    """比對用：塌縮空白。抽取器對空白的處理不同，逐字比會假性失敗。"""
-    return re.sub(r"\s+", " ", s or "").strip()
+    """比對用：塌縮空白、折疊排版標點。兩者都隨抽取器與輸入法而變，逐字比會假性失敗。"""
+    return re.sub(r"\s+", " ", (s or "").translate(_PUNCT)).strip()
 
 
 def _stance_grounded(p):
@@ -294,8 +300,9 @@ def _stance_grounded(p):
     text = {d.get("slug"): _norm((d.get("page_one") or "") + "\n" + "\n".join(d.get("body") or []))
             for d in _docs(p)}
     miss, orphan = [], []
-    for s in digest.get("stances") or []:
-        slug, q = s.get("slug"), _norm(s.get("quote"))
+    for r in digest.get("reports") or []:
+      for s in r.get("stances") or []:
+        slug, q = r.get("slug"), _norm(s.get("quote"))
         if slug not in text:
             orphan.append(f"{slug} 不在這一批抽取結果裡")
         elif not q:
@@ -307,7 +314,7 @@ def _stance_grounded(p):
     if miss:
         return fail("；".join(miss) + " —— **原句在報告裡找不到**。"
                     "沒有原句的判斷要歸到 crosscut，那裡本來就是我們的話")
-    n = len(digest.get("stances") or [])
+    n = sum(len(r.get("stances") or []) for r in digest.get("reports") or [])
     return ok(f"{n} 筆立場的原句全部對得上")
 
 
@@ -319,13 +326,13 @@ register(Check(
         "**原句對得上但中譯是錯的** —— `quote_zh` 沒有任何驗證",
         "**原句對得上但斷章取義** —— 前後文翻轉語意，機械比對看不到",
         "`crosscut` 那一段（那裡本來就是我們的話，不受這條約束）",
-        "原句出自表格或圖說（只掃 page_one 與 body）",
+        "**圖說與座標軸文字** —— 掃 page_one、body 與 tables，圖片裡的文字抽不出來所以掃不到",
     ],
     run=_stance_grounded,
     fixture={"anchors": {}, "docs": [{"slug": "a", "page_one": "growth is slowing", "body": []}],
-             "digest": {"stances": [{"slug": "a", "quote": "we see a recession"}]}},
+             "digest": {"reports": [{"slug": "a", "stances": [{"quote": "we see a recession"}]}]}},
     near_miss={"anchors": {}, "docs": [{"slug": "a", "page_one": "growth  is   slowing", "body": []}],
-               "digest": {"stances": [{"slug": "a", "quote": "growth is slowing"}]}},
+               "digest": {"reports": [{"slug": "a", "stances": [{"quote": "growth is slowing"}]}]}},
     suite="research",
 ))
 
@@ -340,8 +347,8 @@ def _theme_domain(p):
         return fail("payload 沒帶投顧的 anchors —— **值域的家在那裡**，"
                     "拿不到就沒有資格判 theme")
     names = {g.get("name") for g in (adv.get("groups") or [])}
-    bad = sorted({s.get("theme") for s in (digest.get("stances") or [])
-                  if s.get("theme") not in names})
+    bad = sorted({s.get("theme") for r in (digest.get("reports") or [])
+                  for s in (r.get("stances") or []) if s.get("theme") not in names})
     if bad:
         return fail(f"theme 不在投顧的十五組裡：{bad} —— "
                     "**值域只有一個家**，要加組名去投顧那邊加")
@@ -358,8 +365,132 @@ register(Check(
     ],
     run=_theme_domain,
     fixture={"anchors": {}, "advisory_anchors": {"groups": [{"name": "央行、利率與匯率"}]},
-             "digest": {"stances": [{"theme": "隨便一個不存在的組"}]}},
+             "digest": {"reports": [{"stances": [{"theme": "隨便一個不存在的組"}]}]}},
     near_miss={"anchors": {}, "advisory_anchors": {"groups": [{"name": "央行、利率與匯率"}]},
-               "digest": {"stances": [{"theme": "央行、利率與匯率"}]}},
+               "digest": {"reports": [{"stances": [{"theme": "央行、利率與匯率"}]}]}},
+    suite="research",
+))
+
+
+# ── 9. 精華篇幅落在該層的區間 ────────────────────────────────────────
+def _summary_len(p):
+    """**不對稱：低於下界 FAIL、高於上界 WARN。**
+
+    太短代表精華沒撐起報告，讀者還是得回去翻原文 —— 那是目的失效。
+    太長只是成本與可讀性，內容本身沒有錯。
+    而且「短報告硬拉長」比「長報告超規格」嚴重 —— **注水的字比缺的字更難發現。**
+    """
+    digest = p.get("digest")
+    if digest is None:
+        return skipped("這一輪沒有第 2 層產出")
+    thin, fat = [], []
+    for r in digest.get("reports") or []:
+        n, band = r.get("summary_chars"), r.get("tier_band")
+        if n is None or not band:
+            continue
+        if n < band[0]:
+            thin.append(f"{r.get('slug','?')[:38]} {n} < {band[0]}")
+        elif n > band[1]:
+            fat.append(f"{r.get('slug','?')[:38]} {n} > {band[1]}")
+    if thin:
+        return fail("；".join(thin) + " —— **不足下界**。素材真的撐不起就要在回報裡具名，"
+                    "而不是交一份讀者還得回去翻原文的精華")
+    if fat:
+        return warn("；".join(fat) + " —— 超出上界。內容沒有錯，但成本與可讀性要看一眼；"
+                    "**連續幾期同一類報告都超出，代表該調的是門檻不是撰寫者**")
+    return ok(f"{len(digest.get('reports') or [])} 份的篇幅都落在該層區間內")
+
+
+register(Check(
+    id="research.summary_length",
+    covers="每份精華的 summary_chars 落在該頁數層的區間（anchors.summary_tiers）",
+    blind_to=[
+        "**字數對但內容空洞** —— 這條只量長度，不看它有沒有回答「主張、憑什麼、哪裡可能錯」",
+        "分層界線本身訂得對不對（11／31 頁是首批七份的分布，估的）",
+        "`summary_chars` 是組檔程式算的；撰寫者自報的數字不進來",
+        "只跑入庫的輪次（SKIPPED）",
+    ],
+    run=_summary_len,
+    fixture={"anchors": {}, "digest": {"reports": [{"slug": "x", "summary_chars": 900,
+                                                    "tier_band": [2600, 3400]}]}},
+    near_miss={"anchors": {}, "digest": {"reports": [{"slug": "x", "summary_chars": 2600,
+                                                      "tier_band": [2600, 3400]}]}},
+    suite="research",
+))
+
+
+# ── 10. 圖裡的數字有出處 ─────────────────────────────────────────────
+def _chart_grounded(p):
+    """圖表繼承 `stance_grounded` 的同一條紀律。
+
+    **自動解表格那條路之所以被否掉，理由就在這裡**：解出來的數字沒有可回溯的出處，
+    錯了看起來跟對的一樣。從內文取數則每個數字都指得出原句，於是可驗證。
+    """
+    digest = p.get("digest")
+    if digest is None:
+        return skipped("這一輪沒有第 2 層產出")
+    lo, hi = _A(p, "charts", "per_report")
+    # **表格也算報告內容。** 這條檢查第一版只掃 page_one 與 body，
+    # 而它自己的 blind_to 就寫著這個缺口 —— 2026-08-21 首輪當場撞上：
+    # 花旗那張央行利率圖的數字全部來自第 11 頁的表格，於是 16 條 grounding 全部找不到。
+    # **一個寫在 blind_to 裡的盲區，第一次執行就變成 FAIL。**
+    def blob(d):
+        parts = [d.get("page_one") or ""] + (d.get("body") or [])
+        for t in (d.get("tables") or []):
+            for row in t.get("rows") or []:
+                parts.append(" ".join(row))
+        return _norm("\n".join(parts))
+    text = {d.get("slug"): blob(d) for d in _docs(p)}
+    miss, over, nogr, err = [], [], [], []
+    for r in digest.get("reports") or []:
+        cs = r.get("charts") or []
+        if not (lo <= len(cs) <= hi):
+            over.append(f"{r.get('slug','?')[:34]} {len(cs)} 張")
+        for c in cs:
+            if c.get("render_error"):
+                err.append(f"{c.get('title','?')[:24]}：{c['render_error'][:48]}")
+            g = c.get("grounding") or []
+            if not g:
+                nogr.append(f"{r.get('slug','?')[:34]}／{c.get('title','?')[:22]}")
+                continue
+            body = text.get(r.get("slug"), "")
+            for frag in g:
+                if _norm(frag) not in body:
+                    miss.append(f"{c.get('title','?')[:22]}：「{_norm(frag)[:30]}…」")
+    if err:
+        return fail("；".join(err) + " —— 圖渲染失敗，**規格與繪圖引擎對不上**")
+    if nogr:
+        return fail("；".join(nogr) + " —— **沒有 grounding 的圖不得發布**。"
+                    "數字沒有出處，錯了看起來跟對的一樣")
+    if miss:
+        return fail("；".join(miss[:5]) + f"（共 {len(miss)} 條）"
+                    " —— **圖裡的數字在報告裡找不到**")
+    if over:
+        return fail("；".join(over) + f" —— 每份 {lo}–{hi} 張")
+    n = sum(len(r.get("charts") or []) for r in digest.get("reports") or [])
+    return ok(f"{n} 張圖的數字全部有出處且渲染成功")
+
+
+register(Check(
+    id="research.chart_grounded",
+    covers="每張重製圖的張數在 anchors.charts.per_report 內、有 grounding、"
+           "每條 grounding 都能在該報告的抽取文字裡逐字找到，且沒有渲染失敗",
+    blind_to=[
+        "**grounding 對得上但圖畫錯** —— 原句有那個數字，不代表它被放進正確的類別",
+        "**圖表選型是否恰當** —— 用長條圖畫時間序列這條看不出來",
+        "數字對但單位或量級標錯",
+        "圖裡有出處、但那個出處在報告裡是被作者否定的說法",
+        "**標點形態被折疊** —— 直引號與彎引號、各式破折號視為同一個字，那層差異這條刻意看不到（見 `_norm`）",
+        "只跑入庫的輪次（SKIPPED）",
+    ],
+    run=_chart_grounded,
+    fixture={"anchors": {"charts": {"per_report": [0, 3]}},
+             "docs": [{"slug": "a", "page_one": "share rose to 42%", "body": []}],
+             "digest": {"reports": [{"slug": "a", "charts": [
+                 {"title": "t", "grounding": ["share rose to 99%"]}]}]}},
+    near_miss={"anchors": {"charts": {"per_report": [0, 3]}},
+               "docs": [{"slug": "a", "page_one": "share  rose   to 42% by 4Q\u201927", "body": []}],
+               "digest": {"reports": [{"slug": "a", "charts": [
+                   {"title": "t", "grounding": ["share rose to 42% by 4Q'27"]}]}]}},
     suite="research",
 ))
