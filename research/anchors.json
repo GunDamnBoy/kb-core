@@ -26,7 +26,7 @@
     "text_layer_min_chars_per_page": 200,
     "text_layer_good_chars_per_page": 800,
     "text_layer_source": "門檻是估的（~），七份實測每頁 6,588–9,637 字元，**全部遠高於上界，所以這兩個門檻還沒有被真正測試過**。第一份掃描檔進來時才會知道它們對不對。",
-    "short_line_heuristic_retired": "曾用「偏短行過半 ＝ 兩欄排版」判版面，**2026-08-21 證明是錯的**：Global Credit Trader 55%、Oil Monitor 59%，看起來都成立，實際讀原文兩份都是**單欄窄文字欄 ＋ 大量表格與圖說**。表格的每一列也是短行——同一個百分比被兩個原因推高，而兩者的處置相反。**我用測 A 的方法宣告了 B。**",
+    "short_line_heuristic_retired": "曾用「偏短行過半 ＝ 兩欄排版」判版面，**2026-08-21 證明是錯的**：Global Credit Trader 55%、Oil Monitor 59%，看起來都成立，實際讀原文兩份都是**單欄窄文字欄 ＋ 大量表格與圖說**。表格的每一列也是短行——同一個百分比被兩個原因推高，而兩者的處置相反。**我用測 A 的方法宣告了 B。**\n**2026-08-21 補充：退休得太乾脆了。** 同一天稍晚發現 Top of Mind（40% 偏短行）的內文是真的兩欄。所以那個百分比不是沒有訊息，是**訊息被兩個成因混在一起**。見 `known_limits.body_column_interleaving`。",
     "strip_warn_pct": 8,
     "strip_fail_pct": 15,
     "strip_thresholds_source": "2026-08-21 七份實測剃除佔比 0.9–2.9%（pdfplumber）／1.0–2.9%（pdftotext），**兩軌幾乎相同**。門檻取 8／15 是估的，離實測上緣約 3 倍與 5 倍 —— 留這麼寬是因為換一家券商的版面就可能合理地變高，而**這條檢查的價值在抓失控，不在抓波動**。第一次有報告落在 3–8% 之間時才會知道 8 訂得對不對。"
@@ -100,6 +100,36 @@
   "known_limits": {
     "_": "已知但**還沒修**的缺陷。跟 `known_exceptions` 不同：那是舊期豁免，這個是「現在就是這樣」。",
     "page_one_column_bleed": "**第一頁右側的分析師欄會插進左欄的主張裡。** 2026-08-21 實測野村 Asia Insights：標題與「… suggests …」那句主張之間插進了 `Lattakit Lapudomkarn - NSL`。成因是 `-layout` 逐行合併，右欄與左欄同一行的內容被接在一起。\n**這是下午退休掉的那個「兩欄」判斷的真身**——它不在內文，在第一頁。電話與信箱已剃掉，剩下的是人名，讀得懂但有雜訊。\n**還沒修。** 正解是用 `pdfplumber` 的字級座標切欄，而不是靠文字啟發式——但那要拿多家多期的版面驗過才算數，不是今晚盲改得完的事。",
-    "tables_are_mostly_chart_frames": "`extract_tables` 的原始數字大量是**圖框**不是資料表。實測：Oil Analyst 14 個原始→過濾後 0、Global Credit Trader 178→38、Top of Mind 88→61。過濾條件是「至少兩列且列內有非空儲存格」。**原始數字是一個看起來很有說服力的錯數字**，探測程式當初就報過它，所以兩個數字一律並列。"
+    "tables_are_mostly_chart_frames": "`extract_tables` 的原始數字大量是**圖框**不是資料表。實測：Oil Analyst 14 個原始→過濾後 0、Global Credit Trader 178→38、Top of Mind 88→61。過濾條件是「至少兩列且列內有非空儲存格」。**原始數字是一個看起來很有說服力的錯數字**，探測程式當初就報過它，所以兩個數字一律並列。",
+    "body_column_interleaving": "**有些報告的內文是真的兩欄，而抽取器會逐行交錯**，抽出來的段落是壞的。2026-08-21 實測 Top of Mind：`page_one` 完全可讀，`body` 的段落左右欄交錯（「But the key debate seems to be whether the increased ／ therefore not particularly worried that markets have become ／ volatility resulting from less Fed transparency…」）。\n**這一條要跟 `extract.short_line_heuristic_retired` 一起讀。** 那條說「偏短行過半 ≠ 兩欄」，而這一份 40% 偏短行卻真的是兩欄 —— **正確的結論不是啟發式錯了，是它會誤報也會漏報，版面必須逐份判斷。** 我下午把它整條退休，那是矯枉過正。\n**實務後果：`body` 不可逐字引用，除非那一份確認是單欄。** `page_one` 不受影響（版面單純），而這一套的主要輸入本來就是 `page_one`。"
+  },
+  "summary_tiers": {
+    "_": "**精華的長度依報告頁數分層**，不是固定一千字。跟 podcast 的 `length_tiers` 依片長分層是同一個問題：固定字數會把短報告灌水、把長報告壓成掠影，而**注水的字比缺的字更難發現**。",
+    "tiers": [
+      {
+        "under_pages": 11,
+        "chars": [
+          600,
+          900
+        ]
+      },
+      {
+        "under_pages": 31,
+        "chars": [
+          900,
+          1300
+        ]
+      },
+      {
+        "under_pages": null,
+        "chars": [
+          1200,
+          1600
+        ]
+      }
+    ],
+    "count_rule": "字數 ＝ `summary` 去掉換行後的字元數（含標點與英文），由程式機械計算，撰寫時不必自己數。",
+    "floor_exception": "**素材撐不起下界時以素材為準**，並在回報裡具名寫出哪一份、幾頁、寫了幾字。依賴自覺的紀律不是紀律，所以這條寫成必答項。",
+    "source": "2026-08-21 首輪七份實測 474–643 字（平均 543），全部落在下界之下 —— **第一版沒有分層，我用單一目標寫了七份不同長度的報告**。分層的界線 11／31 頁取自這一批的實際分布（7、10、13、26、26、32、54）。**這是估的**，第二批進來時要回頭看。"
   }
 }
