@@ -6,11 +6,17 @@
 
 | 要改的東西 | 動這個檔 | 連帶 |
 |---|---|---|
-| 規格與判斷規則 | `AGENT_BRIEF.md` | 內容規格類的同步改任務卡（見 `FILES.md`） |
-| 流程或分支判斷 | 排程 `SKILL.md`（`mcp__scheduled-tasks__update_scheduled_task`） | 見下方「排程 SKILL.md」 |
-| 節目清單 | 見下方「節目清單」 | |
+| 什麼算對的產出、失敗判準 | `kb-core/podcast/BRIEF.md` | 判準若引用門檻，門檻要在 `anchors.json` |
+| 任何一個數字或門檻 | `kb-core/podcast/anchors.json` | 讀它的檢查與 `preamble.md` 一起看 |
+| 每天怎麼跑（流程或分支） | `kb-core/scripts/podcast/DIGEST-PROMPT.md`（**正本**） | **改完整份貼進排程 `SKILL.md`**，見下方 |
+| 撰寫 subagent 的規則 | `kb-core/scripts/podcast/preamble.md` | 與 `BRIEF`／`anchors` 的重疊處兩邊都要改（見 `FILES.md`） |
+| 發布前檢查 | `kb-core/checks/podcast.py` | 見下方「新增檢查」 |
+| 節目清單、官方稿入口 | `AGENT_BRIEF.md` 第 1 節＋見下方「節目清單」 | `shows.json` **有兩份**（kb-core 與 `~/.podfetch/`），沙箱通常只看得到一份 |
 | podfetch 行為 | `~/.podfetch/` 的程式與設定 | 見下方「podfetch」 |
 | 已知的坑與待辦 | `MAINTENANCE.md` 第 4、6 節 | |
+
+> **2026-08-22 改寫**：上一版第一列寫「規格與判斷規則 → `AGENT_BRIEF.md`」，
+> 而 brief 早在 08-21 就被降級成只剩四塊權威。照舊表改，會改到沒在跑的那一份。
 
 ## 排程 SKILL.md
 

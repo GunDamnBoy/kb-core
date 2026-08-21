@@ -1,14 +1,16 @@
 {
  "_": "Podcast 知識庫摘譯的每一個數字，唯一的家。四個讀者共用：podfetch 的設定、檢查程式、SKILL 的步驟、撰寫 subagent 的 preamble。引用一律指路，不抄值。",
- "_not_here": "節目清單、AppleID、show_priority、model_preference **刻意不在這裡** —— 它們會過期，唯一的家是 scripts/podcast/shows.json 與 config.json。舊規格就寫了「抄本會過期」，這條照搬。",
+ "_not_here": "節目清單、AppleID、show_priority、model_preference **刻意不在這裡** —— 它們會過期，唯一的家是 scripts/podcast/shows.json 與 config.json。舊規格就寫了「抄本會過期」，這條照搬。**但 `shows.json` 本身有兩份**（`scripts/podcast/` 與 `~/.podfetch/`），而 `AGENT_BRIEF.md` 第 1 節末尾說「唯一來源是 `~/.podfetch/shows.json`」——**兩份文件各自宣稱唯一，2026-08-22 複驗抓到**。實況是 `healthcheck.py` 有一條專門對帳兩份，但在 Cowork 沙箱裡固定跳過，所以**在沙箱裡改它會安靜製造漂移**；要動請在 Mac 上動。",
  "schedule": {
   "wake": "00:55",
   "podfetch": "01:00",
-  "official_transcripts": "02:20",
+  "official_transcripts": null,
   "digest": "03:00",
   "tz": "Asia/Taipei",
   "structural_tradeoff": "台北 03:00 ＝ 美東前一日 15:00，而主要節目集中在台北 04:00–06:30 落地（All-In 約 06:23）。**前一晚的美東晚間集數必定收不到，會出現在明天那一版**——All-In 約在發布後 21 小時進日報。這是設計不是故障，不要追、也不必每天解釋。沒有集數會遺失：podfetch 視窗以 last_run_utc 為起點、日報又會去重。",
-  "source": "podfetch 與 digest 的時點沿用舊制。official_transcripts 是新架構加的一段（A 類官方稿搬到 Actions），排在 digest 前 40 分鐘。"
+  "source": "podfetch 與 digest 的時點沿用舊制。**`official_transcripts` 改回 null 是 2026-08-22 的訂正：這一步從來沒有被實作出來。** 舊值寫 02:20、註記寫「A 類官方稿搬到 Actions」，但當天全庫查證的結果是——repo 的 `.github/workflows/` 只有 `deploy.yml` 與 `sentinel.yml`，九支 launchd 裡沒有對應工作，全庫 grep `official_transcripts` 沒有任何實作引用。**一個排定了時間卻不存在的步驟，比沒有那一行更糟**：它讓「今天 A 類抓不到官方稿」與「那一步根本不存在」在輸出上完全一樣，而 2026-08-22 那一輪就是這樣——8 集全部退到第二層，其中 macrovoices 與 unhedged 都是 A 類，而執行者以為官方稿由上游負責、沒有去抓。**所以 A 類官方稿現在是 digest 這一輪自己的責任**，做法見 `scripts/podcast/DIGEST-PROMPT.md` 第 1 步之二。哪天真的做了 Actions，再把時間填回來。",
+  "official_transcripts_owner": "digest（03:00 那一輪自己抓）",
+  "official_transcripts_show_list": "A/B 分類與每一檔的取得方式，唯一的家是 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 第 1 節 —— 那一節在 2026-08-21 的失效橫幅裡被明確保留為權威。**不要抄到這裡來**，理由跟 `_not_here` 那條一樣。"
  },
  "window": {
   "anchor": "last_run_utc",
@@ -144,6 +146,14 @@
   "block_repeat_shingle": 12,
   "block_repeat_min_tokens": 150,
   "block_repeat_coldopen_head": 200,
+  "block_repeat_coverage_tiers": {
+   "note": 0.10,
+   "brief": 0.25,
+   "_": "**觸發與嚴重度是兩回事**，2026-08-22 之前只有前者。那天四集都觸發了 `no_block_repetition`，但覆蓋率差很多 —— **29% 與 4% 的處置完全不同**，而規格沒有分級，於是派工時只能靠主代理臨場判斷，然後judge錯了一次（見 `_dupmap_note`）。分三級：低於 `note`（10%）只在派工單註記位置；`note` 到 `brief`（10–25%）派工單要列出每一個區塊並要求 subagent 當缺漏處理；高於 `brief`（25%）主代理可以額外寫一句「下界例外由你自己判」，**但不要替它預告會不會觸發**。**門檻的依據要標清楚，因為它一度被寫錯**：本條初版寫「四集是 29／19／5／4%，4–5% 與 19–29% 之間有整整一個數量級的空隙」——**那個 5% 來自主代理當天的臨時腳本，不是 `podcast_dupmap.py`**；同場複驗子代理用正式工具重跑，compound 實際是 **9%**，與 19% 只差約兩倍，**空隙的說法不成立，而 compound 距 10% 只差一個百分點**。訂正後的實測是 macrovoices 29%／oddlots 19%／compound 9%／hardfork 4%。**門檻仍取 10% 與 25%，但理由換成可檢驗的那一個**：10% 是「一成內容缺失仍可寫成完整摘譯」的容忍上限，25% 是「四分之一內容缺失就該讓寫的人自己決定寫多少」。**兩個都是判斷，不是資料切出來的**——只有一天四集的樣本，本來就切不出門檻。累積兩週後回來用真實分佈重訂。"
+  },
+  "segment_reset_drop_seconds": 300,
+  "_segment_reset_note": "判定「時間戳重置＝換了一段轉錄」的門檻：後一行的秒數比前一行低超過這個值。**這不是檢查，是 `podcast_dupmap.py` 的分段依據**，所以誤判的代價只是報告分段錯，不會擋發布。取 300 秒的依據在 MAINTENANCE 第 6 節那份全庫量測：回跳幅度分三團，**60 秒以下是良性排版差異（8 集）**，**約 1,200 秒那一團是 `segment_seconds` 漏做位移（8 集）**，300 秒剛好落在兩團中間的空隙。",
+  "_dupmap_note": "**整段複製的位置要能被撰寫 subagent 定位，否則那條派工規則不可執行。** manifest 與 `podcast_verify.py` 給的都是 token 位置（「第 1533 → 第 3791 個字」），而 subagent 手上只有帶時間戳的逐字稿。2026-08-22 那一輪主代理臨時寫了一支腳本做換算，跑完就沒了。固化成 `tools/podcast_dupmap.py`。**同一輪還學到第二件事**：那支臨時腳本把整份逐字稿當成單一時間軸，於是把 macrovoices「29:13 之後全是重貼」推論成「實質內容只到 28:44」，並把這個結論寫進派工單 —— 而該檔在第一段轉錄之後還有數段各自從 00:00 重新計時的獨立轉錄，內容全新。**subagent 逐行核對後推翻了主代理。** 所以定位器一定要先分段再報，而**派工單只給機械事實、不給篇幅結論**。",
   "block_repeat_source": "2026-08-20 用當天十集實測校準，不是猜的。正規化後（去時間戳、去講者標記、去標點、小寫）切 12-gram，把位置連續的重複 gram 併成區塊，量到的分佈是：**廣告與台呼 40–79 token**（Creative Planning 讀稿、「you're listening to the Bloomberg Surveillance podcast」）、**片頭預告 112 token**（In Good Company 的 cold open，第一次出現在 token 17）、**真實的區塊重播 281 與 970 token**（bloomberg 8/19 的 Yardeni 段、iltb 的記憶體段各重播）。下限取 150 是因為 112 到 281 之間有 2.5 倍的空隙，150 兩側都有餘裕。cold-open 豁免另外用「第一次出現落在前 200 token」判定——**那是片頭預告的定義本身**，不是為了讓數字好看而開的例外。十集裡 allin 也有區塊重複，但它是同義重述不是逐字，機械查重看不到，那條寫在 blind_to。",
   "status_values": [
    "OK",
@@ -247,6 +257,9 @@
    "無法驗證"
   ],
   "admission_test": "這句話三個月後有可能被證明是錯的嗎？不能就不要收。",
+  "due_required": true,
+  "overdue_grace_days": 7,
+  "_due_note": "**新項目一律帶 `due`（ISO 日期）與可機械執行的檢驗方式。** BRIEF 第七節第四條把「有逾期未判的項目」列為當期失敗判準，但 2026-08-22 之前帳本沒有到期欄位，所以那半條判準**結構上判不了** —— `checks/podcast.py` 的 `_ledger` 早就把這件事寫進 `blind_to`，只是一直沒有人接。實作時沒有改寫任何歷史條目：新項目強制帶欄位，舊項目從 text 結尾的「（到期 YYYY-MM-DD）」回退解析。**寬限期 7 天的理由**：逾期一觸即 FAIL 會擋住當天發布，而被擋住的是當天的內容 —— 一條三個月前的觀察沒回訪，代價由今天的讀者付，那個賠率不對。逾期本身報 WARN，超過寬限期才 FAIL。**已知的洞**：2026-08-22 量測，61 條觀察中有 52 條沒有任何到期日，這條對它們是瞎的 —— **綠燈不等於帳本乾淨**。",
   "excluded": [
    "免責聲明",
    "來源標註",

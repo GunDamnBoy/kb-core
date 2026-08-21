@@ -43,6 +43,7 @@ podcast.crosscut_present
 podcast.episode_admission
 podcast.file_id_matches_url
 podcast.ledger_advanced
+podcast.ledger_no_overdue
 podcast.manifest_wellformed
 podcast.no_duplicate_episodes
 podcast.no_failed_episodes
@@ -56,6 +57,7 @@ podcast.window_sane
 podfetch.no_block_repetition
 repo.brief_budget
 repo.no_pull_request_target
+research.chart_files_present
 research.chart_grounded
 research.identified
 research.no_duplicates

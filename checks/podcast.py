@@ -836,9 +836,11 @@ register(Check(
     id="podcast.ledger_advanced",
     covers="帳本裡當日新增的觀察點數量落在 anchors 的 observations_per_day 範圍",
     blind_to=[
-        "**逾期未判的項目**：BRIEF 把它列為當期失敗判準，但帳本的項目"
-        "沒有到期欄位（歷史 62 條都只有 date／status／verdict），所以這條判不了。"
-        "要補這個洞得先給帳本加 `due`，而歷史不改寫——只能從新項目開始帶",
+        "**逾期未判的項目**：已於 2026-08-22 拆到 `podcast.ledger_no_overdue`，"
+        "這條只管當日新增的數量。當初這裡寫「要補這個洞得先給帳本加 `due`，"
+        "而歷史不改寫——只能從新項目開始帶」，實作時找到第三條路："
+        "**新項目強制帶 `due` 欄位，歷史則從 text 裡的「（到期 YYYY-MM-DD）」回退解析**。"
+        "那個字串本來就已經寫在多數條目裡，於是不必改寫任何一條歷史就有了即時涵蓋",
         "觀察點收得對不對（「三個月後有可能被證明是錯的嗎」是語意判準）",
         "同一個觀察點被重複收錄",
         "doc 的 postscript 與帳本檔案有沒有對上（這條只看帳本）",
@@ -850,5 +852,84 @@ register(Check(
     near_miss={"anchors": {"per_episode": {"observations_per_day": [2, 3]}},
                "doc": {"date": "2026-08-20"},
                "ledger": {"items": [{"date": "2026-08-20"}, {"date": "2026-08-20"}]}},
+    suite="podcast",
+))
+
+
+DUE_RE = re.compile(r"到期\s*(\d{4}-\d{2}-\d{2})")
+
+
+def _due_of(item):
+    """項目的到期日：優先讀 `due` 欄位，沒有就從 text 回退解析。
+
+    **回退這條是為了不改寫歷史。** 帳本的舊條目只有 date／status／verdict，
+    但其中不少在 text 結尾就寫著「（到期 2026-12-31）」——那個字串本來就在，
+    解析它不需要動任何一條既有項目。新項目一律帶 `due` 欄位，
+    回退路徑會隨著舊項目被判完而自然退場。
+    """
+    d = item.get("due")
+    if d:
+        return d
+    m = DUE_RE.search(item.get("text") or "")
+    return m.group(1) if m else None
+
+
+def _overdue(p):
+    """BRIEF 第七節第四條的後半：**有逾期未判的項目**。
+
+    **為什麼不是一觸即失敗**：這條會擋住當天的發布，而被擋住的是當天的內容——
+    一條三個月前的觀察沒有回訪，代價由今天的讀者付，那個賠率不對。
+    所以照 MODIFY 那條「要求兩個獨立訊號同時成立才報」：
+    逾期本身只是 WARN，**逾期超過 `overdue_grace_days` 才是 FAIL**。
+    寬限期讓「今天剛好到期、還沒輪到回訪」與「放著不管」分得開。
+    """
+    grace = _A(p, "observations", "overdue_grace_days")
+    today = dt.date.fromisoformat(p["doc"]["date"])
+    led = p.get("ledger")
+    if led is None:
+        return fail("讀不到帳本 —— 觀察點沒有家，這一輪不能發")
+    watching = [i for i in led.get("items") or [] if i.get("status") == "觀察中"]
+    dated = [(i, _due_of(i)) for i in watching]
+    over = [(i, dt.date.fromisoformat(d)) for i, d in dated if d and dt.date.fromisoformat(d) < today]
+    if not over:
+        n_undated = sum(1 for _, d in dated if not d)
+        return ok(f"沒有逾期未判（觀察中 {len(watching)} 條，其中 {n_undated} 條沒有到期日）")
+    worst = max((today - d).days for _, d in over)
+    names = "、".join(i.get("id", "?") for i, _ in over[:5])
+    tail = " …" if len(over) > 5 else ""
+    msg = f"{len(over)} 條逾期未判（最久 {worst} 天）：{names}{tail}"
+    return fail(msg + f" —— 超過 {grace} 天的寬限期") if worst > grace else warn(msg)
+
+
+register(Check(
+    id="podcast.ledger_no_overdue",
+    covers="帳本裡沒有已過到期日卻仍是「觀察中」的項目（超過寬限期才判 FAIL）",
+    blind_to=[
+        "**沒有到期日的項目**：舊條目有一半（2026-08-22 量測：61 條觀察中裡 52 條）"
+        "text 裡沒有「（到期 …）」，`due` 欄位也沒有，**這條對它們完全是瞎的**。"
+        "它們只會出現在 PASS 訊息的括號裡，不會觸發任何東西——"
+        "**看到綠燈不等於帳本乾淨，只代表有到期日的那些沒逾期**",
+        "判決下得對不對（`status` 從觀察中改成什麼，這條不看內容）",
+        "為了讓燈變綠而把項目直接改判「無法驗證」——這條擋不住，"
+        "而它正是這種檢查最容易誘發的行為",
+        "到期日訂得合不合理（三個月是慣例不是規則）",
+        "觀察中佔比的長期趨勢——那是 healthcheck 記分板的事，這條只看逾期",
+        "**寬限期那條門檻（`overdue_grace_days`）站得對不對，自檢釘不住**："
+        "`near_miss` 必須落在 PASS 側，而寬限期內回的是 WARN、WARN 不是 PASS，"
+        "所以自檢只驗得到「逾期／未逾期」這條邊界。寬限期改成 30 或 3，"
+        "自檢照樣全綠",
+    ],
+    run=_overdue,
+    # fixture 逾期 8 天（剛好越過 7 天寬限期）→ FAIL；near_miss 到期日就是今天 → PASS。
+    # **釘住的是「逾期」那條邊界，不是寬限期那條**：near_miss 必須落在 PASS 側，
+    # 而寬限期內是 WARN、WARN 不是 PASS，所以那條邊界自檢碰不到（已寫進 blind_to）。
+    fixture={"anchors": {"observations": {"overdue_grace_days": 7}},
+             "doc": {"date": "2026-08-22"},
+             "ledger": {"items": [{"id": "a", "status": "觀察中",
+                                   "text": "…（到期 2026-08-14）"}]}},
+    near_miss={"anchors": {"observations": {"overdue_grace_days": 7}},
+               "doc": {"date": "2026-08-22"},
+               "ledger": {"items": [{"id": "a", "status": "觀察中",
+                                     "text": "…（到期 2026-08-22）"}]}},
     suite="podcast",
 ))

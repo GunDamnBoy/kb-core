@@ -35,7 +35,26 @@ resolve_base() {
 }
 BASE="$(resolve_base)"
 SNAP="$BASE/snapshots"
-SKILL="$HOME/Documents/Claude/Scheduled/podcast-digest-daily/SKILL.md"
+# 排程 SKILL.md 的位置**歷史上換過兩次**：目錄從 ~/Documents/Claude 移到 ~/Claude，
+# 任務名從 podcast-digest-daily 改成 podcast-daily-300（2026-08-21 在 MAIN.md 訂正過
+# taskId，但沒有人回頭改這裡）。硬寫路徑的後果不是報錯——`copy()` 只印一行
+# 「（缺）SKILL.md」，而**那正是沙箱缺它時的正常訊息**，所以在 Mac 上跑也看不出差別。
+# 2026-08-22 查證時發現這條路徑已經指向不存在的位置，而 SKILL.md 正是「一定要在 Mac
+# 上跑一次」的唯一理由。改成掃描候選位置，找不到時明確出聲。
+find_skill() {
+  for d in "${HOME}/Claude/Scheduled" "${HOME}/Documents/Claude/Scheduled"; do
+    [ -d "$d" ] || continue
+    for n in podcast-daily-300 podcast-digest-daily; do
+      [ -f "$d/$n/SKILL.md" ] && { printf '%s' "$d/$n/SKILL.md"; return; }
+    done
+    # 名字再改一次也要抓得到：任何含 podcast 的排程目錄。
+    for p in "$d"/*podcast*/SKILL.md; do
+      [ -f "$p" ] && { printf '%s' "$p"; return; }
+    done
+  done
+  printf ''
+}
+SKILL="$(find_skill)"
 
 list_snaps() {
   [ -d "$SNAP" ] || { echo "還沒有任何快照。"; return; }
@@ -94,6 +113,17 @@ copy "$BASE/fix-schedule.sh"  fix-schedule.sh
 copy "$BASE/config.json"      config.json
 copy "$BASE/shows.json"       shows.json
 copy "$SKILL"                 SKILL.md
+# **SKILL.md 缺席在沙箱裡是正常的，在 Mac 上是故障**，而 `copy()` 對兩者印一樣的字。
+# 這裡把它們分開：沙箱的 BASE 一定在 /sessions/ 底下。
+case "$BASE" in
+  /sessions/*) : ;;   # 沙箱：看不到排程目錄是預期的，不出聲
+  *)
+    if [ -z "$SKILL" ] || [ ! -f "$SKILL" ]; then
+      echo "★找不到排程 SKILL.md —— 這份快照不能當還原點用。" >&2
+      echo "  找過：${HOME}/Claude/Scheduled 與 ${HOME}/Documents/Claude/Scheduled" >&2
+      echo "  排程的實際路徑可用 Claude 的 list_scheduled_tasks 取得，取到後回頭改 find_skill()。" >&2
+    fi ;;
+esac
 # state.json 是執行狀態不是設定，快照它只會製造雜訊；gemini.key 是金鑰，一律不存。
 
 # 一個都沒抄到＝BASE 解析錯了。**空快照比沒有快照更危險**——它看起來像還原點。

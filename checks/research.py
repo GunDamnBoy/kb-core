@@ -575,3 +575,65 @@ register(Check(
                                       {"slug": "b", "tags": ["聯準會", "日本", "公債"]}]}},
     suite="research",
 ))
+
+
+# ── 12. 圖檔真的在資料 repo 裡 ──────────────────────────────────────
+def _chart_files_present(p):
+    """**這條擋的是「每一個訊號都說成功，而讀者拿到 404」。**
+
+    `chart_grounded` 驗的是圖裡的數字有沒有出處 —— 那是內容。
+    這條驗的是那個檔案到底在不在該在的地方 —— 那是**低一階、但獨立**的維度，
+    而 2026-08-21 每日五圖那次證明了：內容全綠不代表檔案推得出去。
+
+    圖由 `assemble.py` 複製進 repo，它跑在 Cowork 的掛載視角下；
+    資料夾沒接上那一步就做不到，而發布這條線完全不受影響 ——
+    JSON 照上線、網站照更新、回執照寫 exit 0。
+    """
+    files = p.get("chart_files")
+    if files is None:
+        return skipped("payload 沒帶 chart_files —— 這一輪沒有資料 repo 可看"
+                       "（`research_verify` 走的就是這條路）。"
+                       "**跟「檔案都在」是兩件事**")
+    digest = p.get("digest")
+    if digest is None:
+        return skipped("這一輪沒有第 2 層產出（只跑了入庫）")
+    want = [(r.get("slug", "?"), c[k]) for r in digest.get("reports") or []
+            for c in (r.get("charts") or []) for k in ("png", "svg") if c.get(k)]
+    if not want:
+        return ok("這一期沒有重製圖 —— 0 張是允許的")
+    miss = [f"{s[:26]}／{n}" for s, n in want if files.get(n) is None]
+    if miss:
+        return fail("；".join(miss[:5]) + f"（共 {len(miss)} 個）—— "
+                    "**digest 指名的圖檔不在資料 repo 裡**。"
+                    "發布不會因此失敗，網站也會照常更新，讀者拿到的是 404。"
+                    "多半是 `~/broker-research-digest` 沒接上 Cowork，"
+                    "`assemble.py` 那一步做不到")
+    empty = [f"{s[:26]}／{n}" for s, n in want if files.get(n) == 0]
+    if empty:
+        return fail("；".join(empty[:5]) + " —— 檔案在但是 0 位元組。"
+                    "**這跟「沒複製進來」是兩件事**：那是渲染壞了")
+    return ok(f"{len(want)} 個圖檔都在 repo 裡（"
+              f"{sum(files[n] for _, n in want) // 1024:,} KB）")
+
+
+register(Check(
+    id="research.chart_files_present",
+    covers="digest 裡每張圖宣稱的 png／svg 都在資料 repo 的 charts/<週次>/ 底下且非空",
+    blind_to=[
+        "**檔案在本機但沒進版控** —— 這條看檔案系統，看不見 git；"
+        "那一格由 publish 步驟 4b 的對帳負責",
+        "圖檔在但畫的是錯的資料（那是 `chart_grounded` 的事，且它也只驗數字有出處）",
+        "PNG 大小正常但內容是一張空白圖",
+        "**沒有資料 repo 的輪次整條跳過**（SKIPPED，不是 PASS）—— "
+        "`research_verify` 永遠走這一條",
+        "上一期的圖不見了（這條只看眼前這一期宣稱的檔）",
+    ],
+    run=_chart_files_present,
+    fixture={"anchors": {}, "chart_files": {"a-1.png": 100, "a-1.svg": None},
+             "digest": {"reports": [{"slug": "a", "charts": [
+                 {"png": "a-1.png", "svg": "a-1.svg"}]}]}},
+    near_miss={"anchors": {}, "chart_files": {"a-1.png": 100, "a-1.svg": 40},
+               "digest": {"reports": [{"slug": "a", "charts": [
+                   {"png": "a-1.png", "svg": "a-1.svg"}]}]}},
+    suite="research",
+))

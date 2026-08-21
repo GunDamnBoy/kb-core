@@ -2,26 +2,18 @@
 
 > **這是正本**，`maintain` 技能裡那份是副本。
 >
-> **2026-08-21 對著實機稽核過了。** 上一版留的那個未決問題
-> 「`~/podcast-knowledge-digest/AGENT_BRIEF.md` 有沒有失效橫幅」——查了：當時**沒有**，
-> 同一天補上了，但**刻意不是「整份作廢」那種橫幅**：
+> **2026-08-22 已查證，上一版留的那個問題有答案了。**
+> 上一版寫「下次維護第一件事就是查 `AGENT_BRIEF.md` 開頭有沒有失效橫幅」——
+> **有。** 2026-08-21 標註的橫幅寫著「這份文件只剩一半是權威的」，
+> 每一個數字的家已經搬到 `kb-core/podcast/`。本文件與 `FILES.md` 的
+> 「規格在 brief」整段已於同日改成指向 kb-core。
 >
-> | 要找什麼 | 權威 |
-> |---|---|
-> | 每一個數字（篇幅層級、每集件數、受控詞表、去重、品質門檻） | `kb-core/podcast/anchors.json` |
-> | 什麼算對的產出、當期失敗判準 | `kb-core/podcast/BRIEF.md` |
-> | 每天怎麼跑 | `kb-core/scripts/podcast/DIGEST-PROMPT.md` |
-> | 撰寫 subagent 的規則 | `kb-core/scripts/podcast/preamble.md` |
-> | 發布前檢查 | `kb-core/checks/podcast.py`＋`tools/podcast_verify.py` |
-> | `metrics.csv` 每一欄的定義 | `kb-core/scripts/podcast/metrics-columns.md` |
+> **`AGENT_BRIEF.md` 現在仍然權威的只有四塊**（橫幅明文保留）：
+> 第 1 節節目清單與全文來源（**A／B 分類與每一檔的官方稿入口只有這裡有**）、
+> 第 2 節 podfetch 管線的讀法與排查、第 6 節基礎設施備忘、第 8 節變更紀錄。
+> 其餘一律以 `kb-core/podcast/` 為準。
 >
-> **`AGENT_BRIEF.md` 仍然是這幾件事的唯一的家**：第 1 節節目清單與來源
-> （`healthcheck.py` 的「節目在文件裡」那條**實際在讀它**）、第 2 節 podfetch 管線的
-> 讀法與排查、第 6 節基礎設施備忘、第 8 節變更紀錄。
-> **不要把它整份當成過期的** —— 把還活著的東西宣告成死的，會讓人去別的地方
-> 找一個不存在的答案。
->
-> 已確認並改掉的其他事：推送者不是 `com.kenny.dashpush`（已退場）、
+> 已確認並改掉的（2026-08-21）：推送者不是 `com.kenny.dashpush`（已退場）、
 > 排程 taskId 是 `podcast-daily-300`。
 
 repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL.md`）**沒有 git**，快照是唯一還原點；排程 `SKILL.md` 還可能在對話進行中被別場維護整份覆寫。動手前重讀當下的檔案，只信這一秒讀到的內容——即使你認為自己就是上一個改它的人。
@@ -36,7 +28,8 @@ repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL
   九個 launchd 工作裡沒有它。）
 - **開工、收工各存一次快照**：`bash ~/.podfetch/snapshot.sh "開工前"`／`"收工後"`。**在 Cowork 沙箱裡跑會缺 `SKILL.md`**（沙箱看不到 `~/Documents/`）——**改過排程 `SKILL.md` 的場次，收工訊息一定要請使用者在 Mac 上補跑一次，並確認那筆快照真的含 `SKILL.md`**。沙箱那份只證明 `.podfetch/` 有備份。
 - **Word 報告與 `~/podcast-transcripts` 留在 repo 外**（repo 是 Public）。
-- **每個意義各有單一來源**：規格與判斷規則在 `AGENT_BRIEF.md`、流程骨架在排程 `SKILL.md`、事故與來歷在 `MAINTENANCE.md`。寫東西前先決定放哪一份；三份的分工、brief 的篇幅硬限制、以及刻意的雙寫見 [`FILES.md`](FILES.md)。
+- **每個意義各有單一來源**：什麼算對的產出在 `kb-core/podcast/BRIEF.md`、每一個數字在 `kb-core/podcast/anchors.json`、每天怎麼跑在 `kb-core/scripts/podcast/DIGEST-PROMPT.md`、撰寫規則在 `kb-core/scripts/podcast/preamble.md`、節目清單與官方稿入口在 `AGENT_BRIEF.md` 第 1 節、事故與來歷在 `MAINTENANCE.md`。寫東西前先決定放哪一份；完整分工見 [`FILES.md`](FILES.md)。
+  **兩份規則同時存在時，改到沒在跑的那一份不會有任何徵兆**——這就是 2026-08-21 到 08-22 之間 brief 被降級卻沒有人改本文件的那個縫。
 - **能寫成條件的判斷就寫成條件**——叮嚀會被忽略。
 - **`$VAR` 後面緊接全形字元一律加大括號**（shell 腳本）。macOS 的 bash 是 3.2，會把全形括號的高位元組吃進變數名、`set -u` 當場中止；**沙箱是 bash 5.1，測不出來**。改任何只在 Mac 上跑的腳本，都要請使用者在 Mac 實跑一次才算驗收。
 
@@ -55,7 +48,8 @@ repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL
 3. 補**成本基線**的人工欄位：使用者若附了當日 token 分析報告，把**四個數字**抄進 `metrics.csv`——加權總量（千位）→ `eff_tokens_k`、子代理數 → `subagents`、子代理總回合數 → `agent_turns`、**子代理加權總量（千位）→ `subagent_tokens_k`**。這四欄機器量不到（排程執行不在本機留 transcript），**缺任何一欄 `healthcheck.py` 都會出聲**；healthcheck 不會洗掉人工值。每集成本那條曲線全靠這一步累積。
    > **要比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`。** 後者是整場工作階段，混了固定開銷與一次性維護動作，除以集數得到的數字**不可比**——08-15 與 08-17 都踩過這個坑。
 4. 讀 `~/podcast-knowledge-digest/MAINTENANCE.md`，尤其第 5 節（新增節目步驟表）、第 7 節（事故檔案）、第 12 節（登記簿）。第 4C 節（podfetch 的四個不要改的設計）只有要動 `podfetch.py` 時才需要讀。第 11 節（變更紀錄歸檔）是純歷史，要查「當初為什麼這樣改」時才回來讀。
-5. 讀 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 全文。**它約 24,990 token、`Read` 單次上限約 25,000，餘裕不到 1%**——正常一次讀完，但看到截斷提示就從那一行接著讀完，不要只讀到截斷處。
+5. 讀規格。**現在是四份小的，不是一份大的**：`kb-core/podcast/BRIEF.md`、`kb-core/podcast/anchors.json`、`kb-core/scripts/podcast/DIGEST-PROMPT.md`、`kb-core/scripts/podcast/preamble.md`。要動節目清單、官方稿入口或 podfetch 內部時，另外讀 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 的第 1／2／6 節。
+   > **那條「brief 約 24,990 token、餘裕不到 1%」的警告已經不再是每日的硬限制**（2026-08-22）——每日排程不再完整讀 `AGENT_BRIEF.md`，它只在需要 A 類清單時讀第 1 節。**但拆檔之後多了一個新的失效形態**：四份小的各自都很好讀，於是很容易只改其中一份。查漂移時四份要一起看。
 6. `mcp__scheduled-tasks__list_scheduled_tasks` 記下 `cronExpression`／`enabled`／`nextRunAt`／`lastRunAt`，並 Read 它回傳的 `path` 全文。
 7. 讀 `~/podcast-knowledge-digest/data/index.json`。
 

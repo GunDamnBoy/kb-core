@@ -58,6 +58,7 @@ def build(draft: dict, repo: Path) -> dict:
             "那幾份的原句與圖表數字這一輪沒有東西可以比對")
     return {
         "docs": docs,
+        "chart_files": chart_files(draft, repo),
         "anchors": json.loads((ROOT / "research" / "anchors.json").read_text(encoding="utf-8")),
         "advisory_anchors": json.loads(
             (ROOT / "advisory" / "anchors.json").read_text(encoding="utf-8")),
@@ -69,6 +70,29 @@ def build(draft: dict, repo: Path) -> dict:
 _NUM = re.compile(r"^\s*(?:[一二三四五六七八九十]+[、.]|\d+[、.)])\s*")
 _LEAD = re.compile(r"^(?:一句話(?:主張)?|主張|結論|重點|核心)\s*[：:]\s*")
 _ASK = re.compile(r"(?:什麼|嗎|呢|為何|\?|？)\s*$")
+
+
+def chart_files(draft: dict, repo: Path):
+    """digest 宣稱的每個圖檔，在**資料 repo 裡**實際多大。
+
+    **這是「檢查讀本機、讀者拿到 404」那個形狀的專屬防線。**
+    圖是由 `assemble.py` 複製進 repo 的，而它跑在 Cowork 的掛載視角下 ——
+    資料夾沒接上時那一步做不到，**但草稿仍然會發布成功**：
+    JSON 上線、網站更新、回執 exit 0，只有圖是 404。每一個訊號都說成功。
+
+    找不到檔案回 None，不是 0 —— 「沒有這個檔」與「檔案是空的」是兩件事，
+    處置也不同（前者是沒複製進來、後者是渲染壞了）。
+    """
+    d = repo / "charts" / (draft.get("week") or "")
+    out = {}
+    for r in draft.get("reports") or []:
+        for c in r.get("charts") or []:
+            for k in ("png", "svg"):
+                n = c.get(k)
+                if n:
+                    f = d / n
+                    out[n] = f.stat().st_size if f.exists() else None
+    return out
 
 
 def _headline(summary: str) -> str:
