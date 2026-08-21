@@ -141,7 +141,35 @@
 正本改放 `kb-core/skills/maintain/chart/{MAIN,MODIFY}.md`，
 跟 `skills/chart/SKILL.md` 同一個做法：**正本進版控，別處那份是副本。**
 技能的子檔無法由工作階段更新（`save_skill` 只取代 `SKILL.md`，
-其餘檔案原樣保留），所以副本要人工貼回去。
+其餘檔案原樣保留），所以整包重打 `.skill` 安裝是唯一能整份換掉的路。
+
+**同日第二輪**：既然要重打包，把整支 `maintain`（24 檔、六套系統）
+的正本一起收進 `kb-core/skills/maintain/`，並清掉另外兩套活系統的假話。
+
+盤點結果 —— **六套裡只有三套是活的**：投顧（`advisory-daily-0730`）、
+五圖（`chart-daily-1130`）、podcast（`podcast-daily-300`），
+三套都已接上 kb-core 底盤。bubble／convergence／houseview
+**本機沒有排程也沒有 launchd 工作**，文件停在重建之前，待重建。
+`convergence/FILES.md` 甚至寫著 taskId `convergence-weekly` —— 那條不存在。
+
+這一輪改的 8 個檔：
+
+| 檔 | 改了什麼 |
+|---|---|
+| `SKILL.md` | 路由表加上 taskId 與資料 repo 兩欄；後三套標「本機無排程」；加上「系統 id ≠ 路徑」的警告與正本位置 |
+| `advisory/MAIN.md` | **repo 根目錄由 `/Users/kenny/advisory-knowledge-hub` 改成 `/Users/macmini/advisory-rewrite`**；`scripts/check.py`／`metrics.py` 改成 `tools/advisory_verify.py`；taskId 更正 |
+| `advisory/MODIFY.md` | 表格裡的 `AGENT_BRIEF.md`／`scripts/*`／`search.html` 全部不存在，改成 kb-core 佈局；加上「動到 `groups` 要回頭跑五圖檢查」 |
+| `chart/DIAGNOSE.md` | 拿掉 `~/.dashpush/repos.txt` 與 `check_day.py`；「發布了但網站沒更新」拆成 data／charts／Pages 三種 |
+| `chart/FILES.md` | 整張檔案地圖換成 kb-core 佈局；加「已失效但還留著的」一區 |
+| `podcast/MAIN.md` | dashpush → `com.kenny.kbpublish.podcast`；**加上一段待查項**（brief 可能已降級，當時 repo 沒掛上無從確認） |
+| `podcast/FILES.md`、`SYNC-CHECKLIST.md` | taskId `podcast-digest-daily` → `podcast-daily-300` |
+
+**podcast 那份是刻意只做可查證的更正。** `~/podcast-knowledge-digest`
+當時沒有掛進工作階段，所以「它的 `AGENT_BRIEF.md` 是不是也像五圖那份一樣
+被降級了」無從確認 —— 那件事寫成待查項留在文件開頭，**沒有猜**。
+
+`bubble`／`convergence`／`houseview` 三套的 9 個檔**一個字都沒動**，
+用 `diff -rq` 確認過。
 
 ## 2026-08-20 深夜｜第四套系統上底盤：輸出契約、12 條檢查、系統註冊
 
