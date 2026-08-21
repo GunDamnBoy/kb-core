@@ -2,21 +2,27 @@
 
 > **這是正本**，`maintain` 技能裡那份是副本。
 >
-> **2026-08-21 只做了可查證的更正，這份還沒對著實機完整稽核。**
-> 已確認並改掉的：推送者不是 `com.kenny.dashpush`（已退場）、
+> **2026-08-21 對著實機稽核過了。** 上一版留的那個未決問題
+> 「`~/podcast-knowledge-digest/AGENT_BRIEF.md` 有沒有失效橫幅」——查了：當時**沒有**，
+> 同一天補上了，但**刻意不是「整份作廢」那種橫幅**：
+>
+> | 要找什麼 | 權威 |
+> |---|---|
+> | 每一個數字（篇幅層級、每集件數、受控詞表、去重、品質門檻） | `kb-core/podcast/anchors.json` |
+> | 什麼算對的產出、當期失敗判準 | `kb-core/podcast/BRIEF.md` |
+> | 每天怎麼跑 | `kb-core/scripts/podcast/DIGEST-PROMPT.md` |
+> | 撰寫 subagent 的規則 | `kb-core/scripts/podcast/preamble.md` |
+> | 發布前檢查 | `kb-core/checks/podcast.py`＋`tools/podcast_verify.py` |
+> | `metrics.csv` 每一欄的定義 | `kb-core/scripts/podcast/metrics-columns.md` |
+>
+> **`AGENT_BRIEF.md` 仍然是這幾件事的唯一的家**：第 1 節節目清單與來源
+> （`healthcheck.py` 的「節目在文件裡」那條**實際在讀它**）、第 2 節 podfetch 管線的
+> 讀法與排查、第 6 節基礎設施備忘、第 8 節變更紀錄。
+> **不要把它整份當成過期的** —— 把還活著的東西宣告成死的，會讓人去別的地方
+> 找一個不存在的答案。
+>
+> 已確認並改掉的其他事：推送者不是 `com.kenny.dashpush`（已退場）、
 > 排程 taskId 是 `podcast-daily-300`。
->
-> **還沒查證的一件事**：這套系統跟投顧與五圖一樣接上了 kb-core 底盤 ——
-> `kb-core/podcast/{BRIEF.md,anchors.json,CHANGELOG.md}` 存在、
-> `checks/podcast.py`、`systems/podcast.py`、`tools/podcast_verify.py`、
-> `tools/podcast_docx.py` 也都在。所以下面提到的
-> `~/podcast-knowledge-digest/AGENT_BRIEF.md` **有可能已經像五圖那份一樣
-> 被降級成非權威**（五圖那份掛著失效橫幅、規則搬進了 kb-core）。
-> 當時 `~/podcast-knowledge-digest` 沒有掛進工作階段，無從確認。
->
-> **下次維護這套時第一件事就是查這個**：`AGENT_BRIEF.md` 開頭有沒有失效橫幅。
-> 有的話，本文件與 `FILES.md` 的「規格在 brief」整段都要改成指向 `kb-core/podcast/`。
-> **兩份規則同時存在時，改到沒在跑的那一份不會有任何徵兆。**
 
 repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL.md`）**沒有 git**，快照是唯一還原點；排程 `SKILL.md` 還可能在對話進行中被別場維護整份覆寫。動手前重讀當下的檔案，只信這一秒讀到的內容——即使你認為自己就是上一個改它的人。
 

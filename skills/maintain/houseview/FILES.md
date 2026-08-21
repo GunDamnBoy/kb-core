@@ -17,7 +17,7 @@
 ## 上游
 
 - **`~/chart-of-the-day` 每日五圖**：一週七天、月約 150 張、11:30 產出。House View 是它登記的下游，PNG 頁尾自帶來源（所以 `image` 免填）。healthcheck 做跨 repo 配色漂移比對（ACCENT 是否仍為 #D70C18）。
-- **`~/advisory-knowledge-hub` 投顧知識庫**（2026-08 起）：`metrics.py --pulse` 印五資產立場翻轉史（立場表可直接 diff「本月翻了幾次、何時翻、當時理由」）、`--tags` 印題材動能；thermo 風險溫度日序列與 `snap` 數值鏡像在其 `data/index.json` 各日 entry；每日 `watchReview` 是可引用的預測戰績。正本規格見該 repo brief §3.5。**`prep_hv.py` 尚未接入**，接入前屬手動取用；要接入就改 `prep_hv.py`，並在本檔與 CHANGELOG 各記一筆。
+- **`~/advisory-rewrite` 投顧知識庫**（2026-08 起；**2026-08-21 更正路徑** —— `advisory-knowledge-hub` 是系統 id，同名舊 checkout 停在 08-18 且已搬進 `~/_to_delete/`。本節提到的 `metrics.py` 也已不存在，改用 `kb-core/tools/advisory_verify.py`）：`metrics.py --pulse` 印五資產立場翻轉史（立場表可直接 diff「本月翻了幾次、何時翻、當時理由」）、`--tags` 印題材動能；thermo 風險溫度日序列與 `snap` 數值鏡像在其 `data/index.json` 各日 entry；每日 `watchReview` 是可引用的預測戰績。正本規格見該 repo brief §3.5。**`prep_hv.py` 尚未接入**，接入前屬手動取用；要接入就改 `prep_hv.py`，並在本檔與 CHANGELOG 各記一筆。
 
 上游的資料或介面整個變了，轉去該系統的 `MAIN.md` 處理（每日五圖 → `chart/`、投顧知識庫 → `advisory/`），在本 repo 補是補假的。
 

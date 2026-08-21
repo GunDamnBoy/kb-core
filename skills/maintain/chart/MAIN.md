@@ -15,12 +15,23 @@
 | 程式與規格 | `/Users/macmini/kb-core` | 門檻、檢查、取數與出圖程式、流程正本 | `com.kenny.kbcorepush`（每 300 秒，帶閘門） |
 | 已發布的資料 | `/Users/macmini/chart-of-the-day` | `data/`、`charts/`、`index.html` | `com.kenny.kbpublish.chart`（每 60 秒） |
 
+**守望鏈（2026-08-21 才補齊）**：哨兵 `sentinel.yml` 每天台北 15:20 跑在 GitHub 上，
+看門狗 `com.kenny.kbwatch.chart` 每四小時（00/04/08/12/16/20）在 Mac 上問哨兵還活著沒。
+在那之前**兩者都不存在**：兩支既有的 kbwatch 一支看 advisory、一支看 podcast，
+而 chart 的哨兵 caller 漏了 `permissions:`，從建立到補上一次都沒成功跑過
+（唯一那次是 `startup_failure`）。**沒有心跳跟「哨兵判綠」在遠端看起來都是「沒有紅字」。**
+
 **資料 repo 只放已發布的東西**；門檻是程式的一部分，放進資料 repo 會讓
 「改門檻」跟「改資料」混在同一個歷史裡。
 
 上游是投顧知識庫，實際路徑是 **`/Users/macmini/advisory-rewrite`**。
-`advisory-knowledge-hub` 是**系統 id 不是路徑**，同名的舊 checkout 還在硬碟上、
-停在 2026-08-18，**讀它不會報錯，只會安靜拿到三天前的題材**。
+`advisory-knowledge-hub` 是**系統 id 不是路徑**；同名的舊 checkout 停在 2026-08-18，
+**讀它不會報錯，只會安靜拿到三天前的題材** —— 2026-08-21 首輪就這樣走錯過一次，
+當天已搬到 `~/_to_delete/advisory-knowledge-hub-stale-20260818`。
+
+**真正的根因不是那份舊 checkout，是 `skills/chart/SKILL.md` 第 1 步從來沒有寫路徑。**
+唯一寫了路徑的地方是已掛失效橫幅的舊 brief，指的正是那份舊 checkout。
+路徑當天補進 SKILL —— **「錯得看得見」跟「知道該去哪」是兩件事，兩件都要做。**
 
 全程繁體中文（台灣用語），所有路徑寫絕對路徑（多 repo 有同名檔案）。
 這套系統改動頻繁，檔案可能在對話進行中被排程或其他對話改掉：

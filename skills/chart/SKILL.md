@@ -30,7 +30,14 @@ description: 產出每日五圖。每天台北 11:30 在 Mac mini 上執行；�
 
 ### 1. 清點手上有什麼
 
-讀 `chart/anchors.json`。讀上游投顧的當日 JSON（題材來源）。
+讀 `chart/anchors.json`。讀上游投顧的當日 JSON（題材來源）——
+路徑是 **`~/advisory-rewrite/data/<今天>.json`**。
+
+**`advisory-knowledge-hub` 是系統 id，不是路徑。** 這一步以前沒有寫路徑，
+於是 2026-08-21 首輪照舊文件走到 `~/advisory-knowledge-hub`，
+那是一份停在 08-18 的舊 checkout —— **讀它不會報錯，只會安靜拿到三天前的題材**。
+那份 checkout 已於 08-21 搬到 `~/_to_delete/`，所以現在走錯會直接找不到檔案，
+但**路徑要寫在這裡**，因為「錯得看得見」跟「知道該去哪」是兩件事。
 讀預抓狀態檔，確認它在 `anchors.prefetch.status_valid_hours` 之內。
 
 **上游還沒好就等**（`anchors.schedule.upstream_wait_minutes`），仍無則用前一日並在 `about.run` 註明。

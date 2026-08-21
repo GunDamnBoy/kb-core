@@ -18,8 +18,8 @@
 
 **`advisory-knowledge-hub` 是系統 id，不是路徑。** 它寫在資料 repo 根目錄的
 `.kb-data-repo` 裡，`publish.py` 拿它做目的地守門，`systems/advisory.py` 拿它
-決定跑哪一組檢查。同名的舊 checkout `~/advisory-knowledge-hub` 還在，
-**停在 2026-08-18** —— 那是一個讀得動、不報錯、而且錯得毫無徵兆的陷阱。
+決定跑哪一組檢查。同名的舊 checkout `~/advisory-knowledge-hub` **停在 2026-08-18**，是一個讀得動、不報錯、而且錯得毫無徵兆的陷阱 —— 已於 2026-08-21 搬到 `~/_to_delete/advisory-knowledge-hub-stale-20260818`。
+**搬走而不是留著，是因為錯得看得見比錯得安靜好。** 看到它「不存在」是對的。
 
 `com.kenny.kbpublish.plist` 的三個參數是 `(outbox, repo, 系統 id)` ＝
 `(~/outbox, ~/advisory-rewrite, advisory-knowledge-hub)`。**看第二個，不要看第三個。**

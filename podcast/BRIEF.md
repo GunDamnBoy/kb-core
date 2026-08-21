@@ -9,7 +9,7 @@ budget:
 
 這份文件只回答一件事：**今天這一版，怎樣算對。**
 
-怎麼做出來在 `skills/podcast/SKILL.md`；每集撰寫的眉角在 `scripts/podcast/preamble.md`；
+怎麼做出來在 `scripts/podcast/DIGEST-PROMPT.md`；每集撰寫的眉角在 `scripts/podcast/preamble.md`；
 每一個數字在 `podcast/anchors.json`；節目清單與優先序在 `scripts/podcast/shows.json`
 與 `config.json`。**本檔一個數字都不抄，節目清單更不抄** —— 抄本會過期。
 

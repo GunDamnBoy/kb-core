@@ -25,8 +25,7 @@ description: 六套自動化系統的維護入口——投顧知識庫儀表板�
 
 **`advisory-knowledge-hub`／`chart-of-the-day`／`podcast-knowledge-digest`
 是系統 id，不一定等於路徑。** 投顧就是這樣踩到的：同名的舊 checkout
-`~/advisory-knowledge-hub` 還在硬碟上、停在 2026-08-18，
-**讀它不會報錯、只會安靜拿到舊資料**。路徑一律看上表那一欄。
+`~/advisory-knowledge-hub` 停在 2026-08-18，**讀它不會報錯、只會安靜拿到舊資料** —— 已於 2026-08-21 搬到 `~/_to_delete/advisory-knowledge-hub-stale-20260818`，所以現在走錯會直接找不到檔案。**路徑一律看上表那一欄。**路徑一律看上表那一欄。
 
 認出來就 Read `<資料夾>/MAIN.md`，之後整場照它走。它會指向同資料夾內的其他 `.md`（`FILES.md`、`MODIFY.md`、各系統另有的診斷或比對檔），**一律在同一個資料夾裡找**。
 

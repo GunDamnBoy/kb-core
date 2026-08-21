@@ -24,7 +24,7 @@
 | 發布流程 | `tools/publish.py` | **三套系統共用，改它等於同時改三套** |
 | 網站呈現 | `advisory-rewrite/index.html` | 徽章表從檔案實際解析比對 |
 
-**不要改舊 checkout `~/advisory-knowledge-hub` 裡的任何東西。**
+**不要改舊 checkout `~/advisory-knowledge-hub` 裡的任何東西。** 它已於 2026-08-21 搬到 `~/_to_delete/advisory-knowledge-hub-stale-20260818`。
 那份停在 2026-08-18，改它不會有任何徵兆，也不會有任何效果。
 
 ## 排程 prompt
