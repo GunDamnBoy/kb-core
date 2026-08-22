@@ -33,6 +33,9 @@ import sys
 
 W = {"inp": 1.0, "out": 5.0, "cw": 2.0, "cr": 0.1}
 STALE_MIN = 90          # 最新逐字稿超過這麼久沒動，就不是「這一輪」
+# **值域擋在這裡。** 打錯一個字（`podcasts`、`research`）不會有任何徵兆，
+# 而那一列會變成一套從此只有一列的「系統」，永遠不會被拿來比較。
+SYSTEMS = ("advisory", "chart", "podcast", "broker-research")
 
 
 def eff(u):
@@ -79,7 +82,7 @@ def usage_of(path, since=None):
 
 def main():
     ap = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    ap.add_argument("system")
+    ap.add_argument("system", choices=SYSTEMS)
     ap.add_argument("--transcript", default=None)
     ap.add_argument("--append", default=None)
     ap.add_argument("--since", default=None,
@@ -96,8 +99,14 @@ def main():
     else:
         cands = glob.glob(os.path.join(base, "projects", "*", "*.jsonl"))
         if not cands:
-            print(f"{base}/projects 底下找不到逐字稿 —— **這跟「這一輪沒花 token」"
-                  "是兩件事**", file=sys.stderr)
+            # **錯誤訊息要在犯錯的當下說出原因。** 文件是動手之前讀的，
+            # 錯誤是動手之後讀的 —— 而「找不到檔案」跟「你在錯的機器上」
+            # 在畫面上長得一模一樣。
+            print(f"{base}/projects 底下找不到逐字稿。\n"
+                  "  **這支要在雲端容器跑（`Bash`），不是使用者的 Mac（`device_bash`）**"
+                  " —— 逐字稿只存在於雲端那一側。\n"
+                  "  在 Mac 的終端機直接執行也會走到這裡，同樣是這個原因。\n"
+                  "  **這跟「這一輪沒花 token」是兩件事。**", file=sys.stderr)
             return 14
         tp = max(cands, key=os.path.getmtime)
         age = (dt.datetime.now().timestamp() - os.path.getmtime(tp)) / 60

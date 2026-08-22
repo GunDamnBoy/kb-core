@@ -198,7 +198,8 @@ publish 每 60 秒跑一次，所以 90 秒之後回執該在了；還沒在就�
 
 ## 用量：量它，不要估它
 
-**回報之前跑這一支**（在雲端容器跑，逐字稿在那裡；不是 device bash）：
+**回報之前跑這一支。用 `Bash`（雲端容器），不是 `device_bash`** ——
+逐字稿只存在於雲端那一側，在 Mac 上跑一定失敗：
 
 ```bash
 cd /tmp && rm -rf kbc && git clone -q --depth 1 https://github.com/GunDamnBoy/kb-core kbc
