@@ -37,13 +37,23 @@ START = dt.date(2014, 1, 1)      # 當沖統計自民國 103 年（2014）起
 TODAY = dt.date.today()
 
 
-def get(url, referer=None, data=None, timeout=30):
-    req = urllib.request.Request(url, data=data)
-    req.add_header("User-Agent", UA)
-    if referer: req.add_header("Referer", referer)
-    if data: req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+def get(url, referer=None, data=None, timeout=45, tries=3):
+    """重試三次、退避 2/4 秒。**逾時與「這天沒有資料」是兩件事**——
+    逾時要重試，沒有資料要記成 None 並往下走。混在一起會讓斷網長得像沒開盤。"""
+    last = None
+    for k in range(tries):
+        try:
+            req = urllib.request.Request(url, data=data)
+            req.add_header("User-Agent", UA)
+            req.add_header("Accept", "*/*")
+            if referer: req.add_header("Referer", referer)
+            if data: req.add_header("Content-Type", "application/x-www-form-urlencoded")
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except Exception as e:
+            last = e
+            if k < tries - 1: time.sleep(2 * (k + 1))
+    raise last
 
 
 def load_cache(name):

@@ -30,10 +30,21 @@ UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/
 CACHE = os.path.abspath(os.path.expanduser(os.environ.get("SENT_CACHE", "~/sent-cache")))
 
 
-def http(url, referer=None):
-    r = urllib.request.Request(url); r.add_header("User-Agent", UA)
-    if referer: r.add_header("Referer", referer)
-    with urllib.request.urlopen(r, timeout=40) as f: return f.read().decode("utf-8", "replace")
+def http(url, referer=None, timeout=60, tries=3):
+    """重試三次、退避 3/6 秒。FRED 的 CSV 端點在尖峰時段會慢到 30 秒以上。"""
+    import time as _t
+    last = None
+    for k in range(tries):
+        try:
+            r = urllib.request.Request(url)
+            r.add_header("User-Agent", UA); r.add_header("Accept", "*/*")
+            if referer: r.add_header("Referer", referer)
+            with urllib.request.urlopen(r, timeout=timeout) as f:
+                return f.read().decode("utf-8", "replace")
+        except Exception as e:
+            last = e
+            if k < tries - 1: _t.sleep(3 * (k + 1))
+    raise last
 
 
 def fred(series):
