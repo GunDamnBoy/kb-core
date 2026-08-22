@@ -15,6 +15,8 @@
 | 資料源 | `scripts/chart/fetch.py`（美股與 FRED）、`fetch_twse.py`／`fetch_tw_price.py`（台股） | 在 `chart/SOURCES.md` 登錄，實測後把限制寫下來；限流與代理的數字進 `chart/anchors.json` |
 | 序列轉換 | `scripts/chart/build_series.py` 的 `_transform`（唯一實作） | 跑 `--selftest`；`macro_release.py` 轉呼叫它，不必另改 |
 | 預抓清單／時刻 | `scripts/chart/prefetch.py` | 時刻要跟 `anchors.schedule.prefetch` 與 `launchd/com.kenny.kbprefetch.chart.plist` **三者一起動** |
+| 三大數據的發布偵測 | `scripts/chart/prefetch.py` 的 `_write_macro_release()` | **它跑在有網路的那一側**（2026-08-22 搬過來的），寫 `chart-of-the-day/data/_macro_release.json`；執行輪次只讀檔。改它要一起看 `checks/chart.py` 的 `_release_day`（吃 list 與 dict 兩種方言）與 `anchors.structure.release_day.detection_runs_in_prefetch` |
+| 市場異動掃描（slot 2） | `scripts/chart/scan_moves.py` | 只讀 `data/series` 快取、不連外；改預設清單等於改選題半徑——**掃到什麼才會想到什麼**，要跟預抓核心清單一起看。跑 `--selftest` |
 | 檢查規則 | `checks/chart.py` | **數字不寫在這裡**，一律從 `chart/anchors.json` 讀；新硬規則帶生效日；動到 fixture 要確認它用的是**真實資料形狀** |
 | 門檻與每一個數字 | `chart/anchors.json` | 該數字的所有讀者（檢查、取數層、渲染層、SKILL）都要回頭確認 |
 | 什麼算對的產出 | `chart/BRIEF.md` | 有數字就指路到 anchors，不抄值 |
