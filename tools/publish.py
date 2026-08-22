@@ -120,13 +120,25 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     # 不會被推——每一個訊號都說沒事，但資料根本沒上線。這就是靜默失效。
     # 所以內容相同時只跳過「寫入」，rebase/push 那一段照跑（沒東西可 commit
     # 也無所謂，push 本來就是冪等的）。
+    # **允不允許改寫是每套系統自己的事**（見 `kbcore/system.py` 的 `republish_rule`）。
+    # 這裡原本硬寫「內容不同就擋」—— 對日頻是對的，對週頻不是：
+    # 週摘依報告自己的日期分期，而報告不會在週末停止到達。
+    # 這是同一道接縫漏掉的第四個維度（前三個是 index_entry／index_meta／staged_paths）。
     already = False
     if target.exists():
         if target.read_text() != body:
-            write_receipt(outbox, name, Exit.IMMUTABLE, "immutable",
-                          f"{target.name} 已存在且內容不同 —— 改草稿沒有用，掛 errata")
-            return Exit.IMMUTABLE
-        already = True
+            try:
+                old_doc = json.loads(target.read_text())
+            except json.JSONDecodeError:
+                old_doc = {}
+            why = system.republish_rule(old_doc, draft)
+            if why:
+                write_receipt(outbox, name, Exit.IMMUTABLE, "immutable",
+                              f"{target.name} {why}")
+                return Exit.IMMUTABLE
+            print(f"改寫 {target.name} —— 系統的 republish_rule 判定這是允許的變更")
+        else:
+            already = True
 
     # 3. 原子寫入 ＋ index
     if not already:

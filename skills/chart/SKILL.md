@@ -40,6 +40,15 @@ description: 產出每日五圖。每天台北 11:30 在 Mac mini 上執行；�
 但**路徑要寫在這裡**，因為「錯得看得見」跟「知道該去哪」是兩件事。
 讀預抓狀態檔，確認它在 `anchors.prefetch.status_valid_hours` 之內。
 
+**三大數據的發布偵測不在這一輪跑。** 讀 `chart-of-the-day/data/_macro_release.json`
+（11:00 的預抓在 Mac 上跑 `macro_release.check()` 寫的），**整份原樣**搬進
+`about.macro_release`（含 `checked_at` 與可能的 `error`，不要只挑 `items`）。
+帶 `error` 時檢查會判 SKIPPED 並把錯誤說出來 —— **「偵測失敗」與「今天沒發布」
+是兩件事，而空的 items 與「沒發布」在下游長得一模一樣**。
+檔案不存在時同樣要說出來，不要自己去問 FRED：
+沙箱對 `fred.stlouisfed.org` 是 Tunnel 403，人工用 web_fetch 重建三筆的做法
+在 08-21／08-22 各做了一次，而 08-22 那次有一筆沒重新量。
+
 **上游還沒好就等**（`anchors.schedule.upstream_wait_minutes`），仍無則用前一日並在 `about.run` 註明。
 
 **完成條件**：手上有一張表 —— 今天是星期幾、該出哪一條軌道、預抓涵蓋到哪些序列、
@@ -56,6 +65,16 @@ description: 產出每日五圖。每天台北 11:30 在 Mac mini 上執行；�
 軌道圖那一張**由星期決定**（`anchors.tracks`），週末改週線複查、
 **週六與週日不得挑同一條**。
 
+**slot 2 的掃描有程式，不要每天手寫一次**：
+
+```
+python3 ~/kb-core/scripts/chart/scan_moves.py            # 1 日與 5 日變動＋近三年分位
+python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
+```
+
+它只讀快取、不連外。**每天當場重寫的統計，每天都有一次寫錯的機會**——
+分母取幾年、報酬是 4 日還是 5 日、台股樣本比美股短，這些以前都是當場決定的。
+
 **完成條件**：五個題目各自能說出「它要回答什麼問題」，且 theme 互不重複。
 
 ### 3. 取數
@@ -70,6 +89,11 @@ description: 產出每日五圖。每天台北 11:30 在 Mac mini 上執行；�
 
 **429 是對方在說「慢一點」。等，不要繞。** 不可以換 host、改用瀏覽器規避。
 先分辨是哪一種：**第一個請求就 429 等再久也不會好**，打了一陣子才 429 才是該等的那種。
+
+**週頻發布的日頻序列另有一套門檻**（`anchors.freshness.weekly_release_series`）：
+`DTWEXBGS`／`DEXJPUS` 出自 H.10，**觀測每天有、發布每週一次**，
+所以照日頻門檻它們週三起就是硬失敗，2026-08-21 與 08-22 兩輪都因此沒畫美元。
+現在改以發布期數計，用它們時**照樣要在 subtitle 或 note 寫出實際基準日**。
 
 **完成條件**：每條序列都有資料點與末日，且末日通過 `anchors.freshness` 的門檻。
 
@@ -138,6 +162,13 @@ description: 產出每日五圖。每天台北 11:30 在 Mac mini 上執行；�
 
 分段耗時（每一步的起訖台北時刻）、`about.data_path` 走了哪一條、
 QA 旗標與處置、降級與理由、以及下一輪要修的事。
+
+出圖時刻讀 `about.rendered_at`（`render_day.py` 當場寫的），
+**不要拿 PNG 的 mtime 當量測** —— 2026-08-22 實測五張 PNG 的 mtime 全被掛載層
+改寫成同一個晚於實際出圖的時刻，而 08-21 的報告正是拿它當「量測」。
+
+**用量那一段在排程 prompt（`scripts/chart/RUN-PROMPT.md`）的最後一節**，
+這裡不重複寫一份 —— 但**讀完這份 SKILL 不等於這一輪做完了**，回報前要回去把它跑掉。
 
 **完成條件**：報告裡每一個時間數字都能指出是量到的還是估的，估的標 `~`。
 

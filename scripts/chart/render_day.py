@@ -7,6 +7,7 @@ render_day.py — 讀 data/YYYY-MM-DD.json，畫出當天五張圖的 PNG / SVG�
 設計原則：JSON 是唯一事實來源；圖是 JSON 的函數。
 只要 JSON 還在，任何一天的圖都能被重畫——這是「歷史可查閱」的實作方式。
 """
+import datetime as dt
 import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import chartkit as ck
@@ -64,11 +65,21 @@ def main(day: str):
             "png": f"charts/{day}/{base}.png",
             "svg": f"charts/{day}/{base}.svg",
         }
+        # 頁尾實際折了幾行由 render_static 量出來（截斷前）。**檢查那一側原本自己估**，
+        # 而估算比排版引擎樂觀。舊日檔沒有這個欄位，檢查會退回估算，不會因此變紅。
+        c["footer_lines"] = files["footer_lines"]
+        if files.get("footer_truncated"):
+            c["footer_truncated"] = True
         c["option"] = ck.echarts_option(ch)
         flags += ck.qa_series(ch)
         print(f"  [{i}] {c['title'][:36]:<38} -> {os.path.basename(files['png'])}")
 
     doc.setdefault("about", {})["qa_flags"] = flags
+    # **出圖時刻在這裡量，不要事後看 PNG 的 mtime。**
+    # 2026-08-22 實測：五張 PNG 的 mtime 全被掛載層改寫成同一個晚於實際出圖的時刻，
+    # 而 08-21 的執行報告正是拿 mtime 當「量測」。檔案系統的時間戳不是我們的量測點。
+    doc["about"]["rendered_at"] = dt.datetime.now(
+        dt.timezone(dt.timedelta(hours=8))).isoformat(timespec="seconds")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
     print(f"OK  {day}：{len(doc['charts'])} 張圖，JSON 已回寫 option")

@@ -43,7 +43,8 @@
    "slug_suffix": "-release",
    "theme": "央行、利率與匯率",
    "source": "美國三大月度數據（非農／CPI／PCE）發布當日，當日主圖必須是那張圖，slug 為 `<kind 小寫>-release`，theme 固定「央行、利率與匯率」——三者都是政策路徑的輸入。**這條規則一個月只觸發約三次，漏掉不會有人發現**，所以它需要守門而不是靠記得。",
-   "detection": "`about.macro_release` 由 `macro_release.py --check` 寫進當日 JSON，檢查讀的是那個欄位。**偵測需要網路、判定不需要**——把兩者分開，發布路徑才不會因為 FRED 連不上而擋住一輪本來沒問題的產出。欄位不存在時判 SKIPPED 並說出原因，不是 PASS。"
+   "detection": "`about.macro_release` 由當日 JSON 帶著，檢查讀的是那個欄位。**偵測需要網路、判定不需要**——把兩者分開，發布路徑才不會因為 FRED 連不上而擋住一輪本來沒問題的產出。欄位不存在時判 SKIPPED 並說出原因，不是 PASS。",
+   "detection_runs_in_prefetch": "2026-08-22 起偵測跑在 11:00 的 `prefetch.py`（Mac，FRED 正常），結果寫進 `chart-of-the-day/data/_macro_release.json`；執行輪次只讀那個檔，原樣搬進 `about.macro_release`。**在此之前偵測跑在沒有網路的那一側**：沙箱對 fred.stlouisfed.org 是 Tunnel 403，於是每輪用 web_fetch 人工重建三筆 last_updated，08-21 與 08-22 兩輪都這樣做，而 08-22 那輪三筆裡的 PCE 沒有重新量、只沿用前一天的值。**分離早就寫在上一行，只是偵測那一半從來沒有搬到有網路的機器上。** 檔案帶 `error` 時照實搬進 about 並在 run 說明，**不要當成「今天沒發布」**。"
   }
  },
  "tracks": {
@@ -56,6 +57,8 @@
   "weekend_mode": "週線複查",
   "weekend_slot_label": "軌道圖｜<軌道名>（週線複查）",
   "weekend_distinct_days": true,
+  "weekend_distinct_enforced_from": "2026-08-22",
+  "weekend_distinct_note": "2026-08-22 之前這條沒有任何程式在守：`chart.track_of_the_day` 只看單日，而它的 blind_to 就是這麼寫的。當天那輪只能把「明天要挑另一條」寫進 about.run —— **自述不是守門人**。現在改由週日那一期比對 payload 的 prev（前一期若是週六且同一條就硬失敗）。**週六當下仍然看不出來**，這是這條規則能守到的極限。",
   "source": "「同一條軌道每週固定同一天出現」才有跨期可比。**週末若往下數第六、七條，一輪之後全部錯位。**排程一週跑七天，週末不是例外狀況，所以週末不推進輪盤、改週線複查，且**週六與週日不得挑同一條**。"
  },
  "lengths": {
@@ -145,7 +148,15 @@
   "monthly_warn_periods": 2,
   "monthly_fail_periods": 3,
   "monthly_detection": "日期全部以每月 1 號標記",
-  "source": "日頻落後 ≥2 天警示（subtitle 或 note 必須寫出實際基準日）、≥5 天硬失敗不得發布。月頻是 2026-08-13 加的：CPI／PCE／非農是月頻，7 月觀測值標記為 2026-07-01，在 8/13 那輪一律落後 43 天，照日頻門檻算是硬失敗——**等於同一份規範自己禁止自己**。",
+  "weekly_warn_periods": 2,
+  "weekly_fail_periods": 3,
+  "weekly_release_from": "2026-08-22",
+  "weekly_release_series": {
+   "DTWEXBGS": "聯準會 H.10，每週一發布上一週的每日觀測",
+   "DEXJPUS": "同 H.10"
+  },
+  "weekly_release_source": "**觀測是每日的，發布是每週一次**——這兩件事不一樣，而日頻門檻只看得到前者。實測：2026-08-21 與 08-22 兩輪的預抓都在當天成功抓到這兩條，末日都停在 2026-08-14（週五）；下一次要等 08-24（週一）才會補上 08-17 至 08-21。照 daily_fail_days=5 算，它們**週三就過硬失敗、週三到週日五天不能用**，於是連續兩天頭條的「美元走弱」那一半被砍掉，而原因不是資料壞了，是門檻的形狀。這是 monthly 那條「同一份規範自己禁止自己」的第二例。改以發布期數計（gap_days // 7）：warn ≥2 期＝連續兩次沒發布，fail ≥3 期。**識別靠 series_spec 的 id，不靠序列名稱**——名稱是寫給讀者看的，會隨每張圖改。帶 weekly_release_from 是照維護規矩「新規則帶生效日」，舊期回測維持原判定。",
+  "source": "日頻落後 ≥2 天警示（subtitle 或 note 必須寫出實際基準日）、≥5 天硬失敗不得發布。月頻是 2026-08-13 加的：CPI／PCE／非農是月頻，7 月觀測值標記為 2026-07-01，在 8/13 那輪一律落後 43 天，照日頻門檻算是硬失敗——**等於同一份規範自己禁止自己**。週頻發布是 2026-08-22 加的，見 weekly_release_source。",
   "known": [
    "FRED 日頻序列比 Yahoo 慢一個交易日"
   ]

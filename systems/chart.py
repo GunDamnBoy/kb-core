@@ -19,7 +19,7 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from kbcore.system import System, register
+from kbcore.system import System, frozen, register
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -168,7 +168,8 @@ register(System(
     id="chart-of-the-day",
     suite="chart",
     build=build,
-    cadence_hours=24,   # 日頻
+    cadence_hours=24,
+    republish_rule=frozen,   # 日頻
     staged_paths=staged_paths,
     index_entry=index_entry,
     index_meta=index_meta,

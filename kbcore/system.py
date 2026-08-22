@@ -87,6 +87,26 @@ class System:
     （日頻 36 小時 = 原本的值，這個換算刻意讓既有四套的行為完全不變）。
     """
 
+    republish_rule: Callable[[dict, dict], "str | None"]
+    """(已發布的那一份, 新的草稿) → 不允許就回一句話說為什麼，允許回 None。
+
+    **不可改寫守衛原本是一條通則：內容不同就擋。** 那對日頻是對的 ——
+    一期就是一天的定稿，改它等於改歷史。
+
+    週頻的第五套撞破了這個假設。它依**報告自己的日期**分期（使用者定的，
+    因為他會把幾個月前的報告丟進來），而報告不會在週末停止到達 ——
+    2026-08-22 就有四份 W34 的報告在 W34 發布之後才進來。
+    於是每一次遲到都要人手動 `git rm` 再重發，
+    **而一個每次都要繞過的守衛，遲早會被繞過它不該被繞過的那一次。**
+
+    所以規則從「一條通則」變成「每套系統自己宣告」——
+    跟 `index_entry`／`index_meta`／`staged_paths` 同一道接縫，
+    這是它漏掉的第四個維度。
+
+    必填，沒有預設。日頻四套用 `frozen`（任何差異都擋），
+    週頻用 `append_only`（只准長大：既有的每一份都要原封不動還在）。
+    """
+
     index_entry: Callable[[dict], dict]
     """草稿 → `data/index.json` 的當日 entry。
 
@@ -98,6 +118,33 @@ class System:
     第二套系統一接上去就撞到：podcast 的 doc 沒有 `overview`，publish 會在
     組 entry 時 KeyError。**接縫漏一個維度，第二個使用者才會發現。**
     """
+
+
+def frozen(old: dict, new: dict):
+    """任何差異都擋。**日頻的定稿就是定稿。**"""
+    return "已存在且內容不同 —— 改草稿沒有用，掛 errata"
+
+
+def append_only(old: dict, new: dict):
+    """只准長大：**已發布的每一份報告都要原封不動還在**，可以多、不可以改。
+
+    這條在意的不是「有沒有變」，是「**變的是不是已經給人看過的那些**」。
+    加一份遲到的報告不會改變任何人已經讀過的東西；
+    改一份已發布報告的精華或原句會，而那正是不可改寫守衛存在的理由。
+    """
+    import json as _j
+    was = {r.get("slug"): r for r in (old.get("reports") or [])}
+    now = {r.get("slug"): r for r in (new.get("reports") or [])}
+    gone = sorted(set(was) - set(now))
+    if gone:
+        return f"已發布的 {len(gone)} 份不見了：{gone[:3]} —— **只准長大，不准縮**"
+    changed = [k for k in was
+               if _j.dumps(was[k], sort_keys=True, ensure_ascii=False)
+               != _j.dumps(now[k], sort_keys=True, ensure_ascii=False)]
+    if changed:
+        return (f"已發布的 {len(changed)} 份內容被改了：{changed[:3]} —— "
+                "**加新的可以，改舊的不行**（那是已經給人看過的東西）")
+    return None
 
 
 REGISTRY: "dict[str, System]" = {}

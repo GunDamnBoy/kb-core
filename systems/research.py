@@ -27,7 +27,7 @@ import os
 import re
 from pathlib import Path
 
-from kbcore.system import System, register
+from kbcore.system import System, append_only, register
 
 ROOT = Path(__file__).resolve().parent.parent
 # 路徑只有一個家：`BROKER_RESEARCH_ROOT`（見 `scripts/research/_paths.py` 的檔頭，
@@ -201,7 +201,8 @@ register(System(
     id="broker-research-digest",
     suite="research",
     build=build,
-    cadence_hours=168,   # 週頻 —— 這個欄位存在的理由就是這一套
+    cadence_hours=168,
+    republish_rule=append_only,   # 遲到的報告會補進已發布的那一週
     staged_paths=staged_paths,
     index_entry=index_entry,
     index_meta=index_meta,

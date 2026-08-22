@@ -316,11 +316,24 @@ register(Check(
 
 # ── 7. 頁尾行數 ─────────────────────────────────────────────────────
 def _footer(p):
+    """**有量測就用量測，沒有才估。**
+
+    2026-08-22 拿當期五張圖對過：估算與 `render_static` 量到的 3／3／2／3／3 一致，
+    **估算沒有失準**。改用量測不是因為估算算錯，而是因為**估算照不到截斷** ——
+    超過上限時 render 會切字補刪節號，估算只回一個大於上限的數字，
+    說不出「已經被切了」，而被切掉的正是頁尾要自帶的來源標註。
+    `render_static` 現在把截斷前的行數寫進 `chart.footer_lines`，這裡優先讀它；
+    舊日檔沒有這個欄位就退回估算，所以回測不會因為改這裡變紅。
+    """
     w = _A(p, "footer", "visual_width_per_line")
     warn_n = _A(p, "footer", "lines_warn")
     over, edge = [], []
     for c in _charts(p["doc"]):
-        lines = -(-_vis(c.get("source")) // w) + -(-_vis(c.get("note")) // w)
+        measured = c.get("footer_lines")
+        if isinstance(measured, int):
+            lines = measured
+        else:
+            lines = -(-_vis(c.get("source")) // w) + -(-_vis(c.get("note")) // w)
         if lines > warn_n:
             over.append(f"{c.get('slug', '?')} {lines} 行")
         elif lines == warn_n:
@@ -335,19 +348,28 @@ def _footer(p):
 
 register(Check(
     id="chart.footer_lines",
-    covers="每張圖的 source ＋ note 依視覺寬（中日韓 2、其餘 1）折行後不超過 anchors 的行數上限",
+    covers="每張圖的頁尾行數不超過 anchors 的上限。**有 chart.footer_lines（render_static 量到的"
+           "截斷前行數）就用它**，沒有才退回視覺寬估算（中日韓 2、其餘 1）",
     blind_to=[
         "**來源標註是否正確**——只算長度，不看它指的是不是真的來源",
-        "實際字型下的折行位置（這裡用固定視覺寬估算，不是排版引擎）",
+        "**有沒有被截斷**——量測值是截斷前的行數，這條只判它超不超過上限，"
+        "不會告訴你 PNG 上那一行結尾的刪節號吃掉了什麼",
+        "沒有 footer_lines 的舊日檔仍然只有估算（2026-08-22 對過一次，五張圖估算與量測一致）",
+        "量測值是 render_static 回報的，**它與最後存進 PNG 的是同一次呼叫，但仍是自述**"
+        "——真正的證據是看圖",
         "note 寫了但講的不是這張圖的事",
         "已發布的舊日期檔",
     ],
     run=_footer,
+    # **兩條路徑各放一張圖**：`m` 走量測（footer_lines=4），`e` 走估算。
+    # 只放量測那一張的話，估算那條退路會變成沒有人驗的程式碼。
     fixture={"anchors": {"footer": {"visual_width_per_line": 10, "lines_warn": 3}},
-             "doc": {"charts": [{"slug": "x", "source": "中" * 25, "note": "中" * 25}]}},
-    # 貼著邊界的合格側：source 20 視覺寬＝2 行、note 空＝0 行，合計 2 < 3。
+             "doc": {"charts": [{"slug": "m", "footer_lines": 4},
+                                {"slug": "e", "source": "中" * 25, "note": "中" * 25}]}},
+    # 貼著邊界的合格側：量測 2 行；估算那張 source 20 視覺寬＝2 行、note 空＝0 行，合計 2 < 3。
     near_miss={"anchors": {"footer": {"visual_width_per_line": 10, "lines_warn": 3}},
-               "doc": {"charts": [{"slug": "x", "source": "中" * 10, "note": ""}]}},
+               "doc": {"charts": [{"slug": "m", "footer_lines": 2},
+                                  {"slug": "e", "source": "中" * 10, "note": ""}]}},
     suite="chart",
 ))
 
@@ -356,8 +378,16 @@ register(Check(
 def _freshness(p):
     F = _A(p, "freshness")
     now = dt.datetime.fromisoformat(p["now"]).astimezone(TPE).date()
-    day_bad, day_warn, mon_bad, mon_warn = [], [], [], []
+    # **週頻發布的日頻序列**：觀測每天都有，但一週只發一次（H.10 每週一）。
+    # 日頻門檻只看得到「最後一筆觀測有多舊」，於是它們週三就過硬失敗——
+    # 資料沒壞，是門檻的形狀不對。識別靠 series_spec 的 id：序列名稱是寫給讀者看的。
+    weekly_ids = F.get("weekly_release_series") or {}
+    since_wk = F.get("weekly_release_from") or "9999-12-31"
+    weekly_on = bool(weekly_ids) and p["doc"].get("date", "") >= since_wk
+    day_bad, day_warn, mon_bad, mon_warn, wk_bad, wk_warn = [], [], [], [], [], []
     for c in _charts(p["doc"]):
+        spec_id = {sp.get("name"): sp.get("id")
+                   for sp in (c.get("series_spec") or []) if isinstance(sp, dict)}
         for s in c.get("series") or []:
             # **序列的真實形狀是 `dates`／`values` 兩個平行陣列。**
             # 這條檢查原本只認 `data`／`points`，而 build_series.py 與
@@ -385,6 +415,14 @@ def _freshness(p):
             monthly = last.endswith("-01")
             gap_days = (now - dt.date.fromisoformat(last)).days
             tag = f"{c.get('slug', '?')}／{s.get('name', '?')} 末日 {last}"
+            sid = spec_id.get(s.get("name"))
+            if weekly_on and sid in weekly_ids and not monthly:
+                periods = gap_days // 7
+                if periods >= F["weekly_fail_periods"]:
+                    wk_bad.append(f"{tag}（{sid}，週頻發布，落後 {periods} 期）")
+                elif periods >= F["weekly_warn_periods"]:
+                    wk_warn.append(f"{tag}（{sid}，週頻發布，落後 {periods} 期）")
+                continue
             if monthly:
                 months = gap_days // 30
                 if months >= F["monthly_fail_periods"]:
@@ -396,19 +434,22 @@ def _freshness(p):
                     day_bad.append(f"{tag}（落後 {gap_days} 天）")
                 elif gap_days >= F["daily_warn_days"]:
                     day_warn.append(f"{tag}（落後 {gap_days} 天）")
-    if day_bad or mon_bad:
-        return fail("；".join(day_bad + mon_bad) + " —— 硬失敗，不得發布")
-    if day_warn or mon_warn:
-        return warn("；".join(day_warn + mon_warn) +
+    if day_bad or mon_bad or wk_bad:
+        return fail("；".join(day_bad + mon_bad + wk_bad) + " —— 硬失敗，不得發布")
+    if day_warn or mon_warn or wk_warn:
+        return warn("；".join(day_warn + mon_warn + wk_warn) +
                     " —— subtitle 或 note 必須寫出實際基準日")
     return ok()
 
 
 register(Check(
     id="chart.series_freshness",
-    covers="每條 series 的末日與今天的距離，日頻與月頻各一套門檻（值在 anchors.freshness）。"
+    covers="每條 series 的末日與今天的距離，日頻／月頻／週頻發布各一套門檻（值在 anchors.freshness）。"
            "序列形狀認 `dates`（實際產出的那一種）與 `data`／`points`（手工序列）兩種",
     blind_to=[
+        "**週頻發布只認得出 series_spec 裡有 id 的序列**——手工序列（沒有 spec）會回頭走日頻門檻，"
+        "而週頻那兩條若被寫成手工序列就會照舊硬失敗",
+        "**這份週頻清單是人工登錄的**——FRED 改了某條的發布頻率，這裡不會自己知道",
         "**只看 timeseries 的 `series`**——scatter 的 pts、heatmap 的 matrix 沒有日期軸，這條看不到它們",
         "**第三種序列形狀**——2026-08-21 之前它只認 `data`／`points`，而真實產出是 `dates`／`values`，"
         "於是它對著 13 天封存全綠、一個數字都沒讀到。fixture 現在用真實形狀，但**再冒出第四種鍵名，"
@@ -420,18 +461,34 @@ register(Check(
     ],
     run=_freshness,
     fixture={"anchors": {"freshness": {"daily_warn_days": 2, "daily_fail_days": 5,
-                                       "monthly_warn_periods": 2, "monthly_fail_periods": 3}},
+                                       "monthly_warn_periods": 2, "monthly_fail_periods": 3,
+                                       "weekly_warn_periods": 2, "weekly_fail_periods": 3,
+                                       "weekly_release_from": "2026-01-01",
+                                       "weekly_release_series": {"DTWEXBGS": "H.10 每週一"}}},
              "now": "2026-08-20T12:00:00+08:00",
              # **fixture 用的是實際產出的 `dates`／`values` 形狀**，不是 `data`。
              # 舊 fixture 用 `data`，於是自檢照樣觸發、照樣 selftest OK，
              # 而真實資料一條都讀不到 —— fixture 對得上程式、對不上產出。
-             "doc": {"charts": [{"slug": "x", "series": [
-                 {"name": "s", "dates": ["2026-08-01", "2026-08-10"], "values": [1, 2]}]}]}},
+             "doc": {"date": "2026-08-20", "charts": [
+                 {"slug": "x", "series": [
+                     {"name": "s", "dates": ["2026-08-01", "2026-08-10"], "values": [1, 2]}]},
+                 # 週頻那一條：落後 43 天＝6 期，週頻門檻也擋得下來
+                 {"slug": "w", "series_spec": [{"id": "DTWEXBGS", "name": "美元指數"}],
+                  "series": [{"name": "美元指數",
+                              "dates": ["2026-07-01", "2026-07-08"], "values": [1, 2]}]}]}},
     near_miss={"anchors": {"freshness": {"daily_warn_days": 2, "daily_fail_days": 5,
-                                         "monthly_warn_periods": 2, "monthly_fail_periods": 3}},
+                                         "monthly_warn_periods": 2, "monthly_fail_periods": 3,
+                                         "weekly_warn_periods": 2, "weekly_fail_periods": 3,
+                                         "weekly_release_from": "2026-01-01",
+                                         "weekly_release_series": {"DTWEXBGS": "H.10 每週一"}}},
                "now": "2026-08-20T12:00:00+08:00",
-               "doc": {"charts": [{"slug": "x", "series": [
-                   {"name": "s", "dates": ["2026-08-19", "2026-08-20"], "values": [1, 2]}]}]}},
+               # **合格側的重點在 `w`**：落後 6 天，照日頻是硬失敗，照週頻是 0 期 —— 這條規則就是為它加的。
+               "doc": {"date": "2026-08-20", "charts": [
+                   {"slug": "x", "series": [
+                       {"name": "s", "dates": ["2026-08-19", "2026-08-20"], "values": [1, 2]}]},
+                   {"slug": "w", "series_spec": [{"id": "DTWEXBGS", "name": "美元指數"}],
+                    "series": [{"name": "美元指數",
+                                "dates": ["2026-08-07", "2026-08-14"], "values": [1, 2]}]}]}},
     suite="chart",
 ))
 
@@ -579,6 +636,21 @@ def _track(p):
         base = name.split("（", 1)[0]
         if base not in T.values():
             return fail(f"週線複查挑的「{base}」不是五條軌道之一")
+        # **週六與週日不得挑同一條**（anchors.tracks.weekend_distinct_days）。
+        # 這條規則到 2026-08-22 為止沒有任何程式在守 —— 當天那輪只能把
+        # 「明天要挑另一條」寫進 about.run，而**自述不是守門人**。
+        # payload 本來就帶著前一期（systems/chart.py 的 prev_doc），拿來比就好。
+        if T.get("weekend_distinct_days") and wd == 6:
+            prev = p.get("prev") or {}
+            pslot = ((prev.get("charts") or [{}])[-1].get("slot") or "")
+            pdate = prev.get("date") or ""
+            if pdate and (d - dt.date.fromisoformat(pdate)).days == 1 and "｜" in pslot:
+                pbase = pslot.split("｜", 1)[1].split("（", 1)[0]
+                if pbase == base:
+                    return fail(
+                        f"週日複查挑了「{base}」，與前一天（{pdate}）同一條 —— "
+                        "**同一個週末看兩次同一條軌道，等於少看一條**，"
+                        "而跨期可比是靠不同軌道各自連續才成立的")
         return ok(f"{d} 週末，複查「{base}」")
     want = T[_WD[wd]]
     if name != want:
@@ -589,9 +661,12 @@ def _track(p):
 
 register(Check(
     id="chart.track_of_the_day",
-    covers="第五張圖的軌道名對得上星期幾（平日綁死五條），週末標「週線複查」且挑的是五條之一",
+    covers="第五張圖的軌道名對得上星期幾（平日綁死五條），週末標「週線複查」且挑的是五條之一；"
+           "週日再比對前一期（payload 的 prev），不得與週六同一條",
     blind_to=[
-        "**週六與週日挑了同一條**——這條只看單日，看不到兩天之間的關係",
+        "**週六那一天看不出來**——同一條的判定要等週日那期才成立，"
+        "週六當下沒有任何訊號說「明天不能再挑這條」",
+        "**前一期不是週六時整條略過**（例如週六那期根本沒產出），此時週日挑什麼都不會紅",
         "軌道名對但那張圖畫的不是那條軌道的東西",
         "軌道圖是否換了算法或基期（規則說不要換，這條驗不到）",
         "已發布的舊日期檔",
@@ -935,9 +1010,18 @@ def _release_day(p):
     doc = p["doc"]
     mr = (doc.get("about") or {}).get("macro_release")
     if mr is None:
-        return skipped("about.macro_release 未寫入 —— 沒跑過 macro_release.py --check，"
+        return skipped("about.macro_release 未寫入 —— 沒有人跑過偵測，"
                        "**發布日漏圖在這一輪偵測不到**（偵測要網路，判定不要，"
                        "所以這裡不自己去問 FRED）")
+    # 兩種方言：2026-08-22 之前是一個 list，之後是 prefetch 寫的
+    # `_macro_release.json` 整份（dict，含 checked_at 與可能的 error）。
+    # **偵測失敗時 items 是空的，而空 list 與「今天沒發布」在下游長得一模一樣** ——
+    # 所以帶 error 的那一種要判 SKIPPED 並把錯誤原樣說出來，不能讓它安靜地綠。
+    if isinstance(mr, dict):
+        if mr.get("error") and not mr.get("items"):
+            return skipped(f"偵測失敗（{str(mr['error']).splitlines()[0][:90]}）—— "
+                           "**這不是「今天沒發布」**，發布日漏圖這一輪一樣偵測不到")
+        mr = mr.get("items") or []
     rd = _A(p, "structure", "release_day")
     slot1_name = _A(p, "structure", "slots")[0]
     fresh = [r for r in mr if r.get("fresh")]

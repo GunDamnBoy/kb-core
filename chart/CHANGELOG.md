@@ -1,5 +1,77 @@
 # 每日五圖｜重建紀錄
 
+## 2026-08-22｜四個「每天都做得到、所以沒有人把它變成程式」的地方
+
+08-22 那輪（15 PASS · 3 WARN · 0 FAIL，回執 exit 0 @ `55f2156`）本身沒有失敗，
+維護是從它的執行報告倒推的。四件事的共同形狀是：**它每天都做得到，
+所以從來沒有變成程式；而做得到的事會在某一天悄悄少做一次，且輸出長得一模一樣。**
+
+### 動到哪些檔
+
+| 檔 | 改了什麼 |
+|---|---|
+| `scripts/chart/prefetch.py` | 新增 `_write_macro_release()`：預抓完成後在**有網路的那台機器**跑 `macro_release.check()`，寫 `chart-of-the-day/data/_macro_release.json`。失敗時寫一個帶 `error` 的檔，**不是不寫** |
+| `checks/chart.py` `_release_day` | 認兩種方言：舊的 list、新的 dict（整份檔）。dict 帶 `error` 且 items 空 → SKIPPED 並把錯誤說出來 |
+| `chart/anchors.json` `structure.release_day` | 新增 `detection_runs_in_prefetch`，記下偵測搬家與搬家前的兩次人工重建 |
+| `chart/anchors.json` `freshness` | 新增 `weekly_release_series`（`DTWEXBGS`／`DEXJPUS`）＋`weekly_warn_periods` 2／`weekly_fail_periods` 3／`weekly_release_from` 2026-08-22 |
+| `checks/chart.py` `_freshness` | 週頻發布序列改以發布期數計；**識別靠 `series_spec` 的 id**，不靠序列名稱 |
+| `checks/chart.py` `_track` | 週日那期比對 `payload["prev"]`，與週六同一條軌道 → FAIL |
+| `chart/anchors.json` `tracks` | 新增 `weekend_distinct_enforced_from` 與說明 |
+| `scripts/chart/scan_moves.py` | 新增。slot 2 的「程式化掃描」終於有程式：只讀快取、不連外，1 日與 5 日變動＋近三年分位，利差與殖利率改報絕對變動 |
+| `scripts/chart/chartkit.py` | `render_static` 回傳 `footer_lines`（截斷前）與 `footer_truncated` |
+| `scripts/chart/render_day.py` | 把上面兩個寫進圖；`about.rendered_at` 當場量 |
+| `checks/chart.py` `_footer` | 有 `footer_lines` 就用量測，沒有才估 |
+| `skills/chart/SKILL.md` | 第 1 步讀 `_macro_release.json`、第 2 步用 `scan_moves.py`、第 3 步的週頻門檻、第 9 步用 `rendered_at` 並指向 RUN-PROMPT 的用量段 |
+
+### 量測
+
+- **`DTWEXBGS`／`DEXJPUS` 是週頻發布**：08-21 與 08-22 兩輪的預抓都在當天成功抓到，
+  末日都停在 2026-08-14（週五）。照 `daily_fail_days=5` 算，它們**週三就過硬失敗**，
+  週三到週日五天不可用 —— 於是連續兩天頭條的「美元走弱」那一半被砍，
+  **原因不是資料壞了，是門檻的形狀**。這是月頻那條「同一份規範自己禁止自己」的第二例。
+- **`scan_moves.py` 重算 08-22 的掃描**：`GLD +5.45%／96.7`、`SOXQ −5.44%／10.4`、
+  `NIKKEI225 −3.93%／6.6`、`SP500 −1.43%／16.0` 與當期封存**逐項相同**；
+  唯一差異是樣本數（工具 749、當期手寫 748，因為三年切點的取法差一筆），
+  `CPER` 的分位因此由 42.4 變成 42.3。**封存不改寫**，日後以工具為準。
+- **頁尾行數（更正留痕）**：08-22 的執行報告與 `about.run` 寫著
+  「實際折成三行、檢查估算給兩行，估算比排版引擎樂觀」。拿 `render_static` 量過之後
+  **那句話是錯的**：五張圖的估算與量測都是 3／3／2／3／3，一致。
+  錯的是報告作者另寫的一套估算法（把 source 與 note 合併後才除），不是這條檢查。
+  已發布的 `data/2026-08-22.json` 不改寫，**errata 記在這裡**。
+  改用量測仍然值得做，但理由換成正確的那一個：**估算照不到「有沒有被截斷」**。
+- **PNG mtime 不能當量測**：08-22 五張 PNG 的 mtime 全被掛載層改寫成 11:50:54，
+  晚於實際出圖時刻，而 08-21 的報告正是拿它當「量測」。改由 `about.rendered_at` 當場寫。
+
+### 怎麼驗的
+
+`py_compile` 全綠；`selftest` 0 失敗（`footer_lines` 與 `series_freshness` 的
+fixture／near_miss 都補了新路徑，且**兩條路徑各留一張圖**，免得估算那條退路變成沒人驗）；
+`build_series --selftest`、`scan_moves --selftest` 通過；
+08-22 當期 `chart_verify` 維持 **15 PASS · 3 WARN · 0 FAIL**（改動前後相同）；
+08-14／08-17／08-21 回測沒有新增 FAIL（既有的 freshness 紅字是這條檢查的形狀，
+`option_matches_spec` 那筆是 08-14 封存本來就有的漂移）。
+三條新規則各自用合成 payload 兩側驗過：週末同軌道 FAIL／不同條 PASS／沒有前一期 PASS；
+`DTWEXBGS` 落後 8 天 PASS、45 天 FAIL、**沒有 `series_spec` 時退回日頻仍 FAIL**、
+生效日之前不套用；頁尾量測 4 行 FAIL／3 行 WARN／2 行 PASS。
+`render_day.py` 在 `/tmp` 的暫存 repo 對 08-22 重跑並看圖，**沒有碰封存**。
+
+### 怎麼倒回去
+
+四件事互相獨立，可個別回退：把 `prefetch.py` 的 `_write_macro_release()` 呼叫拿掉、
+把 `freshness.weekly_release_series` 刪掉（檢查會自動退回日頻）、
+把 `tracks.weekend_distinct_enforced_from` 刪掉（`_track` 讀不到就不比 prev）、
+`scan_moves.py` 直接刪。`footer_lines` 拿掉後檢查自動退回估算。
+
+### 當時已知的風險
+
+- **`_macro_release.json` 要等到 08-23 11:00 的預抓才會第一次真的產生。**
+  在那之前執行輪次讀不到它，SKILL 要求「說出來」而不是自己去問 FRED ——
+  **明天那輪如果照舊用 web_fetch 重建，代表這次搬家沒有真的接上。**
+- 週頻清單是**人工登錄**的：FRED 改了某條的發布頻率，這裡不會自己知道。
+- 週末同軌道只在**週日那一期**判得出來，週六當下仍然沒有訊號。
+- `scan_moves.py` 的預設清單是這次挑的，**它會反過來決定選題半徑** ——
+  掃到什麼才會想到什麼。下次擴充預抓核心清單時要一起看。
+
 ## 2026-08-21｜靜態產出從來沒被推過：接縫漏掉的第三個維度
 
 首次無人值守輪次發布成功（回執 exit 0、commit `11a81d5`）之後，

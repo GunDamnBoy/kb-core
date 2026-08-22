@@ -7,7 +7,7 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from kbcore.system import System, register
+from kbcore.system import System, frozen, register
 
 ANCHORS = "advisory/anchors.json"
 PROGRAM_ROOT = Path(__file__).resolve().parent.parent
@@ -120,7 +120,8 @@ register(System(
     id="advisory-knowledge-hub",
     suite="advisory",
     build=build,
-    cadence_hours=24,   # 日頻
+    cadence_hours=24,
+    republish_rule=frozen,   # 日頻
     # 投顧只產 data/。`raw/` 是 GitHub Actions 那一側寫的，由它自己 commit ——
     # 兩個寫入者共用 main，這裡把 raw/ 也 add 進來會把對方寫到一半的東西帶上車。
     staged_paths=lambda doc, repo: ["data"],

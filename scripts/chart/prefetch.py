@@ -107,6 +107,39 @@ def targets() -> list:
     return out
 
 
+MACRO = os.path.join(REPO, "data", "_macro_release.json")
+
+
+def _write_macro_release() -> None:
+    """三大月度數據的發布偵測 —— **跑在有網路的這一側**。
+
+    `anchors.structure.release_day.detection` 一直寫著「偵測需要網路、判定不需要，
+    把兩者分開」，但偵測從來沒有搬過來：執行輪次在沙箱，FRED 是 Tunnel 403，
+    於是每一輪都用 web_fetch 人工重建三筆 last_updated。
+    2026-08-22 那輪三筆裡有一筆（PCE）根本沒重新量，只沿用前一天的值 ——
+    **每天都做得到的人工重建，會在某一天悄悄少做一筆，而輸出長得一模一樣。**
+
+    這裡失敗不影響預抓本身（序列已經寫好了），但**要留下具名的錯誤**：
+    寫一個帶 `error` 的檔，比不寫檔好 —— 不寫檔跟「今天沒發布」在下游長得一樣。
+    """
+    now = datetime.datetime.now().astimezone()
+    try:
+        import macro_release as MR
+        items = MR.check()
+        doc = {"checked_at": now.isoformat(timespec="seconds"),
+               "host": os.uname().nodename, "source": "macro_release.check()",
+               "items": items}
+        print("三大數據偵測：" + "、".join(
+            f"{r['kind']}{'（今日發布）' if r.get('fresh') else ''}" for r in items))
+    except Exception as e:
+        doc = {"checked_at": now.isoformat(timespec="seconds"),
+               "host": os.uname().nodename, "source": "macro_release.check()",
+               "error": f"{type(e).__name__}: {e}"[:300], "items": []}
+        print(f"三大數據偵測失敗（不影響序列預抓）：{doc['error'].splitlines()[0][:110]}")
+    with open(MACRO, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=1)
+
+
 def main(argv):
     quiet = "--quiet" in argv
     ids = targets()
@@ -178,6 +211,8 @@ def main(argv):
     }
     with open(STATUS, "w", encoding="utf-8") as f:
         json.dump(status, f, ensure_ascii=False, indent=1)
+
+    _write_macro_release()
 
     # **兩種「未嘗試」的成因不同，混在一起講會讓人以為今天出了 11 個問題。**
     _n_blocked = sum(1 for v in skipped.values() if "已知被擋" in v)

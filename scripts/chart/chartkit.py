@@ -604,8 +604,18 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
                   bbox_to_anchor=(0, 1.02), handlelength=1.6)
     # 頁尾：來源與註記優先；太長時續排並讓出品牌位置，絕不互壓、**也絕不靜默裁字**。
     foot = ch.source if not ch.note else f"{ch.source}    |    {ch.note}"
+    # **實際折了幾行只有這裡知道。** 檢查那一側是用固定視覺寬估的。
+    # 2026-08-22 拿當期五張圖對過：檢查的估算（逐欄無條件進位）與這裡量到的
+    # 3／3／2／3／3 **完全一致** —— 估算今天沒有失準。
+    # 那為什麼還要把量測帶回去？因為估算**照不到截斷**：超過 FOOT_MAX_LINES 時
+    # 這裡會切字並補刪節號，而估算只會回一個大於上限的數字，說不出「已經被切了」。
+    # 同一天的執行報告曾寫「估算比排版引擎樂觀、差一行」，那是報告作者另寫的一套
+    # 估算法算錯，不是這條檢查 —— **更正留痕，見 CHANGELOG 2026-08-22。**
+    foot_lines, foot_cut = 1, False
     if _vis_len(foot) > 78:
         lines = _wrap_vis(ch.source) + (_wrap_vis(ch.note) if ch.note else [])
+        foot_lines = len(lines)                      # **截斷前**的行數才是要守的那個量
+        foot_cut = len(lines) > FOOT_MAX_LINES
         if len(lines) > FOOT_MAX_LINES:
             # 超過上限就截斷，但**留一個看得見的刪節號**——
             # 靜默裁字會讓人以為文字本來就那麼短，是這次要修掉的正是那個行為。
@@ -625,7 +635,8 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
     fig.savefig(png, dpi=200)
     fig.savefig(svg, metadata={"Date": None})      # 不寫入產生時間，同上理由
     plt.close(fig)
-    return {"png": png, "svg": svg}
+    return {"png": png, "svg": svg,
+            "footer_lines": foot_lines, "footer_truncated": foot_cut}
 
 # ---------------------------------------------------------------- ECharts
 def qa_series(ch: Chart, z: float = 5.0) -> list:

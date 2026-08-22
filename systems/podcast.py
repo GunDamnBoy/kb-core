@@ -16,7 +16,7 @@ import json
 import os
 from pathlib import Path
 
-from kbcore.system import System, register
+from kbcore.system import System, frozen, register
 
 ANCHORS = "podcast/anchors.json"
 PROGRAM_ROOT = Path(__file__).resolve().parent.parent
@@ -147,7 +147,8 @@ register(System(
     id="podcast-knowledge-digest",
     suite="podcast",
     build=build,
-    cadence_hours=24,   # 日頻
+    cadence_hours=24,
+    republish_rule=frozen,   # 日頻
     # podcast 只產 data/。Word 檔刻意留在所有 repo 外面（`~/Documents/podcast-reports`），
     # 逐字稿也是 —— 那是一條結構性界線，不是 .gitignore，所以這裡不宣告它們。
     staged_paths=lambda doc, repo: ["data"],

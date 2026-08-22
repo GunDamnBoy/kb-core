@@ -6,7 +6,7 @@
 """
 import datetime as dt
 
-from kbcore.system import System, register
+from kbcore.system import System, frozen, register
 
 
 def index_entry(doc: dict) -> dict:
@@ -21,7 +21,8 @@ register(System(
     id="kb-tracer",
     suite="draft",
     build=lambda draft, repo: draft,
-    cadence_hours=24,   # 曳光彈，沿用日頻
+    cadence_hours=24,
+    republish_rule=frozen,   # 曳光彈，沿用日頻
     staged_paths=lambda doc, repo: ["data"],
     index_entry=index_entry,
     index_meta=index_meta,
