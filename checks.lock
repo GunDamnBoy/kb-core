@@ -59,6 +59,7 @@ repo.brief_budget
 repo.no_pull_request_target
 research.chart_files_present
 research.chart_grounded
+research.chart_spec_wellformed
 research.identified
 research.ledger_no_overdue
 research.no_duplicates

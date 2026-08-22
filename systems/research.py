@@ -60,6 +60,10 @@ def build(draft: dict, repo: Path) -> dict:
         "chart_files": chart_files(draft, repo),
         "ledger": ledger_of(repo),
         "anchors": json.loads((ROOT / "research" / "anchors.json").read_text(encoding="utf-8")),
+        # **圖型 → 資料住哪個欄位**的表在每日五圖那邊，2026-08-20 為了同一個問題建的。
+        # 這裡讀它、不抄它 —— 抄一份的話，哪天加了新圖型，這一套會安靜地繼續用舊表。
+        "chart_anchors": json.loads(
+            (ROOT / "chart" / "anchors.json").read_text(encoding="utf-8")),
         "advisory_anchors": json.loads(
             (ROOT / "advisory" / "anchors.json").read_text(encoding="utf-8")),
         "digest": draft,

@@ -164,12 +164,37 @@ class Chart:
 _label_slots: dict = {}
 
 
+def _fit_ticks(ax, cats, rotate_ok=True):
+    """類別標籤依每一格的可用寬度斷行；還是塞不下就縮字級。
+
+    **標籤糊成一團跟沒有標籤一樣糟，而且更難發現** —— 圖看起來是完整的。
+    """
+    cats = [str(c) for c in cats]
+    n = max(1, len(cats))
+    slot = TICK_W / n
+    longest = max((_vis_len(c) for c in cats), default=0)
+    size = 9.0
+    if longest > slot * 3:          # 三行還放不下 → 縮字級，等比放寬每行容量
+        size = max(6.5, 9.0 * (slot * 3) / longest)
+    lines = [_wrap_vis(c, max(4, int(slot * 9.0 / size)))[:4] for c in cats]
+    ax.set_xticks(range(n))
+    ax.set_xticklabels(["\n".join(x) for x in lines], fontsize=size,
+                       rotation=0, ha="center")
+
+
 def _vis_len(s: str) -> float:
     """視覺寬度：CJK 與全形標點算兩格，拉丁字元算一格。用來判斷頁尾會不會壓到品牌字。"""
     return sum(2 if ord(c) > 0x2E80 else 1 for c in s)
 
 
 FOOT_W = 120          # 頁尾單行可容納的視覺寬度（x 0.075→0.925、fontsize 8 實測值）
+# 同一條線（x 0.075→0.925）在不同字級下的視覺容量。**斷行機制 2026-08-08 就寫好了，
+# 但只用在頁尾** —— 標題、副標與類別標籤各自沿用「單行 fig.text，超出就被裁掉」，
+# 而被裁掉不留任何痕跡。2026-08-22 三張圖同時撞上：副標右緣截斷、
+# 七個中文類別標籤糊成一團。**同一個缺陷三個位置，只修了一個。**
+TITLE_W = 66          # fontsize 14.5
+SUB_W = 96            # fontsize 10
+TICK_W = 107          # fontsize 9，整個繪圖區
 FOOT_MAX_LINES = 3    # 頁尾總行數上限，再多會吃掉圖面
 
 
@@ -185,7 +210,16 @@ def _wrap_vis(s: str, width: int = FOOT_W) -> list:
     for ch in s:
         cw = 2 if ord(ch) > 0x2E80 else 1
         if w + cw > width and cur:
-            out.append(cur); cur, w = "", 0
+            # **中文逐字斷沒問題，拉丁字母斷在詞中間會變成另一個字。**
+            # 2026-08-22 副標把 `Fund Only` 斷成 `Fu / nd Only` ——
+            # 回看最近的空白，找得到就在那裡斷，找不到才硬切。
+            cut = cur.rfind(" ")
+            if cut > len(cur) - 14 and cut > 0:
+                out.append(cur[:cut])
+                cur = cur[cut + 1:]
+                w = sum(2 if ord(c) > 0x2E80 else 1 for c in cur)
+            else:
+                out.append(cur); cur, w = "", 0
         cur += ch; w += cw
     if cur:
         out.append(cur)
@@ -255,8 +289,7 @@ def _draw_waterfall(ch: Chart, ax):
                     xytext=(0, off), ha="center", fontsize=8.5,
                     color=(ACCENT if v is None else MUTED),
                     fontweight=("bold" if v is None else "normal"))
-    ax.set_xticks(range(len(cats)))
-    ax.set_xticklabels(cats, fontsize=9)
+    _fit_ticks(ax, cats)
     ax.axhline(0, color=RULE, lw=0.9)
     ax.grid(axis="y")
 
@@ -271,7 +304,7 @@ def _draw_grouped_bar(ch: Chart, ax):
         ax.bar(xs, grp["values"], width=w * 0.9,
                color=grp.get("color") or PALETTE[j % len(PALETTE)],
                label=grp["name"], linewidth=0)
-    ax.set_xticks(range(n)); ax.set_xticklabels(ch.cats, fontsize=9)
+    _fit_ticks(ax, ch.cats)
     ax.axhline(0, color=RULE, lw=0.9)
     ax.grid(axis="y")
 
@@ -303,7 +336,7 @@ def _draw_stacked_bar(ch: Chart, ax, pct: bool = False):
                 pos[i] += v[i]
             else:
                 neg[i] += v[i]
-    ax.set_xticks(range(n)); ax.set_xticklabels(ch.cats, fontsize=9)
+    _fit_ticks(ax, ch.cats)
     ax.axhline(0, color=RULE, lw=0.9)
     ax.grid(axis="y")
 
@@ -353,7 +386,7 @@ def _draw_heatmap(ch: Chart, ax):
                     color=("white" if depth > 0.55 else INK))
     ax.set_xlim(0, len(ch.cats)); ax.set_ylim(0, len(m))
     ax.set_xticks([i + .5 for i in range(len(ch.cats))])
-    ax.set_xticklabels(ch.cats, fontsize=9)
+    _fit_ticks(ax, ch.cats)
     ax.set_yticks([len(m) - 1 - i + .5 for i in range(len(ch.rows))])
     ax.set_yticklabels(ch.rows, fontsize=9)
     # **左邊界要為列標籤讓位。** render_static 的 left=0.075 是給 y 軸刻度數字用的，
@@ -403,6 +436,8 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
     apply_style()
     _label_slots.clear()
     fig, ax = plt.subplots(figsize=(8.6, 4.9))
+    # bottom 0.17 是單行標籤的值。多行類別標籤要更多空間，
+    # 由 `_fit_ticks` 之後重算 —— 見下方 `fig.subplots_adjust(bottom=…)`。
     fig.subplots_adjust(left=0.075, right=0.925, top=0.80, bottom=0.17)
     ax2 = None
 
@@ -522,9 +557,43 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
     ax.grid(axis="x", visible=(ch.kind == "scatter"))
     ax.tick_params(length=0)
 
-    # 標題區
-    fig.text(0.075, 0.945, ch.title, fontsize=14.5, fontweight="bold", color=INK, va="top")
-    fig.text(0.075, 0.868, ch.subtitle, fontsize=10, color=MUTED, va="top")
+    # 圖例的標籤要在排標題區之前就知道 —— **圖面要讓多少位，取決於有沒有圖例**。
+    labels_hint = ax.get_legend_handles_labels()[1] + (
+        ax2.get_legend_handles_labels()[1] if ax2 is not None else [])
+    # 類別軸圖型：頂端留 12% 餘裕，否則最高那根會鑽進圖例底下
+    # （2026-08-22 亞太那張的第一根就被切掉了，而圖看起來仍然完整）。
+    if ch.kind in ("grouped_bar", "stacked_bar", "waterfall", "pct_stacked_bar"):
+        # **兩端都要留**：瀑布圖的累計路徑可以跌到任何一根長條的值以下，
+        # 2026-08-22 泰國那張最低點在 −2.7 而 y 軸底是 −2.4，**最後一段被切掉**。
+        # 用 `margins` 而不是自己算 —— 它看的是實際畫出來的東西，不是我以為畫了什麼。
+        # **從實際畫出來的東西算，不是從我以為畫了什麼算。**
+        # `margins()` 要在 autoscale 之後才生效，順序錯了就完全沒作用 ——
+        # 這一格 2026-08-22 改了兩次，第一次改完圖看起來完全一樣。
+        ax.relim()
+        lo_, hi_ = ax.dataLim.y0, ax.dataLim.y1
+        span = (hi_ - lo_) or 1.0
+        # 資料標籤畫在長條的外側（正值在上、負值在下），所以兩端都要含它的高度。
+        ax.set_ylim(lo_ - span * 0.16 if lo_ < 0 else 0, hi_ + span * 0.16)
+
+    # 標題區 —— **標題與副標一樣會被裁掉，而且不留痕跡**（見 TITLE_W 的註解）。
+    # 斷行之後往下長，圖面跟著讓位；讓位的量由行數決定，不是猜的。
+    tl = _wrap_vis(ch.title, TITLE_W)[:2]
+    sl = _wrap_vis(ch.subtitle, SUB_W)[:3] if ch.subtitle else []
+    y = 0.955
+    for i, line in enumerate(tl):
+        fig.text(0.075, y - i * 0.052, line, fontsize=14.5, fontweight="bold",
+                 color=INK, va="top")
+    y -= len(tl) * 0.052 + 0.012
+    for i, line in enumerate(sl):
+        fig.text(0.075, y - i * 0.036, line, fontsize=10, color=MUTED, va="top")
+    y -= len(sl) * 0.036
+    # 圖例畫在圖面上緣之上，所以圖面頂端要留在標題區底下再減圖例的高度。
+    top = min(0.82, y - (0.055 if len(labels_hint) > 1 else 0.015))
+    fig.subplots_adjust(top=max(0.60, top))
+    # 多行類別標籤要往下長，不讓位就會壓到頁尾。
+    nl = max((str(t.get_text()).count("\n") for t in ax.get_xticklabels()), default=0)
+    if nl:
+        fig.subplots_adjust(bottom=min(0.42, 0.17 + nl * 0.035))
     # 圖例
     handles, labels = ax.get_legend_handles_labels()
     if ax2 is not None:

@@ -37,7 +37,13 @@ ADV = json.load(open(os.path.join(_KB, "advisory", "anchors.json"), encoding="ut
 DISC = re.compile(r"Disclosure Appendix|Reg AC|analyst certification|"
                   r"Distribution of ratings|Global Investment Research", re.I)
 
-CHART_KINDS = ["grouped_bar", "bar", "timeseries", "waterfall", "scatter", "stacked_bar"]
+CH = json.load(open(os.path.join(_KB, "chart", "anchors.json"), encoding="utf-8"))["kinds"]
+
+# **圖型的值域與選型判準都住在每日五圖的 anchors 裡**，這裡讀它、不抄它。
+# 抄一份的代價 2026-08-22 付過了：`waterfall` 的數字被寫進 `groups`，
+# 而 `_draw_waterfall` 讀的是 `vals` —— 圖畫成空白、不丟例外、檢查全綠。
+KINDS = {k: v for k, v in CH.items() if isinstance(v, dict) and "data" in v}
+PICK = {k: v for k, v in (CH.get("_pick") or {}).items() if not k.startswith("_")}
 
 
 def tier_of(pages):
@@ -75,7 +81,14 @@ def build(d):
          "**原句與 grounding 怎麼比對**（發布閘門 `checks/research.py` 的 `_norm`）：",
          "比對前會把連續空白塌縮成單一空格、把彎引號與各式破折號折疊成直的。",
          "所以**跨行可以**，跨頁不行（中間夾著頁尾與頁碼）。用子字串包含，不是整行相等。", "",
-         f"**`kind` 可用的值**：{'、'.join(f'`{k}`' for k in CHART_KINDS)}。", "",
+         "**選型：先問資料長什麼形狀，不是先問哪張好看。**", "",
+         "| 你的資料是 | 用 | 數字填在這些欄位 |", "|---|---|---|"]
+    for desc, kind in PICK.items():
+        flds = "、".join(f"`{x}`" for x in KINDS.get(kind, {}).get("data", []))
+        L.append(f"| {desc} | `{kind}` | {flds} |")
+    L += ["",
+          "**填錯欄位不會報錯，會畫出一張空白圖。** "
+          f"{CH.get('_pick', {}).get('_anti', '')}", "",
          "**`theme` 只能從這 15 組挑，一字不差**：", themes, "",
          "---", "",
          f"## 第一頁（分析師自己寫的立場，{len(d.get('page_one') or ''):,} 字元）", "",

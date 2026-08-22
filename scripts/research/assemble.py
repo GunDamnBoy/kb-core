@@ -62,6 +62,25 @@ def _tag_map(reports):
     return m
 
 
+def _fmt_for(spec):
+    """依資料的量級決定資料標籤的小數位。**撰寫者不填這個欄位，而預設是整數。**
+
+    2026-08-22 泰國那張：貢獻 0.3 個百分點被畫成「0」，
+    而副標題就寫著 0.3 —— **圖上的數字跟它自己的副標題互相矛盾**，
+    而且不丟任何例外。整數格式對百分比是對的，對百分點就不是。
+    """
+    vals = [v for v in (spec.get("vals") or [])
+            if isinstance(v, (int, float))]
+    for g in spec.get("groups") or []:
+        vals += [v for v in (g.get("values") or []) if isinstance(v, (int, float))]
+    if not vals:
+        return "{:,.0f}"
+    if all(float(v).is_integer() for v in vals):
+        return "{:,.0f}"
+    m = max(abs(v) for v in vals)
+    return "{:,.2f}" if m < 2 else "{:,.1f}"
+
+
 def render_charts(part, ex, outdir):
     """規格 → PNG／SVG。**渲染失敗不中止整期**，記進 chart 的 `render_error`。"""
     os.environ.setdefault("CHART_REPO", "/tmp")
@@ -70,10 +89,14 @@ def render_charts(part, ex, outdir):
     made = []
     for i, spec in enumerate(part.get("charts") or [], 1):
         base = f"{part['slug']}-{i}"
-        kw = {k: None for k in F}
-        kw.update({"series": [], "markers": [], "pts": [], "hi_pts": [], "vals": [],
-                   "zero_line": False, "y_log": False})
-        kw.update({k: v for k, v in spec.items() if k in F})
+        # **只覆寫規格真的給了的欄位。**
+        # 原本這裡先 `{k: None for k in F}` 把每個欄位塞成 None ——
+        # 那等於把 `Chart` dataclass 二十三個設計好的預設值全部抹掉，
+        # 於是 `y_fmt` 變成 None，而 `_draw_waterfall` 對它呼叫 `.format()`。
+        # **一個為了「欄位齊全」而寫的初始化，把欄位的意義弄丟了。**
+        kw = {k: v for k, v in spec.items() if k in F}
+        kw.setdefault("subtitle", "")
+        kw.setdefault("y_fmt", _fmt_for(spec))
         kw["slug"] = base
         try:
             out = C.render_static(C.Chart(**kw), outdir, base, brand=A["charts"]["brand"])

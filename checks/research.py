@@ -716,3 +716,77 @@ register(Check(
                "ledger": {"items": [{"id": "a", "status": "觀察中", "due": "2026-12-01"}]}},
     suite="research",
 ))
+
+
+# ── 14. 圖表規格填在該填的欄位裡 ────────────────────────────────────
+def _chart_spec_wellformed(p):
+    """**每一種圖型的資料住在自己的欄位裡，不是統一用 `series`。**
+
+    2026-08-22 實測到的失效：野村那張 `waterfall` 的數字被寫進 `groups`
+    （那是 `grouped_bar` 的欄位），而 `_draw_waterfall` 讀的是 `vals` ——
+    於是它 zip 一個空陣列、**一根柱子都沒畫、沒有丟任何例外**、
+    PNG 正常寫出、`chart_files_present` 看到 109 KB 判過。
+
+    > **守衛量的是「檔案在不在、有多大」，比它宣稱保護的東西（圖上有沒有東西）低一階。**
+
+    值域的家在 `chart/anchors.json` 的 `kinds` —— 那張表 2026-08-20 就是為了
+    同一個問題建的（「這張表不存在的時候，`series` 是空的看起來就像資料掉了」）。
+    這裡讀它，不抄它。
+    """
+    digest = p.get("digest")
+    if digest is None:
+        return skipped("這一輪沒有第 2 層產出（只跑了入庫）")
+    ca = p.get("chart_anchors")
+    if not ca or "kinds" not in ca:
+        return fail("payload 沒帶每日五圖的 anchors —— **圖型與欄位的對照表的家在那裡**，"
+                    "拿不到就沒有資格判")
+    K = ca["kinds"]
+    known = {k: v for k, v in K.items() if isinstance(v, dict) and "data" in v}
+    bad = []
+    n = 0
+    for r in digest.get("reports") or []:
+        for c in r.get("charts") or []:
+            n += 1
+            kind, title = c.get("kind"), (c.get("title") or "?")[:20]
+            if kind not in known:
+                bad.append(f"{title}：`kind` 是「{kind}」，不在 {sorted(known)}")
+                continue
+            for fld in known[kind]["data"]:
+                v = c.get(fld)
+                if not v:
+                    bad.append(f"{title}：`{kind}` 要 `{fld}`，而它是空的 —— "
+                               f"**這張會畫成空白圖而且不丟例外**")
+            # 類別軸圖型：每一組的長度要跟 cats 對得上（ECharts 按位置貼，錯位不報錯）
+            for g in c.get("groups") or []:
+                if len(g.get("values") or []) != len(c.get("cats") or []):
+                    bad.append(f"{title}：組「{g.get('name','?')[:14]}」有 "
+                               f"{len(g.get('values') or [])} 個值，"
+                               f"而 `cats` 有 {len(c.get('cats') or [])} 個 —— **會整條位移**")
+    if bad:
+        return fail("；".join(bad[:4]) + (f"（共 {len(bad)} 項）" if len(bad) > 4 else ""))
+    return ok(f"{n} 張圖的資料都填在該填的欄位裡" if n else "這一期沒有重製圖")
+
+
+register(Check(
+    id="research.chart_spec_wellformed",
+    covers="每張圖的 `kind` 在 chart/anchors.json 的 kinds 表裡，"
+           "且該圖型宣告的每個 data 欄位都非空；類別軸圖型每組的值數等於 cats 數",
+    blind_to=[
+        "**欄位填了但數字是錯的** —— 這條只驗形狀，數字對不對是 `chart_grounded` 的事",
+        "選型恰不恰當（用長條圖畫時間序列這條看不出來）",
+        "`optional` 欄位漏填造成的降級（例如 waterfall 沒給 `total_label`）",
+        "渲染時才會炸的東西（那是 `chart_files_present` 與 `chart_grounded` 的 render_error）",
+        "只跑入庫的輪次（SKIPPED）",
+    ],
+    run=_chart_spec_wellformed,
+    fixture={"anchors": {},
+             "chart_anchors": {"kinds": {"waterfall": {"data": ["cats", "vals"]}}},
+             "digest": {"reports": [{"charts": [
+                 {"kind": "waterfall", "title": "t", "cats": ["a"],
+                  "groups": [{"name": "g", "values": [1]}]}]}]}},
+    near_miss={"anchors": {},
+               "chart_anchors": {"kinds": {"waterfall": {"data": ["cats", "vals"]}}},
+               "digest": {"reports": [{"charts": [
+                   {"kind": "waterfall", "title": "t", "cats": ["a"], "vals": [1]}]}]}},
+    suite="research",
+))
