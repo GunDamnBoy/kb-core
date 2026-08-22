@@ -36,8 +36,30 @@ TPE = dt.timezone(dt.timedelta(hours=8))
 # 而 GitHub 排程延遲動輒數十分鐘（實測有一次延了五小時）。
 # **一個判決取決於 cron 準不準時的檢查，會隨機紅、隨機綠。**
 # 現在三個都排在 07:00–07:30 UTC（15:00–15:30 台北）：昨天的資料 39 小時 → 紅。
-MAX_DATE_AGE_H = 36
-MAX_UPDATED_AGE_H = 30
+# **這兩個門檻跟系統的節奏綁在一起，不是固定值。**
+# 2026-08-22 之前它們是模組常數 —— 36 小時是日頻的答案，而它對四套裡的
+# 每一套都適用，直到第五套是週頻的為止。週頻套上 36 小時會**每週紅六天**，
+# 然後那個哨兵在兩週內就會被所有人略過。
+#
+# > **一個對所有系統都一樣的門檻，只是還沒遇到不一樣的系統。**
+#
+# 現在由 payload 帶 `cadence_hours`（家在 `System`），這裡只做換算。
+# 倍數選 1.5／1.25 是為了讓既有四套的行為**完全不變**（24×1.5=36、24×1.25=30）。
+DATE_AGE_MULT = 1.5
+UPDATED_AGE_MULT = 1.25
+FALLBACK_CADENCE_H = 24
+
+
+def _cadence(p):
+    return p.get("cadence_hours") or FALLBACK_CADENCE_H
+
+
+def _max_date_age(p):
+    return _cadence(p) * DATE_AGE_MULT
+
+
+def _max_updated_age(p):
+    return _cadence(p) * UPDATED_AGE_MULT
 
 
 def _now(p) -> dt.datetime:
@@ -66,15 +88,16 @@ def _data_fresh(p):
     age = _date_age_hours(p)
     if age is None:
         return skipped("算不出資料年齡")
-    if age > MAX_DATE_AGE_H:
+    lim = _max_date_age(p)
+    if age > lim:
         return fail(f"最新一期是 {days[0]['date']}，已經 {age:.0f} 小時 "
-                    f"（上限 {MAX_DATE_AGE_H}）—— 管線停了")
+                    f"（上限 {lim:.0f}，節奏 {_cadence(p)} 小時）—— 管線停了")
     return ok()
 
 
 register(Check(
     id="sentinel.data_fresh",
-    covers=f"days[0].date 距今不超過 {MAX_DATE_AGE_H} 小時",
+    covers="days[0].date 距今不超過 cadence_hours × 1.5（日頻 36 小時、週頻 252 小時）",
     blind_to=[
         "日期是新的但內容跟昨天一模一樣（換了日期沒換資料）",
         "days[0] 是新的，但更舊的幾天被悄悄改過",
@@ -135,9 +158,10 @@ def _updated_fresh(p):
     if upd is None:
         return skipped("index 沒有 updated 欄位 —— 無法分辨「寫了日期」與「真的跑過」")
     age = (_now(p) - dt.datetime.fromisoformat(upd)).total_seconds() / 3600
-    if age > MAX_UPDATED_AGE_H:
+    lim = _max_updated_age(p)
+    if age > lim:
         return fail(f"index.updated 是 {upd}，已經 {age:.0f} 小時 "
-                    f"（上限 {MAX_UPDATED_AGE_H}）—— 沒有人在跑")
+                    f"（上限 {lim:.0f}，節奏 {_cadence(p)} 小時）—— 沒有人在跑")
     if age < 0:
         return warn(f"index.updated 在未來（{upd}）—— 機器時鐘或時區有問題")
     return ok()
@@ -145,7 +169,7 @@ def _updated_fresh(p):
 
 register(Check(
     id="sentinel.updated_fresh",
-    covers=f"index.updated 距今不超過 {MAX_UPDATED_AGE_H} 小時",
+    covers="index.updated 距今不超過 cadence_hours × 1.25（日頻 30 小時、週頻 210 小時）",
     blind_to=[
         "時間戳在動但寫進去的內容是空的",
         "時間戳是在失敗路徑上被更新的",

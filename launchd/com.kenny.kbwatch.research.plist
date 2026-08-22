@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 看門狗的看門狗：問「GitHub 上那個哨兵還活著嗎」。
+       非得跑在 GitHub 外面的理由寫在 checks/watch.py —— GitHub 會在 60 天無活動時
+       自動停用排程 workflow，於是看守者跟被看守的東西綁在同一個開關上。
+
+       **間隔是 12 小時，不是 4 小時。** 另外兩支 kbwatch 看的是日頻系統；
+       這一套週頻，哨兵一週只跑一次，每 4 小時去問同一個問題只是重複同一個答案。 -->
+  <key>Label</key>
+  <string>com.kenny.kbwatch.research</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/watch_sentinel.py</string>
+    <string>/Users/macmini/broker-research-digest</string>
+    <string>broker-research-digest</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>43200</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/research/watch.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/research/watch.log</string>
+</dict>
+</plist>

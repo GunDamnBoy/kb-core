@@ -168,6 +168,93 @@ def norm_name(base):
     return re.sub(r"\s+", " ", s).strip()
 
 
+def split_columns(path, min_gap=18.0, right_max_frac=0.42, straddle_max_frac=0.03):
+    """第一頁用**字級座標**切欄，讓右側的分析師欄不再插進本文中間。
+
+    `known_limits.page_one_right_column_bleed` 記的就是這件事：第一頁右側是
+    分析師姓名與電話，逐行抽取會把它插進句子中間 ——
+    `…quarters, yet its` ／ `Niklas Garnadt` ／ `labour market remains weak.`
+    撰寫者因此得把原句截在名字出現之前，**寧可短也不要跨過去**，
+    於是好幾句立場只剩半句。
+
+    ## 第一版錯在哪
+
+    要求「整頁沒有任何字跨過那條線」。實際量出來（2026-08-22，歐洲經濟分析師那份）：
+    本文到 x≈412、側欄從 x≈443 起，中間**確實有空白帶** ——
+    但頁首標題橫跨整頁，一個字就把整條線否掉了。
+    **一條規則同時要求兩件事（欄界存在、且頁面上下都成立），會被上緣的標題否決。**
+
+    現在改成容許少量橫跨（預設 3%），並挑橫跨最少的那條線。
+
+    ## 回 None 是「這一頁本來就是單欄」
+
+    跟失敗要分得開 —— 把單欄硬切成兩欄，會製造一個比原本更難發現的錯。
+    右側佔比超過 `right_max_frac` 也回 None：那不是側欄，是真正的兩欄正文，
+    **而兩欄正文不能重排**，左右欄是連續的閱讀順序，接起來會打亂段落。
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        return None
+    try:
+        with pdfplumber.open(path) as pdf:
+            if not pdf.pages:
+                return None
+            page = pdf.pages[0]
+            words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+            W = float(page.width)
+    except Exception:
+        return None
+    if len(words) < 40:
+        return None
+
+    # **取合格切點裡最左邊的那一條，不是橫跨最少的那一條。**
+    # 挑「橫跨最少」會選到最右緣 —— 那裡幾乎沒有字，當然沒有人橫跨它，
+    # 而切出去的只有浮水印，側欄仍然留在本文裡。
+    # 2026-08-22 第一版就是這樣：**規則跑完了、切點也存在，而它什麼都沒分開。**
+    cut = None
+    limit = len(words) * straddle_max_frac
+    x = W * 0.45
+    while x < W * 0.92:
+        right = sum(1 for w in words if w["x0"] >= x)
+        if (right and right / len(words) <= right_max_frac
+                and sum(1 for w in words if w["x0"] < x < w["x1"]) <= limit):
+            cut = x
+            break
+        x += 2.0
+    if cut is None:
+        return None
+
+    # 切點兩側要真的隔開。**用分位數，不用極值** ——
+    # 既然容許 3% 的字橫跨，極值一定被那幾個字拉過界（實測間隙會變成負的），
+    # 於是這道守衛永遠不通過，而它看起來只是「這頁是單欄」。
+    def pct(vals, q):
+        v = sorted(vals)
+        return v[min(len(v) - 1, int(len(v) * q))] if v else 0.0
+    lmax = pct([w["x1"] for w in words if w["x0"] < cut], 0.97)
+    rmin = pct([w["x0"] for w in words if w["x0"] >= cut], 0.03)
+    if rmin - lmax < min_gap:
+        return None
+
+    def lines(ws):
+        out, cur, top = [], [], None
+        for w in sorted(ws, key=lambda w: (round(w["top"], 1), w["x0"])):
+            if top is None or abs(w["top"] - top) > 3:
+                if cur:
+                    out.append(" ".join(cur))
+                cur, top = [], w["top"]
+            cur.append(w["text"])
+        if cur:
+            out.append(" ".join(cur))
+        return out
+
+    left = [w for w in words if w["x0"] < cut]
+    right = [w for w in words if w["x0"] >= cut]
+    return ("\n".join(lines(left)) + "\n\n"
+            + "─── 右欄（分析師欄，原句不要從這裡取）───\n"
+            + "\n".join(lines(right)))
+
+
 def slugify(s):
     s = unicodedata.normalize("NFKD", s)
     s = re.sub(r"[^\w\s-]", "", s).strip().lower()
@@ -241,6 +328,13 @@ def extract(path):
         "engine": ENGINE,
         "extracted_at": dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).isoformat(timespec="seconds"),
         "page_one": p1,
+        # **切欄的結果是附加的，不取代 `page_one`。**
+        # 2026-08-22 調了三輪門檻，判為有側欄的份數在 2/23 與 6/23 之間跳 ——
+        # 那是在對雜訊調參，而手上沒有驗證集。
+        # 讓一個不可靠的猜測**安靜地取代**原始記錄，比不猜更糟：
+        # 既有的原句與 grounding 全部是對著 `page_one` 驗過的。
+        # 所以它只多給一份重排版，由讀的人一眼判斷哪一份可用。
+        "page_one_columns": split_columns(path),
         "body": kept[1:],
         **dict(zip(("tables", "tables_raw"), tables_of(path) or (None, 0))),
         "strip_report": {

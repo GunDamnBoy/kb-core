@@ -54,6 +54,7 @@ REQUIRED_BY_LABEL = {
     "com.kenny.kbwatch.podcast":   ["git"],
     "com.kenny.kbpublish.chart":   ["git"],
     "com.kenny.kbwatch.chart":     ["git"],
+    "com.kenny.kbwatch.research":  ["git"],
     "com.kenny.kbpublish.research": ["git"],
     # 2026-08-21：下面四支裡有三支是 08-20／08-21 裝上去的，而**沒有一支被登記進來**。
     # 這個機制是對的（沒登記就 FAIL），漏的是有人去登記 —— 兩件事。

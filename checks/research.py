@@ -790,3 +790,57 @@ register(Check(
                    {"kind": "waterfall", "title": "t", "cats": ["a"], "vals": [1]}]}]}},
     suite="research",
 ))
+
+
+# ── 15. 這一批是不是同一支抽取器抽的 ────────────────────────────────
+def _one_engine(p):
+    """**兩軌對同一份 PDF 可能給不同答案。**
+
+    `pdftotext` 與 `pdfplumber` 對旋轉文字、欄位分隔、空白的處理都不同 ——
+    2026-08-21 的浮水印剃除與券商辨識就是在這個差異上壞過一次
+    （沙箱 7/7、發布機 6/7）。
+
+    混軌的一批，**每一份自己都完全合格**，但跨份的比較不再成立：
+    「這家的頁首剃得比較乾淨」可能只是它被另一支抽的。
+    而這件事在產出上完全看不出來 —— 十八份摘要讀起來一樣正常。
+
+    這條不驗「兩軌會不會給一樣的答案」（那要雙倍抽取，成本在 anchors 裡有記），
+    只驗**這一批有沒有混軌**。前者是抽驗，後者是每一輪都該成立的前提。
+    """
+    docs = _docs(p)
+    if not docs:
+        return skipped("這一輪沒有抽取結果")
+    by = {}
+    for d in docs:
+        by.setdefault(d.get("engine") or "（沒記）", []).append(d.get("slug", "?"))
+    if len(by) == 1:
+        eng = next(iter(by))
+        if eng == "（沒記）":
+            return fail("整批都沒有記 `engine` —— **抽取器是誰抽的都不知道，"
+                        "就沒有資格說這一批可以互相比較**")
+        return ok(f"{len(docs)} 份全部由 {eng} 抽")
+    lines = [f"{e}（{len(v)} 份：{v[0][:30]}…）" for e, v in sorted(by.items())]
+    return warn("；".join(lines) + " —— **這一批是混軌抽的**。"
+                "每一份自己都合格，但跨份的比較不再成立；"
+                "要比較之前整批用同一支重抽（`extract.py --force`）")
+
+
+register(Check(
+    id="research.one_engine",
+    covers="這一批抽取結果全部由同一支抽取器產生，且每一份都記了 engine",
+    blind_to=[
+        "**兩軌對同一份檔會不會給出不同答案** —— 這條只看有沒有混軌，"
+        "不看兩軌一不一致。後者要雙倍抽取，形態是抽驗不是常設",
+        "同一支抽取器的不同版本（`engine` 只記名字不記版本）",
+        "整批用同一支、但那一支對這幾份就是抽得不好",
+        "只跑第 2 層而沒有重抽的輪次（docs 沿用上一輪的）",
+    ],
+    run=_one_engine,
+    fixture={"anchors": {},
+             "docs": [{"slug": "a", "engine": "pdftotext"},
+                      {"slug": "b", "engine": "pdfplumber"}]},
+    near_miss={"anchors": {},
+               "docs": [{"slug": "a", "engine": "pdftotext"},
+                        {"slug": "b", "engine": "pdftotext"}]},
+    suite="research",
+))

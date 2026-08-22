@@ -93,8 +93,18 @@ def build(d):
          "---", "",
          f"## 第一頁（分析師自己寫的立場，{len(d.get('page_one') or ''):,} 字元）", "",
          "```", (d.get("page_one") or "").rstrip(), "```", "",
-         "---", "",
-         f"## 內文目錄（{len(keep)} 頁，已剃除揭露頁；"
+         "---", ""]
+    if d.get("page_one_columns"):
+        L += ["## 第一頁（右側分析師欄已切開的版本）", "",
+              "**這一份是機械切欄的結果，不保證對。** 上面那一份 `page_one` 才是"
+              "閘門拿來比對的正本 —— `quote` 與 `grounding` 一律從**上面那份**取。",
+              "",
+              "第一頁右側常是分析師姓名與電話，逐行抽取會把它插進句子中間"
+              "（`…quarters, yet its` ／ `Niklas Garnadt` ／ `labour market remains weak.`）。"
+              "**兩份讀起來哪一份是通順的，你一眼看得出來，偵測程式看不出來。**",
+              "", "```", (d.get("page_one_columns") or "").rstrip(), "```", "",
+              "---", ""]
+    L += [f"## 內文目錄（{len(keep)} 頁，已剃除揭露頁；"
          f"合計 {sum(len(p) for _, p in keep):,} 字元）", "",
          "**要哪一頁就取哪一頁，不要整份載入。** 下面每一行是那一頁的第一句可讀的話。", ""]
     for i, pg in keep:

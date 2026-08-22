@@ -27,9 +27,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import checks  # noqa: F401,E402
+import systems  # noqa: F401,E402  匯入即登記
 from kbcore.repo import check_destination  # noqa: E402
 from kbcore.report import report, run_all  # noqa: E402
 from kbcore.result import Exit, Level  # noqa: E402
+from kbcore.system import get as get_system  # noqa: E402
 
 HEARTBEAT = "sentinel/heartbeat.json"
 REPORT = "sentinel/report.md"
@@ -65,10 +67,14 @@ def main(argv) -> int:
               file=sys.stderr)
         index = {}
 
+    # **節奏由系統自己宣告**（`System.cadence_hours`），哨兵只做換算。
+    # 認不出的 id 在上面的 `check_destination` 就擋掉了，所以這裡拿得到。
+    sysdef = get_system(system_id)
     payload = {
         "now": now.isoformat(timespec="seconds"),
         "index": index,
         "prev": prev,
+        "cadence_hours": sysdef.cadence_hours if sysdef else None,
         "ledger": load(repo / "ledger" / "ledger.json"),
     }
 

@@ -168,6 +168,7 @@ register(System(
     id="chart-of-the-day",
     suite="chart",
     build=build,
+    cadence_hours=24,   # 日頻
     staged_paths=staged_paths,
     index_entry=index_entry,
     index_meta=index_meta,

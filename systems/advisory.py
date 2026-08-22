@@ -120,6 +120,7 @@ register(System(
     id="advisory-knowledge-hub",
     suite="advisory",
     build=build,
+    cadence_hours=24,   # 日頻
     # 投顧只產 data/。`raw/` 是 GitHub Actions 那一側寫的，由它自己 commit ——
     # 兩個寫入者共用 main，這裡把 raw/ 也 add 進來會把對方寫到一半的東西帶上車。
     staged_paths=lambda doc, repo: ["data"],

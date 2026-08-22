@@ -21,6 +21,7 @@ register(System(
     id="kb-tracer",
     suite="draft",
     build=lambda draft, repo: draft,
+    cadence_hours=24,   # 曳光彈，沿用日頻
     staged_paths=lambda doc, repo: ["data"],
     index_entry=index_entry,
     index_meta=index_meta,

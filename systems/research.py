@@ -201,6 +201,7 @@ register(System(
     id="broker-research-digest",
     suite="research",
     build=build,
+    cadence_hours=168,   # 週頻 —— 這個欄位存在的理由就是這一套
     staged_paths=staged_paths,
     index_entry=index_entry,
     index_meta=index_meta,
