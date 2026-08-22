@@ -21,6 +21,11 @@ from blockstats import circular_block_boot, min_detectable, verdict
 
 TARGET = 0.03
 HORIZONS = (21, 63, 126, 252)
+
+# 2026-08-22 第四階段的結果改寫了這裡的優先序：
+# 恐懼側的效果顯著大於貪婪側（4/15 格 p<0.10，雜訊期望 0.8），
+# 但恐懼訊號說的是「報酬分佈」不是「底部到了」——**MAE 才是使用者要的數字**。
+# 所以台股這一支也改成恐懼側優先，並且每個訊號都報 MAE。
 TAIL, GAP, COST = 10.0, 3, 0.00585      # 台股來回成本：手續費 0.1425%×2 ＋ 證交稅 0.3%
 
 
@@ -67,6 +72,22 @@ def ann(r): return (1 + r).prod() ** (252 / max(len(r), 1)) - 1
 def sharpe(r): return r.mean() / r.std() * np.sqrt(252) if r.std() > 0 else float("nan")
 def mdd(r):
     cu = (1 + r).cumprod(); return float((cu / cu.cummax() - 1).min())
+
+
+def mae(px, starts, h):
+    """買進後窗內的最大不利變動——「還要再痛多久」。
+
+    第四階段量出來：前瞻報酬效果最大的成分，進場代價也最大
+    （已實現波動 +7.27pp／MAE −10.5%），因為它是回頭看的、跌完一段才亮。
+    **只報中位數報酬而不報 MAE，會讓一個很晚才亮的訊號看起來跟很早亮的一樣好。**
+    """
+    pos = {d: i for i, d in enumerate(px.index)}
+    out = []
+    for d in starts:
+        i = pos.get(d)
+        if i is None or i + h >= len(px): continue
+        out.append(float(px.iloc[i:i + h + 1].min() / px.iloc[i] - 1))
+    return out
 
 
 def main(cache_dir):
@@ -142,6 +163,28 @@ def main(cache_dir):
             print(f"{name}·{tag}: 事件 {len(eps)}、每年 {len(eps)/yrs:.2f} 次、"
                   f"中位持續 {int(np.median([e[2] for e in eps]))} 日、"
                   f"極端日佔比 {mask.mean()*100:.1f}%、相對轉折中位 {int(np.median(lags))} 日")
+
+    print("\n" + "=" * 88); print("MAE：買進後還要再痛多久（恐懼側）"); print("=" * 88)
+    for name in sig.columns:
+        lo, _ = extremes(sig[name])
+        eps = episodes(lo, GAP); st = independent(eps, px.index, 63)
+        m = mae(px, st, 63)
+        if len(m) < 3:
+            print(f"  {name:<14} 獨立事件 {len(m)}，樣本不足"); continue
+        print(f"  {name:<14} 獨立事件 {len(m):>2}　MAE 中位 {np.median(m)*100:>6.1f}%　"
+              f"最糟 {min(m)*100:>6.1f}%　"
+              f"{sum(1 for x in m if x > -0.05)}/{len(m)} 次跌幅未超過 5%")
+
+    print("\n" + "=" * 88); print("恐懼 vs 貪婪的不對稱（點估計差）"); print("=" * 88)
+    for name in sig.columns:
+        lo, hi = extremes(sig[name])
+        for h in (21, 63):
+            fwd = fwd_returns(px, h)
+            ef, _, _ = circular_block_boot(lo.values, fwd.values, h)
+            eg, _, _ = circular_block_boot(hi.values, fwd.values, h)
+            if ef is None or eg is None: continue
+            print(f"  {name:<14} {h:>3}日　恐懼 {ef*100:>6.2f}pp　貪婪 {eg*100:>6.2f}pp　"
+                  f"差 {(ef-eg)*100:>6.2f}pp")
 
     out = os.path.join(cache_dir, "tw_results.json")
     json.dump({"T1": t1.to_dict("records"),
