@@ -351,6 +351,13 @@ def write_draft(digest, outbox, digest_dir, repo):
     for r in d.get("reports") or []:
         r.pop("file", None)
         r.pop("file_url", None)
+    # **`assembled_at` 不進不可改寫的那一份。**
+    # 它每一輪都不同，於是「內容相同」永遠不成立 ——
+    # publish 的 `already` 快速路徑（設計來讓重跑是安全的）對這一套從來沒有觸發過，
+    # 而每一次無害的重跑都會撞上 exit 11。
+    # **一個放在不可改寫文件裡的時間戳，讓「這一期沒有變」變成無法表達的狀態。**
+    # 發布時間本來就記在回執裡，那才是它的家。
+    d.pop("assembled_at", None)
     # publish 用 `date` 命名 `data/<date>.json` 並據以排序。
     # **取該週的週日**，那是從週次算出來的、唯一且可排序的 key。
     d["date"] = (d.get("range") or ["", ""])[1]
