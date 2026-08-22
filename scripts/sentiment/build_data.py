@@ -133,7 +133,7 @@ def us_panel():
 
 
 def build_market(df, sig_raw, win, per, hor, name, sig_label, invert, cost, src, freq,
-                 level_raw=None, level_label=None, components=None):
+                 level_raw=None, level_label=None, components=None, last_obs=None):
     """一個市場的完整輸出。**恐懼側優先，貪婪側只當對照。**
 
     `level_raw` 是**絕對水位**（例如 VIX 本身），與 `sig_raw`（相對自身均線）分開顯示。
@@ -216,12 +216,31 @@ def build_market(df, sig_raw, win, per, hor, name, sig_label, invert, cost, src,
                      "chg20": (None if len(cs) < 21 or cs.iloc[-21] != cs.iloc[-21]
                                else round(float(cs.iloc[-1] / cs.iloc[-21] - 1) * 100, 1))})
 
+    # **比值到恐懼側極端時，先問是分子還是分母把它推過去的。**
+    # 融資強度低＝去槓桿，前提是**分子（融資餘額）在下降**。
+    # 若分子反而在高位、還在增加，那是成交量暴衝造成的——**和恐慌相反**。
+    # 沒有這道檢查，兩種相反的市場狀態在頁面上會長得一模一樣。
+    ratio_warn = None
+    if len(comp) >= 2 and rk.iloc[-1] == rk.iloc[-1] and float(rk.iloc[-1]) <= TAIL:
+        num, den = comp[0], comp[1]
+        if num["pct"] is not None and num["pct"] >= 50:
+            ratio_warn = {"num": num["name"], "numPct": num["pct"], "numChg": num["chg20"],
+                          "den": den["name"], "denPct": den["pct"], "denChg": den["chg20"]}
+
+    # **週頻的索引標籤是「該週結束的星期日」，可能落在未來。**
+    # 直接拿它算新鮮度，staleDays 會少報最多 6 天，而且頁面會顯示一個未來的日期。
+    # `last_obs` 是該週真正最後一筆資料的日期。
     maes = [a["mae"] for a in ana if a["mae"] is not None]
-    stale = max(0, (dt.date.today() - px.index[-1].date()).days)
+    last = px.index[-1].date()
+    if last_obs:
+        try: last = min(last, dt.date.fromisoformat(str(last_obs)[:10]))
+        except ValueError: pass
+    stale = max(0, (dt.date.today() - last).days)
     return {
         "staleDays": stale,
         "name": name, "sigLabel": sig_label, "freq": freq,
-        "asof": str(px.index[-1].date()),
+        "asof": str(last),
+        "ratioWarn": ratio_warn,
         "pct": round(float(rk.iloc[-1]), 1) if rk.iloc[-1] == rk.iloc[-1] else None,
         "levelPct": (None if lv is None else
                      (lambda x: None if x != x else round(float(x), 1))(lv.iloc[-1])),
@@ -288,7 +307,8 @@ def main():
                     "台股 · 加權指數", "融資餘額 ÷ 20 期均成交值", False, 0.00585,
                     ["TWSE FMTQIK（指數與成交值）", "TWSE MI_MARGN（信用交易統計）"], "週",
                     components={"融資餘額（億元）": tdf["margin"] * 1000.0 / 1e8,
-                                "20 期均成交值（億元）": amt20 / 1e8})
+                                "20 期均成交值（億元）": amt20 / 1e8},
+                    last_obs=tdf.attrs.get("last_obs"))
                 print(f"台股 OK：{out['markets']['tw']['asof']}、"
                       f"{out['markets']['tw']['n']} 個歷史類比")
         except Exception as e:

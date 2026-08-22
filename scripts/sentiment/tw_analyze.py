@@ -76,8 +76,12 @@ def panel(c):
     if len(gaps) and gaps.median() <= 3 < gaps.quantile(0.9):
         pass                                   # 本來就密，不動
     wk = df.index.to_series().dt.to_period("W")
+    last_obs = str(max(idx).date()) if idx else None   # **重採樣前的真正最後一天**
     df = df.groupby(wk).last()
     df.index = df.index.to_timestamp(how="end").normalize()
+    # 週的標籤是該週的星期日，可能是未來的日期。下游要判斷新鮮度時
+    # 必須用 last_obs，不能用索引末端——否則 staleDays 會少報最多 6 天。
+    if last_obs: df.attrs["last_obs"] = last_obs
     return df, {k: len(v) for k, v in cols.items()}, None
 
 
