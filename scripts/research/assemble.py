@@ -191,8 +191,24 @@ def main(argv=None):
     # 而它們不在 digest 裡、卻會跟著 `staged_paths` 一起被推上遠端 ——
     # 一個沒有任何頁面連到、卻公開在網路上的檔案。
     if not a.no_charts:
-        live = {c[k] for r in reports for c in r["charts"]
-                for k in ("png", "svg") if c.get(k)}
+        # **live 要從所有期的 digest 收集，不是只從這一期。**
+        # `charts/` 是跨期共用的一個平坦目錄，而分週之後每次只組一期 ——
+        # 只看這一期會把別週的圖全部指成孤兒。
+        # 一個每次都會響的警報，跟沒有警報是同一件事，而且更糟：
+        # **它會訓練人略過那一段，包括真的響的那次。**
+        live = set()
+        for jf in sorted(glob.glob(os.path.join(O, "*.json"))):
+            try:
+                other = json.load(open(jf, encoding="utf-8"))
+            except Exception:
+                continue
+            for r in (other.get("reports") or []):
+                for c in (r.get("charts") or []):
+                    for k in ("png", "svg"):
+                        if c.get(k):
+                            live.add(c[k])
+        live |= {c[k] for r in reports for c in r["charts"]
+                 for k in ("png", "svg") if c.get(k)}
         orph = sorted(f for f in os.listdir(cdir)
                       if f.endswith((".png", ".svg")) and f not in live)
         if orph:
