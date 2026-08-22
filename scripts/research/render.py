@@ -36,7 +36,8 @@ def title_of(r):
     **這一層只改顯示，不回寫 digest.json。** 冒號是猜的，猜錯了要能一眼看出來
     是排版的問題；寫回資料庫就變成無法分辨的既成事實。
     """
-    return re.sub(r"_\s+", "：", r.get("title", "") or "?").strip()
+    t = re.sub(r"_\s+", "：", (r.get("title") or "?")).strip()
+    return re.sub(r"_+$", "？", t)          # 結尾的 `_` 是被替換掉的問號
 
 
 def render(d, charts_dir="charts"):

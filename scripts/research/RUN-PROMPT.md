@@ -54,11 +54,27 @@
 **這一套的成本結構就靠這一步。** 七份報告合計約 128 萬字元；
 主代理若自己讀，一輪就爆掉。所以：**每份報告一個子代理，主代理不讀報告內文。**
 
+**先替每一份組卷宗**（純程式，一份約 9 KB）：
+
+```
+for s in ~/broker-research/extracted/*.json; do
+  ~/.venvs/kb/bin/python ~/kb-core/scripts/research/dossier.py "$(basename "$s" .json)"
+done
+```
+
+卷宗裡有第一頁全文、內文的**頁次目錄**、以及**所有機械規則**
+（字數怎麼算、原句怎麼比對、`kind` 有哪些值、`theme` 的 15 組）。
+2026-08-22 量出來：不給卷宗的話，子代理平均花 18 輪盲切同一個檔、
+再花 10 輪逆向工程規格 —— **每一輪約 1.5 萬到 2 萬有效 token。**
+
 派工時給子代理三樣東西，缺一不可：
 
-1. `kb-core/scripts/research/preamble.md` 的**全文**（撰寫規則的正本）
-2. 該份報告的 `extracted/<slug>.json` 路徑，與它的 `pages`
+1. `kb-core/scripts/research/preamble.md` 的**全文**（怎麼寫得好）
+2. 該份報告的**卷宗路徑** `~/broker-research/dossier/<slug>.md`
 3. 交件路徑 `~/broker-research/digest/_parts/<slug>.json`
+
+**不要再給 `extracted/<slug>.json` 的路徑當主要入口**，也不要重述卷宗裡的機械規則 ——
+兩份說法一旦不一致，子代理聽的是比較近的那一份。
 
 **標籤要串起來，所以派工要分批。** 每份報告 3–6 個關鍵字標籤（`tags`），
 而**同義的近義詞會讓網站上同一個主題散成兩堆**（「資料中心」與「數據中心」）。
@@ -77,13 +93,18 @@
 {"slug": "…", "summary": "…（Markdown）", "stances": [ … ], "charts": [ … ]}
 ```
 
-篇幅由頁數決定（`anchors.summary_tiers`：≤10 頁 3,000／11–30 頁 4,000／>30 頁 5,000 字），
-**但字數怎麼算不歸子代理管** —— `assemble.py` 會覆寫。派工時給目標，不要給算法。
+篇幅由頁數決定，卷宗已經替它算好目標與區間。
+
+**每個子代理交件前要自己跑一次 `tools/check_part.py`**（卷宗與 preamble 都寫了）——
+它跑的是跟發布閘門同一套比對規則。**綠了才回報。**
+上一輪十一個子代理各自寫了一次同一支比對腳本，那支現在在 `tools/` 底下。
 
 ## 第 4 步：組檔
 
 ```
 ~/.venvs/kb/bin/python ~/kb-core/scripts/research/assemble.py <YYYY-Www>
+# 寫好 crosscut／watch／notes 之後，再跑一次：
+~/.venvs/kb/bin/python ~/kb-core/scripts/research/assemble.py <YYYY-Www> --publish
 ```
 
 它做六件機械的事，**沒有一件由撰寫者填**：覆寫 `summary_chars`、渲染圖表、
@@ -94,9 +115,17 @@
 那些檔會跟著發布推上去，變成沒有任何頁面連到、卻公開在網路上的東西。
 **這支不刪檔** —— 自己 `mv` 到 `_to_delete/`。
 
+**這一批的報告可能橫跨好幾週。** `assemble.py` 只收該週的，其餘會列出來 ——
+**那幾週要各自再跑一次**，不然它們永遠不會被收錄，而且沒有任何東西會提醒你。
+
 `crosscut`、`watch`、`notes` 三欄由組檔程式從上一版沿用 —— 首次組檔時是空的，
 **主代理在這一步把它們寫進 `<YYYY-Www>.json`，然後重跑一次 `assemble.py`**
-（那三欄是主代理唯一該寫的內容，因為只有它同時看過七份的摘要）。
+（那三欄是主代理唯一該寫的內容，因為只有它同時看過所有報告的摘要）。
+
+**第二次才加 `--publish`。** 不加就不會有草稿進 outbox ——
+publish 每 60 秒收一次，第一次組檔就交出去的話，
+**那一期會在 crosscut 還是空的時候上線**，補寫之後撞上不可改寫守衛、
+然後每分鐘紅一次永遠紅下去。2026-08-22 有四期就是這樣壞的。
 
 `crosscut` 的收錄標準只有一條：**兩家對同一件事給了不同答案，而且答案寫得出來。**
 沒有分歧就寫「本週無」。**不要為了有東西寫而把「都看多」寫成分歧。**
@@ -112,8 +141,9 @@
 
 ## 第 6 步：發布
 
-`assemble.py` 已經把發布草稿寫到 `~/outbox/research/<週日>.draft.json`、
-把圖複製到 `~/broker-research-digest/charts/<週次>/`。**你不用推任何東西** ——
+帶 `--publish` 重跑之後，`assemble.py` 會把草稿寫到
+`~/outbox/research/<週日>.draft.json`、把圖複製到
+`~/broker-research-digest/charts/<週次>/`。**你不用推任何東西** ——
 `com.kenny.kbpublish.research` 每分鐘會來收，走的是跟另外三套一模一樣的發布路徑
 （閘門 → 不可改寫守衛 → 原子寫入 → add → 對帳 → rebase → push）。
 

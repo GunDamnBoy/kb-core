@@ -58,6 +58,7 @@ def build(draft: dict, repo: Path) -> dict:
     return {
         "docs": docs,
         "chart_files": chart_files(draft, repo),
+        "ledger": ledger_of(repo),
         "anchors": json.loads((ROOT / "research" / "anchors.json").read_text(encoding="utf-8")),
         "advisory_anchors": json.loads(
             (ROOT / "advisory" / "anchors.json").read_text(encoding="utf-8")),
@@ -69,6 +70,17 @@ def build(draft: dict, repo: Path) -> dict:
 _NUM = re.compile(r"^\s*(?:[一二三四五六七八九十]+[、.]|\d+[、.)])\s*")
 _LEAD = re.compile(r"^(?:一句話(?:主張)?|主張|結論|重點|核心)\s*[：:]\s*")
 _ASK = re.compile(r"(?:什麼|嗎|呢|為何|\?|？)\s*$")
+
+
+def ledger_of(repo: Path):
+    """立場帳本。**讀不到回 None 讓檢查判 SKIPPED，不是判過。**"""
+    f = repo / "data" / "stances.json"
+    if not f.exists():
+        return None
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 def chart_files(draft: dict, repo: Path):

@@ -60,6 +60,7 @@ repo.no_pull_request_target
 research.chart_files_present
 research.chart_grounded
 research.identified
+research.ledger_no_overdue
 research.no_duplicates
 research.no_pii
 research.page_count

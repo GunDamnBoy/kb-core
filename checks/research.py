@@ -637,3 +637,82 @@ register(Check(
                    {"png": "a-1.png", "svg": "a-1.svg"}]}]}},
     suite="research",
 ))
+
+
+# ── 13. 立場帳本：到期就要有人回頭判 ────────────────────────────────
+def _ledger_no_overdue(p):
+    """**這條是這個庫從「讀物」變回「證據」的那一根線。**
+
+    使用者當初要的是「未來驗證用」。而一筆記下來的立場，如果沒有任何機制
+    在三個月後叫人回頭判，那它跟一段讀過就算的文字沒有差別 ——
+    **而兩者在檔案裡長得一模一樣。**
+
+    形狀直接沿用 podcast 的 `ledger_no_overdue`（那套已經跑得好好的），
+    只有寬限期不同：週頻的東西逾期一週只代表一次機會沒做，日頻的代表七次。
+    **門檻要跟節奏走。**
+    """
+    led = p.get("ledger")
+    if led is None:
+        return skipped("payload 沒帶帳本 —— 這一輪沒有資料 repo 可看。"
+                       "**跟「都判完了」是兩件事**")
+    O = _A(p, "observations")
+    grace, vocab = O["overdue_grace_days"], O["status_vocab"]
+    now = dt.date.fromisoformat((p.get("now") or "")[:10]) if p.get("now") else None
+    if now is None:
+        return skipped("payload 沒帶 now")
+    items = led.get("items") or []
+    if not items:
+        return ok("帳本是空的 —— 還沒有立場入帳")
+    bad = [i for i in items if i.get("status") not in vocab]
+    if bad:
+        return fail(f"{len(bad)} 筆的 status 不在受控詞表裡："
+                    f"{sorted({i.get('status') for i in bad})[:4]} —— 值域的家在 "
+                    "`anchors.observations.status_vocab`，**跟 podcast 共用一套**")
+    over = []
+    for i in items:
+        if i.get("status") != vocab[0] or not i.get("due"):
+            continue
+        try:
+            d = (now - dt.date.fromisoformat(i["due"])).days
+        except ValueError:
+            continue
+        if d > 0:
+            over.append((d, i))
+    if not over:
+        watching = sum(1 for i in items if i.get("status") == vocab[0])
+        judged = len(items) - watching
+        return ok(f"{len(items)} 筆立場，觀察中 {watching}、已判 {judged}，沒有逾期")
+    over.sort(reverse=True, key=lambda x: x[0])
+    worst = over[0][0]
+    names = "、".join(i["id"][:34] for _, i in over[:3])
+    tail = f"…共 {len(over)} 筆" if len(over) > 3 else ""
+    msg = f"{len(over)} 筆逾期未判（最久 {worst} 天）：{names}{tail}"
+    return (fail(msg + f" —— 超過 {grace} 天的寬限期。"
+                 "**放著不判，這個庫就只是一堆讀過的字**")
+            if worst > grace else warn(msg))
+
+
+register(Check(
+    id="research.ledger_no_overdue",
+    covers="`data/stances.json` 裡沒有已過到期日、卻仍是「觀察中」的立場"
+           "（超過 anchors.observations.overdue_grace_days 才判 FAIL）；"
+           "且每筆的 status 都在受控詞表裡",
+    blind_to=[
+        "**判決下得對不對** —— 這條只看有沒有人判，不看判得準不準",
+        "**為了讓燈變綠而全部改判「無法驗證」** —— 擋不住，"
+        "而那正是這種檢查最容易誘發的行為",
+        "到期日訂得合不合理（報告日期 + 3 個月是慣例不是規則）",
+        "同一份報告的多筆立場其實該一起判",
+        "**沒有資料 repo 的輪次整條跳過**（SKIPPED，不是 PASS）",
+    ],
+    run=_ledger_no_overdue,
+    fixture={"anchors": {"observations": {"overdue_grace_days": 14,
+                                          "status_vocab": ["觀察中", "應驗"]}},
+             "now": "2026-12-31T00:00:00Z",
+             "ledger": {"items": [{"id": "a", "status": "觀察中", "due": "2026-09-01"}]}},
+    near_miss={"anchors": {"observations": {"overdue_grace_days": 14,
+                                            "status_vocab": ["觀察中", "應驗"]}},
+               "now": "2026-09-01T00:00:00Z",
+               "ledger": {"items": [{"id": "a", "status": "觀察中", "due": "2026-12-01"}]}},
+    suite="research",
+))

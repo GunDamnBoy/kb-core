@@ -95,6 +95,7 @@ def main(argv=None):
     ap.add_argument("--no-charts", action="store_true")
     ap.add_argument("--outbox", default="~/outbox/research")
     ap.add_argument("--repo", default="~/broker-research-digest")
+    ap.add_argument("--publish", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     a, unknown = ap.parse_known_args(argv)
     if unknown:
@@ -235,9 +236,77 @@ def main(argv=None):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import render
     print("\n".join(render.write_all(digest, os.path.splitext(prev)[0] + ".md")))
-    print("\n".join(write_draft(digest, os.path.expanduser(a.outbox), O,
-                                 os.path.expanduser(a.repo))))
+    # **草稿只在明講 `--publish` 時才進 outbox。**
+    #
+    # 2026-08-22 的教訓：`crosscut`／`watch`／`notes` 要等主代理讀完整期才寫得出來，
+    # 所以流程是「組一次 → 寫那三欄 → 再組一次」。但第一次組檔就把草稿丟進 outbox，
+    # 而 publish 每 60 秒來收一次 —— **四期在只有空 crosscut 的狀態下就上線了**，
+    # 補寫之後的草稿撞上不可改寫守衛，然後每分鐘紅一次、永遠紅下去。
+    #
+    # 守衛沒有錯，錯的是**在東西還沒寫完的時候就交給發布的人**。
+    # 一個永遠會紅的排程，比一個沒有排程更糟：它會訓練人略過那段 log。
+    if a.publish:
+        print("\n".join(write_draft(digest, os.path.expanduser(a.outbox), O,
+                                     os.path.expanduser(a.repo))))
+    else:
+        print(f"  （沒有加 `--publish`，草稿沒有進 outbox）\n"
+              f"  先確認 crosscut／watch／notes 寫好了，再跑一次帶 --publish。"
+              f"　目前 crosscut {len(digest.get('crosscut') or '')} 字")
     return 0
+
+
+def build_stances(digest_dir, repo):
+    """跨期的立場帳本 —— **原句牆與帳本是同一份資料，差一個欄位。**
+
+    原句是這個庫唯一可以被驗證的一層：精華是我們寫的、圖是我們畫的，
+    只有原句是分析師說的。所以它值得有自己的一份檔，而不是埋在單篇底部。
+
+    `status`／`verdict`／`verdictDate` **由既有檔案沿用，永不覆寫** ——
+    這支每一輪重建列表，但**判決是人下的，重建不能把它洗掉**。
+    """
+    O = A["observations"]
+    dst = os.path.join(repo, "data", "stances.json")
+    old = {}
+    if os.path.exists(dst):
+        try:
+            for it in json.load(open(dst, encoding="utf-8")).get("items") or []:
+                old[it["id"]] = it
+        except Exception:
+            pass
+
+    items = []
+    for jf in sorted(glob.glob(os.path.join(digest_dir, "2026-W*.json")), reverse=True):
+        try:
+            dg = json.load(open(jf, encoding="utf-8"))
+        except Exception:
+            continue
+        for r in dg.get("reports") or []:
+            for n, st in enumerate(r.get("stances") or [], 1):
+                sid = f"{r['slug']}-{n}"
+                due = (dt.date.fromisoformat(r["date"])
+                       + dt.timedelta(days=30 * O["horizon_months"])).isoformat()
+                prev = old.get(sid, {})
+                items.append({
+                    "id": sid, "week": dg.get("week"), "slug": r["slug"],
+                    "broker": r.get("broker"), "title": r.get("title"),
+                    "date": r.get("date"), "due": due,
+                    "theme": st.get("theme"), "tags": r.get("tags") or [],
+                    "quote": st.get("quote"), "quote_zh": st.get("quote_zh"),
+                    "page": st.get("page"),
+                    "status": prev.get("status") or O["status_vocab"][0],
+                    "verdict": prev.get("verdict", ""),
+                    "verdictDate": prev.get("verdictDate", ""),
+                })
+    out = {"updated": dt.datetime.now(TPE).isoformat(timespec="seconds"),
+           "note": "原句是分析師說的，精華與圖是我們做的。到期日 = 報告日期 + "
+                   f"{O['horizon_months']} 個月。",
+           "count": len(items), "items": items}
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    tmp = dst + ".tmp"
+    open(tmp, "w", encoding="utf-8").write(json.dumps(out, ensure_ascii=False, indent=1))
+    os.replace(tmp, dst)
+    judged = sum(1 for i in items if i["status"] != O["status_vocab"][0])
+    return f"→ {dst}（{len(items)} 筆立場，已判 {judged} 筆）"
 
 
 def write_draft(digest, outbox, digest_dir, repo):
@@ -290,6 +359,7 @@ def write_draft(digest, outbox, digest_dir, repo):
             shutil.copy2(f2, os.path.join(dst, n))
     lines.append(f"→ {dst}（{len(want) - len(miss)}/{len(want)} 個圖檔）"
                  + (f"　**{len(miss)} 個在本機也找不到：{miss[:3]}**" if miss else ""))
+    lines.append(build_stances(digest_dir, repo))
     return lines
 
 

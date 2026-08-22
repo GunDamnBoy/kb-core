@@ -473,9 +473,13 @@
  "_base_card_groups_source": "這兩組每天都有卡，即使當天零相關新聞——那是 House View 講 CSP 債務與利差時的那條曲線，值在跨期序列不在當日新聞性。資料上標 base: true。",
  "dedup_exempt": [
   "https://fred.stlouisfed.org/series/BAMLC0A0CM",
-  "https://fred.stlouisfed.org/series/BAMLH0A0HYM2"
+  "https://fred.stlouisfed.org/series/BAMLH0A0HYM2",
+  "https://www.spdrgoldshares.com/usa/gld/",
+  "https://www.spdrgoldshares.com/usa/gldm/",
+  "https://www.investing.com/central-banks/fed-rate-monitor"
  ],
- "_dedup_exempt_source": "跨版去重的唯一豁免：每日更新但網址固定的官方數據頁。保底卡靠它才能天天出現。新增豁免要能說出「這個網址的內容每天會變」——說不出來就不是豁免，是重複。",
+ "_dedup_exempt_source": "跨版去重的唯一豁免：每日更新但網址固定的官方數據頁。保底卡靠它才能天天出現。新增豁免要能說出「這個網址的內容每天會變」——說不出來就不是豁免，是重複。 2026-08-22 加入後三條，理由是這份清單與 `base_card_groups` 先前沒有接上：`base_card_groups` 要求黃金天天出卡，而這裡只豁免了兩條 FRED，於是黃金保底卡四天換了四個網址（08-19 `/usa/historical-data/`、08-20 改用一篇 Bloomberg 新聞、08-21 `/usa/gld/`、08-22 `/usa/`）——**每天換一個是為了閃過去重，不是因為那幾個網址各自更適合**。信用債沒有這個症狀，正因為 FRED 在清單上。同日 Investing.com Fed Rate Monitor 因與前一版共用網址而整張卡不能成立，九月 FOMC 的機率只好塞進總覽與盯盤。三條都通得過「內容每天會變」這個判準：GLD／GLDM 產品頁的持倉、收盤價與折溢價逐日更新，Fed Rate Monitor 的隱含機率盤中連續變動。",
+ "_dedup_exempt_cost": "**豁免清單每長一條，「有標 base 但數字沒更新（跟昨天一樣）」這個盲點就大一分。** 那條盲點本來就寫在 `checks/advisory.py` 的 `base_cards.blind_to` 裡，2026-08-22 之前只罩著兩條 FRED，現在罩著五條。目前沒有任何機器在問「這張豁免卡今天的數字跟昨天一不一樣」。考慮過但當天沒做的補法：加一條檢查，比對豁免網址的卡與前一版的 body 相似度，過高就報錯——否掉的理由是它要新寫一條檢查加 fixture，而當天的觸發事件（黃金輪換網址）已經被豁免本身解掉了。**要做這條檢查的時機是：第一次有人發現某張保底卡連續兩天數字一樣。**",
  "sections": [
   {
    "id": "macro",
