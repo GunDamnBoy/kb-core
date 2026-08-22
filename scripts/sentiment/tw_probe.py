@@ -27,7 +27,7 @@ ICI 週頻＋5 日延遲）做不到。
 from __future__ import annotations
 import argparse, csv, io, json, os, sys, time
 import datetime as dt
-import urllib.request, urllib.parse
+import urllib.request, urllib.parse, urllib.error
 
 CACHE = os.path.expanduser(os.environ.get("SENT_CACHE", "~/broker-research/../sent-cache"))
 CACHE = os.path.abspath(CACHE)
@@ -37,19 +37,39 @@ START = dt.date(2014, 1, 1)      # 當沖統計自民國 103 年（2014）起
 TODAY = dt.date.today()
 
 
+THROTTLE = {"gap": float(os.environ.get("SENT_GAP", "3.0"))}   # 每次請求之間的基本間隔
+
+
 def get(url, referer=None, data=None, timeout=45, tries=3):
-    """重試三次、退避 2/4 秒。**逾時與「這天沒有資料」是兩件事**——
-    逾時要重試，沒有資料要記成 None 並往下走。混在一起會讓斷網長得像沒開盤。"""
+    """**限流（HTTP 428）跟一般錯誤要分開處理。**
+
+    2026-08-22 踩過：TWSE 對逐日抓取回 428，而舊版把它當成一般失敗、
+    重試三次還加退避 —— **被擋的時候反而送出三倍請求**，吞吐直接垮，
+    三分鐘連存檔門檻都沒摸到，畫面上看起來只是「還在跑」。
+
+    428／429／403 一律視為限流：長冷卻（30／60／90 秒）並**把基本間隔調大**，
+    調大之後不再調回去——退讓要是單向的，不然會一直撞同一道牆。
+    """
     last = None
     for k in range(tries):
         try:
             req = urllib.request.Request(url, data=data)
             req.add_header("User-Agent", UA)
-            req.add_header("Accept", "*/*")
+            req.add_header("Accept", "application/json,text/plain,*/*")
             if referer: req.add_header("Referer", referer)
             if data: req.add_header("Content-Type", "application/x-www-form-urlencoded")
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.read()
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code in (428, 429, 403):
+                THROTTLE["gap"] = min(THROTTLE["gap"] * 1.5, 15.0)
+                cool = 30 * (k + 1)
+                print(f"    被限流（{e.code}）—— 冷卻 {cool}s，之後間隔調到 "
+                      f"{THROTTLE['gap']:.1f}s", flush=True)
+                time.sleep(cool)
+            elif k < tries - 1:
+                time.sleep(2 * (k + 1))
         except Exception as e:
             last = e
             if k < tries - 1: time.sleep(2 * (k + 1))
@@ -121,10 +141,17 @@ def roc(s):
     return None
 
 
-def fetch_daily(cache, name, url_tpl, extract, sleep=0.25):
-    """逐日抓一支端點，只補快取裡沒有的日子。"""
+def fetch_daily(cache, name, url_tpl, extract, sleep=None):
+    """逐日抓一支端點，只補快取裡沒有的日子。
+
+    **進度以「嘗試次數」計，不是以「成功次數」計。**
+    2026-08-22 踩過：舊版只在成功或拋例外時加一，於是「每天都回得了應、
+    但解析器一律回 None」這種情況**進度不印、快取不存**，跑滿一小時什麼都沒有——
+    看起來就只是「還在跑」。**靜默失敗要長得跟成功不一樣。**
+    """
     d = cache.setdefault(name, {})
-    day, added, fail = START, 0, 0
+    day, tried, got, fail = START, 0, 0, 0
+    print(f"{name}: 開始…", flush=True)
     while day <= TODAY:
         k = day.isoformat()
         if day.weekday() < 5 and k not in d:
@@ -133,14 +160,20 @@ def fetch_daily(cache, name, url_tpl, extract, sleep=0.25):
                                    referer="https://www.twse.com.tw/"))
                 v = extract(j) if j.get("stat") == "OK" else None
                 d[k] = v                      # None 也存：代表「這天問過了、沒有」
-                if v is not None: added += 1
+                if v is not None: got += 1
             except Exception:
                 fail += 1
-            time.sleep(sleep)
-            if (added + fail) % 200 == 0 and (added + fail):
-                save_cache("tw", cache); print(f"  {name}: {added} 筆…", flush=True)
+            tried += 1
+            time.sleep(sleep if sleep is not None else THROTTLE["gap"])
+            if tried % 20 == 0:
+                save_cache("tw", cache)
+                rate = got / tried * 100
+                flag = "　**解析成功率過低，八成是欄位沒對上**" if tried >= 60 and rate < 5 else ""
+                print(f"  {name}: 試 {tried}、有值 {got}（{rate:.0f}%）、失敗 {fail}{flag}",
+                      flush=True)
         day += dt.timedelta(days=1)
-    print(f"{name}: 有值 {sum(1 for v in d.values() if v is not None)} 筆，失敗 {fail}")
+    save_cache("tw", cache)
+    print(f"{name}: 共試 {tried}、有值 {got}、失敗 {fail}")
 
 
 def ex_margin(j):
@@ -189,8 +222,8 @@ def fetch_taifex_oi(cache):
                 d[k] = parse_taifex(raw); ok += d[k] is not None
             except Exception:
                 d[k] = None; fail += 1
-            time.sleep(0.3)
-            if (ok + fail) % 200 == 0 and (ok + fail):
+            time.sleep(THROTTLE["gap"])
+            if (ok + fail) % 20 == 0 and (ok + fail):
                 save_cache("tw", cache); print(f"  fut_oi: {ok} 筆…", flush=True)
         day += dt.timedelta(days=1)
     print(f"fut_oi: 有值 {ok} 筆，失敗 {fail}"
@@ -227,11 +260,42 @@ def do_fetch():
     print(f"\n快取寫在 {CACHE}/tw.json")
 
 
+def peek(day="20260819"):
+    """抓一天，把**真實的欄位名與前幾列**印出來。
+
+    解析器是照欄名找的，而欄名只能從真實回應看出來——
+    **猜欄名寫進程式，跟寫死索引是同一種錯，只是不容易被發現。**
+    """
+    tests = [
+        ("融資融券 MI_MARGN",
+         f"https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={day}&selectType=MS&response=json"),
+        ("當沖 TWTB4U",
+         f"https://www.twse.com.tw/rwd/zh/dayTrading/TWTB4U?response=json&date={day}"),
+    ]
+    for name, url in tests:
+        print("=" * 78); print(name); print("=" * 78)
+        try:
+            j = json.loads(get(url, referer="https://www.twse.com.tw/"))
+        except Exception as e:
+            print(f"  抓不到：{e}"); continue
+        print(f"  stat = {j.get('stat')}　頂層 keys = {list(j.keys())[:10]}")
+        tabs = j.get("tables") or [j]
+        for i, t in enumerate(tabs):
+            print(f"  --- 表 {i}　title={str(t.get('title',''))[:40]}")
+            print(f"      fields = {t.get('fields')}")
+            for r in (t.get('data') or [])[:4]:
+                print(f"      {r}")
+    print("\n把整段貼回來——解析器要照這裡的真實欄名改，不是照我猜的。")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--fetch", action="store_true")
     ap.add_argument("--analyze", action="store_true")
+    ap.add_argument("--peek", action="store_true", help="抓一天，印出真實欄位名")
     a = ap.parse_args()
+    if a.peek:
+        peek(); raise SystemExit(0)
     if a.fetch: do_fetch()
     if a.analyze:
         import tw_analyze; tw_analyze.main(CACHE)
