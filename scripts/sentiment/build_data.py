@@ -16,7 +16,7 @@
 """
 from __future__ import annotations
 import io, json, os, sys, datetime as dt
-import urllib.request
+import urllib.request, urllib.parse
 import numpy as np, pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import rank_trailing, episodes, independent
@@ -39,33 +39,79 @@ def csv(url, **kw):
 
 # ------------------------------------------------------------------ 美股
 
+def yahoo_daily(sym, years=20):
+    """Yahoo v8 圖表端點。**必須帶瀏覽器 UA。**"""
+    import time as _t
+    p2 = int(_t.time()); p1 = p2 - years * 366 * 86400
+    j = json.loads(fetch(f"https://query1.finance.yahoo.com/v8/finance/chart/"
+                         f"{urllib.parse.quote(sym)}?period1={p1}&period2={p2}&interval=1d"))
+    res = j["chart"]["result"][0]
+    idx = pd.to_datetime(res["timestamp"], unit="s").normalize()
+    cl = res["indicators"]["quote"][0]["close"]
+    s = pd.Series(cl, index=idx).dropna()
+    return s[~s.index.duplicated()].sort_index()
+
+
 def us_panel():
-    """VIX ＋ S&P 500。優先用 CBOE 官方（每日更新），退援 GitHub 鏡像。"""
+    """VIX ＋ S&P 500。
+
+    **價格來源必須是活的。** 2026-08-22 踩過：用 GitHub 上的 FRED S&P 500 鏡像，
+    那份**半年前就停更**，而頁面照樣渲染得完整漂亮，只在角落小字寫資料截止日。
+    **過期的資料跟新鮮的資料在頁面上長得一模一樣。**
+    所以來源改成階梯式，而且**把實際用到的那一階寫進輸出**，不是寫「預期用哪一階」。
+    """
     src = []
-    try:
-        v = csv("https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv",
-                parse_dates=["DATE"], index_col="DATE")["CLOSE"]
-        src.append("CBOE VIX_History.csv")
-    except Exception:
-        v = csv(f"{GH}/datasets/finance-vix/main/data/vix-daily.csv",
-                parse_dates=["DATE"], index_col="DATE")["CLOSE"]
-        src.append("GitHub datasets/finance-vix（CBOE 抓不到時的鏡像）")
-    spy = csv(f"{GH}/whit3rabbit/fear-greed-data/main/datasets/combined/spy_2011_2023.csv",
-              parse_dates=["Date"], index_col="Date")["Close"]
-    spx = csv(f"{GH}/datasets/s-and-p-500/main/archive/fred_sp500.csv",
-              parse_dates=[0], index_col=0).iloc[:, 0]
-    spx = pd.to_numeric(spx, errors="coerce").dropna()
-    src.append("SPY 收盤（2011–2022）接 FRED S&P 500（2016–）")
-    j = spy.index[-1]; tail = spx[spx.index > j]
-    px = pd.concat([spy, tail * (spy.loc[j] / spx.asof(j))]) if len(tail) else spy
-    px = px[~px.index.duplicated()].sort_index()
+    v = None
+    for name, fn in (
+        ("CBOE VIX_History.csv（官方，日更）",
+         lambda: csv("https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv",
+                     parse_dates=["DATE"], index_col="DATE")["CLOSE"]),
+        ("Yahoo ^VIX", lambda: yahoo_daily("^VIX")),
+        ("GitHub datasets/finance-vix（鏡像，可能落後）",
+         lambda: csv(f"{GH}/datasets/finance-vix/main/data/vix-daily.csv",
+                     parse_dates=["DATE"], index_col="DATE")["CLOSE"]),
+    ):
+        try:
+            v = fn(); src.append(f"VIX：{name}"); break
+        except Exception as e:
+            print(f"  VIX 來源 {name} 失敗：{e.__class__.__name__}", file=sys.stderr)
+    if v is None: raise RuntimeError("VIX 三個來源全部失敗")
+
+    px = None
+    for name, fn in (
+        ("Yahoo ^GSPC（日更）", lambda: yahoo_daily("^GSPC")),
+        ("Stooq ^spx", lambda: csv("https://stooq.com/q/d/l/?s=%5Espx&i=d",
+                                   parse_dates=["Date"], index_col="Date")["Close"]),
+    ):
+        try:
+            px = fn(); src.append(f"價格：{name}"); break
+        except Exception as e:
+            print(f"  價格來源 {name} 失敗：{e.__class__.__name__}", file=sys.stderr)
+    if px is None:
+        spy = csv(f"{GH}/whit3rabbit/fear-greed-data/main/datasets/combined/spy_2011_2023.csv",
+                  parse_dates=["Date"], index_col="Date")["Close"]
+        spx = pd.to_numeric(csv(f"{GH}/datasets/s-and-p-500/main/archive/fred_sp500.csv",
+                                parse_dates=[0], index_col=0).iloc[:, 0],
+                            errors="coerce").dropna()
+        j = spy.index[-1]; tail = spx[spx.index > j]
+        px = pd.concat([spy, tail * (spy.loc[j] / spx.asof(j))]) if len(tail) else spy
+        px = px[~px.index.duplicated()].sort_index()
+        src.append("價格：GitHub 鏡像（**兩個活來源都失敗，這一份可能過期**）")
+
     df = pd.DataFrame({"px": px})
     df["vix"] = v.reindex(df.index).ffill(limit=3)
     return df.dropna(), src
 
 
-def build_market(df, sig_raw, win, per, hor, name, sig_label, invert, cost, src, freq):
-    """一個市場的完整輸出。**恐懼側優先，貪婪側只當對照。**"""
+def build_market(df, sig_raw, win, per, hor, name, sig_label, invert, cost, src, freq,
+                 level_raw=None, level_label=None):
+    """一個市場的完整輸出。**恐懼側優先，貪婪側只當對照。**
+
+    `level_raw` 是**絕對水位**（例如 VIX 本身），與 `sig_raw`（相對自身均線）分開顯示。
+    2026-08-22 使用者問「2026-02-05 為什麼會觸發、大跌明明在三月」——
+    因為訊號量的是**相對自身 50 日均線的極端**，那天回檔只有 −2.6%。
+    **兩個都要顯示，否則「極端恐懼」這個標籤會誤導。**
+    """
     px = df["px"]
     rk = rank_trailing(sig_raw, win, invert=invert)
     lo = (rk <= TAIL).fillna(False)
@@ -125,10 +171,17 @@ def build_market(df, sig_raw, win, per, hor, name, sig_label, invert, cost, src,
               for d in keep if rk.loc[d] == rk.loc[d]]
 
     maes = [a["mae"] for a in ana if a["mae"] is not None]
+    stale = (dt.date.today() - px.index[-1].date()).days
     return {
+        "staleDays": stale,
         "name": name, "sigLabel": sig_label, "freq": freq,
         "asof": str(px.index[-1].date()),
         "pct": round(float(rk.iloc[-1]), 1) if rk.iloc[-1] == rk.iloc[-1] else None,
+        "levelPct": (None if level_raw is None else
+                     (lambda x: None if x != x else round(float(x), 1))(
+                         rank_trailing(level_raw, win, invert=True).iloc[-1])),
+        "levelLabel": level_label,
+        "levelNow": None if level_raw is None else round(float(level_raw.iloc[-1]), 2),
         "raw": round(float(sig_raw.iloc[-1]), 3),
         "dd60": round(float(dd60.iloc[-1]) * 100, 1),
         "window": win, "horizons": list(hor),
@@ -152,7 +205,8 @@ def main():
         out["markets"]["us"] = build_market(
             df, df["vix"] / df["vix"].rolling(50).mean() - 1,
             750, 252, (21, 63, 126), "美股 · S&P 500",
-            "VIX 相對 50 日均（隱含波動）", True, 0.0005, src, "日")
+            "VIX 相對 50 日均（隱含波動）", True, 0.0005, src, "日",
+            level_raw=df["vix"], level_label="VIX 絕對水位")
         print(f"美股 OK：{out['markets']['us']['asof']}、"
               f"{out['markets']['us']['n']} 個歷史類比")
     except Exception as e:
