@@ -22,6 +22,18 @@
 | `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
 | `com.kenny.kbcorepush` | 每 300 秒 | 推 **kb-core 自己**（`push_kbcore.py`），帶靜置與自檢閘門 |
+| `com.kenny.kbpublish.bubble` | 每 60 秒 | 發布 **AI 泡沫監控**的每週質化覆核：`~/outbox/bubble/` → `ai-bubble-monitor` |
+
+**`kbpublish.bubble` 是唯一一支不跑 `tools/publish.py` 的。** 它跑的是
+`~/Projects/ai-bubble-monitor/scripts/auto_publish.py`，**plist 的版控正本也在那個
+repo 的 `launchd/` 底下**，不在這裡——因為它與它發布的東西同一個生命週期。
+
+原因是語意衝突，不是偷懶：`publish.py` 的第 2 條設計是不可改寫守衛
+（`data/<date>.json` 已存在且內容不同就 exit 11），而泡沫監控的 `data.json`
+**每個交易日都被 GitHub Actions 覆寫**。硬掛上去不是不能跑，是會把那支程式
+存在的理由拆掉。所以它共用的是紀律——每 60 秒、自己的 outbox 子目錄、
+閘門在寫入之前、每次發布寫回執、永不 force——**不是程式碼**。
+它的閘門是那個 repo 自己的 `gate.py` 與 `healthcheck.py`。
 
 **一個 plist 只發一套系統。** `publish.py` 的參數是 `(outbox, repo, 系統 id)`
 三件一組，沒有「多套」這個形態——一次只驗一組檢查、一個目的地，
