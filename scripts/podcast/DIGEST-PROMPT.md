@@ -195,3 +195,22 @@ publish 每 60 秒跑一次，所以 90 秒之後回執該在了；還沒在就�
 實測已有 6 天在特定儲存格上漂移。**基線有兩份，就沒有一份是權威的。**
 
 **回報你實際做到的，不是你打算做到的。**
+
+## 用量：量它，不要估它
+
+**回報之前跑這一支**（在雲端容器跑，逐字稿在那裡；不是 device bash）：
+
+```bash
+cd /tmp && rm -rf kbc && git clone -q --depth 1 https://github.com/GunDamnBoy/kb-core kbc
+python3 kbc/tools/usage_report.py podcast
+```
+
+它印出主線與各子代理的有效 token、以及**一行 CSV**。
+把那一行原封不動 append 到 `~/kb-core/metrics/usage.csv`（device bash）。
+
+**不要自己估、也不要抄你以為的數字。** 代理看不到自己的 usage 欄位 ——
+`podcast/metrics-columns.md` 原本那四欄寫的就是「人工，抄自當輪用量回顧」，
+而**自述與量測在 CSV 裡長得一模一樣，只有一個能拿來做決定**。
+
+它會把挑到的逐字稿檔名與時間範圍印出來。**對一眼**：
+挑錯逐字稿與挑對的，算出來的數字都很合理。

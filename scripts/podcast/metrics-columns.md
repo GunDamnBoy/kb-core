@@ -17,10 +17,16 @@
 | `transcript_kb` | 當日 `~/podcast-transcripts/<date>/*.md` 的位元組總和 ÷ 1024 | healthcheck |
 | `output_json_kb` | 已發布的 `data/<date>.json` 實際檔案大小 ÷ 1024 | healthcheck |
 | `speaker_flags` | manifest 裡 `speakerNotes` 非空的集數 | healthcheck |
-| `eff_tokens_k` | 當輪**加權**總 token ÷ 1000（重讀×0.1、寫入×2、產出×5） | 人工，抄自當輪用量回顧 |
+| `eff_tokens_k` | 當輪**加權**總 token ÷ 1000（重讀×0.1、寫入×2、產出×5） | **2026-08-22 起改由 `tools/usage_report.py` 讀逐字稿算**，寫進 `metrics/usage.csv` |
 | `subagents` | 撰稿子代理數 | 同上 |
 | `agent_turns` | 子代理來回次數總和 | 同上 |
 | `subagent_tokens_k` | 子代理加權 token 合計 ÷ 1000 | 同上 |
+
+> **這四欄原本的來源是「人工，抄自當輪用量回顧」—— 那是自述，不是量測。**
+> 代理看不到自己的 usage 欄位，只能估。2026-08-22 換成讀逐字稿算，
+> 四套系統共用一支腳本與一份 `metrics/usage.csv`（見 `metrics/README.md`）。
+> 這裡這四欄保留給既有的歷史列，**新的一輪寫進 `usage.csv`，不再寫這裡** ——
+> 同一個數字兩個家，遲早會有一天只對了一半。
 
 **比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`。**
 後者混了固定開銷與當場的維護動作，除以集數得到的數字不可比（08-15、08-17 都踩過）。

@@ -286,3 +286,22 @@ python3 /Users/macmini/kb-core/tools/advisory_verify.py /Users/macmini/advisory-
 - **不跑 git 指令**（含 `git status`）—— 沙箱刪不掉 `.git/index.lock`，會擋住 publish。
 - **不改既有的日期檔** —— 每天只新增一個。
 - **不從前一版撈卡** —— 跨版去重是 24 小時窗口的執行面。
+
+## 用量：量它，不要估它
+
+**回報之前跑這一支**（在雲端容器跑，逐字稿在那裡；不是 device bash）：
+
+```bash
+cd /tmp && rm -rf kbc && git clone -q --depth 1 https://github.com/GunDamnBoy/kb-core kbc
+python3 kbc/tools/usage_report.py advisory
+```
+
+它印出主線與各子代理的有效 token、以及**一行 CSV**。
+把那一行原封不動 append 到 `~/kb-core/metrics/usage.csv`（device bash）。
+
+**不要自己估、也不要抄你以為的數字。** 代理看不到自己的 usage 欄位 ——
+`podcast/metrics-columns.md` 原本那四欄寫的就是「人工，抄自當輪用量回顧」，
+而**自述與量測在 CSV 裡長得一模一樣，只有一個能拿來做決定**。
+
+它會把挑到的逐字稿檔名與時間範圍印出來。**對一眼**：
+挑錯逐字稿與挑對的，算出來的數字都很合理。
