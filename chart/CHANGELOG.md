@@ -1,6 +1,80 @@
 # 每日五圖｜重建紀錄
 
-## 2026-08-22｜四個「每天都做得到、所以沒有人把它變成程式」的地方
+## 2026-08-22（二）｜把「限流退避」與「必要的握手」拆開
+
+起點是一個提問：yfinance 的資料看起來更廣，對製圖有沒有幫助。
+查下去發現廣度不是抽象的 —— `data/series` 裡 19 條非美標的與指數
+（三星、東京威力科創、愛德萬、`^SOX`、`^KS11`、`^NDX`、`^RUT`、`^DJI`、`^STOXX50E`……）
+**全部凍在 2026-08-19**，那些是曾經畫得出來、現在畫不出來的題目。
+
+### 量測（三輪，兩個結論、一個仍未知）
+
+- **Yahoo 的封鎖是客戶端層，不是機器。** 同一台 Mac、同一個 IP、相隔幾秒：
+  裸 urllib＋固定 UA 第一個請求 HTTP 429；yfinance（cookie＋crumb）拿到 `^GSPC`
+  5 點、末日 2026-08-21。**更正留痕**：`SOURCES.md` 原本寫「Yahoo 對本機是永久封鎖」，
+  依據是 08-14 首測與 08-16 複測 —— **那個結論把客戶端的性質算成了機器的性質。**
+- **Stooq 兩輪都沒量到涵蓋率，而兩次原因不同。** 第一輪十條回
+  `could not convert string to float: 'e.encode(c+n))'`（探針只擋空 body 與 No data，
+  **第三種假失敗「回 HTML／JS」被讀成了「來源沒有這條序列」**）；
+  第二輪修好判別後，十條回**同一頁 HTML、同一個 robots meta** ——
+  回應與代號無關，講的是端點與客戶端的關係，不是涵蓋率。
+  **真正的設計缺陷是沒有對照組**：十條都失敗時，「來源沒有」與「來源不理我們」
+  在輸出上長得一模一樣。已補 `AAPL` 對照組與網頁 `<title>`／cookie 線索。
+- **仍未知**：Yahoo 是針對我們，還是現在對所有無 cookie 的客戶端一律 429。
+  若是後者，「規避」這個詞從頭就用錯了 —— 我們的客戶端只是舊了。
+  **沒量到的部分沒有寫成已知**，登記在 `rate_limits.handshake_vs_evasion`。
+
+### 決定與動到哪些檔
+
+**開，但範圍極小、規則明著改。** 規則被默默違反，比規則被公開改掉糟糕得多。
+
+| 檔 | 改了什麼 |
+|---|---|
+| `chart/anchors.json` `rate_limits` | 新增 `handshake_vs_evasion`（拆開兩件事，並記下未量到的那一半）、`handshake_measured`（08-22 的兩次量測）、`handshake_allowlist`（五條）、`handshake_allowlist_rule` |
+| `scripts/chart/fetch.py` | 新增 `anchors()`／`handshake_allowlist()`／`yahoo_handshake()`；`_route_and_fetch` 讓允許清單排在所有路由之前。**清單外呼叫會被擋下來並說出為什麼**；回空表當失敗拋出 |
+| `scripts/chart/prefetch.py` | 允許清單展開進 `CORE`（每天替那條路做體檢）；狀態檔新增 `canary`（註明它只答得出「裸客戶端通不通」）與 `handshake`（那條路壞了看得見） |
+| `chart/BRIEF.md` §七 | 紅線改寫：限流那條保留，握手另立一條並指路到 anchors |
+| `skills/chart/SKILL.md` 第 3 步 | 同上，外加「用了要在 note 寫明來源與取法」與狀態檔 `handshake.failed` 的處置 |
+| `chart/SOURCES.md` | 更正「對本機永久封鎖」的措辭、登錄決定與三輪量測 |
+| `scripts/chart/probe_sources.py` | 新增（一次性探針）：Stooq 三種假失敗的判別、`AAPL` 對照組、Twelve Data 先 `symbol_search` 再取序列 |
+
+**允許清單只放既沒有等價序列、也沒有 ETF 代理的代號**：櫃買指數、韓綜、三星、
+東京威力科創、愛德萬。`^SOX`／`^STOXX50E`／`HG=F` 有 SOXQ／FEZ／CPER，**不進清單** ——
+代理不完美但它誠實、而且今天就在跑。
+
+### 怎麼驗的
+
+`py_compile` 全綠、`selftest` 0 失敗、當期 `chart_verify` 維持 15 PASS · 3 WARN · 0 FAIL。
+`prefetch.py --list` 由 46 條變 51 條（核心 31→36），五條允許清單都在。
+`yahoo_handshake()` 兩側各驗一次：`^GSPC`（不在清單）被擋並說出理由、
+`005930.KS`（在清單）在無 yfinance 的沙箱大聲失敗而不是回空。
+探針三種情境（找不到代號／找到但取不到／正常）與 Stooq 四種回應
+（HTML、空 body、No data、正常 CSV）各驗一次。
+
+### 怎麼倒回去
+
+把 `anchors.rate_limits.handshake_allowlist` 清空 —— `fetch` 讀到空清單就沒有任何代號
+走得進握手，`prefetch` 的 `CORE` 也不會多那五條，其餘程式碼留著不會有作用。
+要連程式一起撤就刪 `yahoo_handshake()` 與 `_route_and_fetch` 裡那三行。
+
+### 當時已知的風險
+
+- **yfinance 每隔幾個月被 Yahoo 改壞一次**，壞掉的樣子是回空表。已當失敗拋出，
+  但**那五條會同時失敗**，看起來像 Yahoo 又整個關門 —— 判讀前先看 `canary` 那一欄。
+- **`^TWOII` 取得到不等於能用**：2026-08-08 實測 Yahoo 這條落後 22 天，
+  握手取到之後要先看末日。
+- ~~**Twelve Data 還沒量。**~~ **當晚量完了**：免費方案＝美股。
+  `AAPL@NASDAQ` 拿得到（對照組成立），櫃買指數／韓綜／日經／Stoxx 50 在 `symbol_search`
+  找不到，三星／東京威力科創／愛德萬回 404。**清單維持五條，沒有東西可以拿掉。**
+  Stooq 連對照組都回同一頁 795 bytes 的機器人頁，**出局**。
+  同一輪探針製造了三個假的 ✓（`^SOX`→SOXL 三倍槓桿 ETF、`HG=F`→HG 一家保險公司、
+  `DXY`→DXYN），因為它拿代號搜尋的第一個候選就用 —— **三個都回 30 點、末日正確、
+  落後 1 天，每一個訊號都說它成功了**。已改成只接受逐字相同的代號並攤開候選；
+  詳見 `chart/SOURCES.md`。
+- 沙箱裝不了也連不出去，**這條路只在 Mac 上活著**；執行輪次讀的是預抓快取，
+  所以沙箱不受影響，但**要驗它只能在 Mac 上驗**。
+
+## 2026-08-22（一）｜四個「每天都做得到、所以沒有人把它變成程式」的地方
 
 08-22 那輪（15 PASS · 3 WARN · 0 FAIL，回執 exit 0 @ `55f2156`）本身沒有失敗，
 維護是從它的執行報告倒推的。四件事的共同形狀是：**它每天都做得到，

@@ -60,6 +60,12 @@ CORE = [
     "SOXQ", "FEZ", "CPER",
 ]
 
+# 走握手客戶端的那幾條（清單的家在 `anchors.rate_limits.handshake_allowlist`）。
+# **在這裡展開成核心清單的一部分**，理由是：不預抓它們，握手那條路就只有在
+# 執行輪次臨時用到時才會被走到，而**那時候壞掉才發現，已經來不及改題**。
+# 每天抓一次，等於每天替那條路做一次體檢；壞了會落在 status 的 failed，看得見。
+CORE += [i for i in F.handshake_allowlist() if i not in CORE]
+
 # Yahoo 代號的 FRED 等價序列。
 # 2026-08-14 首跑實測 Yahoo 整批 429、FRED 13/13 全通（API key 正常）。
 # **這不是「繞過 Yahoo」，是改用有文件、有認證的官方 API** —— brief §3.1 本來就偏好那條。
@@ -162,6 +168,13 @@ def main(argv):
     # 已知被擋的來源每天只試一條當哨兵（canary）。
     # **全部不試就再也不會發現它恢復了；全部都試就每天白耗好幾分鐘。**
     # 選最有代表性的那條：^GSPC 是最常用、也最能代表 Yahoo 整體狀態的標的。
+    #
+    # **2026-08-22 起這條哨兵問的是一個更小的問題**：它用的是裸客戶端，
+    # 所以它答的是「裸客戶端通不通」，不是「Yahoo 通不通」——同日實測，
+    # 同機同 IP 的握手客戶端拿得到資料。若 Yahoo 從此要求握手，
+    # **它會永遠紅，而永遠紅的訊號跟沒有訊號一樣**。
+    # 留著它是因為它仍答得出一件事：Yahoo 哪天不再要求握手（它會轉綠）。
+    # 真正在替握手那條路做體檢的，是 CORE 裡那幾條允許清單的代號。
     CANARY = "^GSPC"
     canary_done = False
 
@@ -208,6 +221,18 @@ def main(argv):
         "failed": failed,
         "skipped": skipped,
         "series": ok,
+        "canary": {
+            "id": CANARY, "client": "bare",
+            "means": "裸客戶端通不通，不是 Yahoo 通不通。紅＝維持現狀（2026-08-22 起的已知值）；"
+                     "綠＝Yahoo 不再要求握手，此時應回頭檢討 handshake_allowlist 是否還需要",
+            "red": CANARY in failed,
+        },
+        "handshake": {
+            "ids": list(F.handshake_allowlist()),
+            "failed": [i for i in F.handshake_allowlist() if i in failed],
+            "means": "走握手客戶端的那幾條。**這裡有東西就是那條路壞了**（多半是 yfinance "
+                     "又被 Yahoo 改壞），當日該圖要退回代理或改題並在 note 說明",
+        },
     }
     with open(STATUS, "w", encoding="utf-8") as f:
         json.dump(status, f, ensure_ascii=False, indent=1)

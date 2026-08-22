@@ -167,6 +167,62 @@ def fred(series_id: str, since: str = "2015-01-01") -> dict:
 
 
 # ────────────────────────────────────────────────── Yahoo
+_ANCHORS = None
+
+
+def anchors() -> dict:
+    """門檻的家是 `kb-core/chart/anchors.json`，不是這支程式。
+
+    **讀不到就大聲失敗**：允許清單取不到時若安靜回空集合，
+    握手那條路會整條變成「沒有人在清單裡」，而症狀是取數靜靜少幾條。
+    """
+    global _ANCHORS
+    if _ANCHORS is None:
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "..", "..", "chart", "anchors.json")
+        with open(os.path.abspath(p), encoding="utf-8") as f:
+            _ANCHORS = json.load(f)
+    return _ANCHORS
+
+
+def handshake_allowlist() -> dict:
+    return (anchors().get("rate_limits") or {}).get("handshake_allowlist") or {}
+
+
+def yahoo_handshake(symbol: str) -> dict:
+    """做完 cookie／crumb 握手再取 Yahoo 日線。**只走允許清單上的代號。**
+
+    2026-08-22 實測：同一台機器、同一個 IP、相隔幾秒 —— 裸 urllib＋固定 UA
+    第一個請求就 429，做完握手的客戶端拿得到 `^GSPC`（5 點，末日 08-21）。
+    **封鎖是客戶端層，不是機器。**
+
+    這條路與 `anchors.rate_limits` 的「等，不要繞」**不衝突，因為它處理的不是同一件事**：
+    限流退避處理的是「對方叫我們慢一點」，握手處理的是「對方要求先完成認證流程」。
+    兩者的界線寫在 `rate_limits.handshake_vs_evasion`，**而那條界線有一半沒有量到**
+    （Yahoo 是針對我們，還是對所有無 cookie 的客戶端一律 429），去改它之前先讀那一段。
+
+    **失敗要大聲。** yfinance 每隔幾個月被 Yahoo 改壞一次，而它壞掉的樣子是回空表；
+    這裡把空表當失敗拋出去，讓預抓記成 `failed` —— **靜靜少幾條與今天的 skipped 長得一樣。**
+    """
+    if symbol not in handshake_allowlist():
+        raise RuntimeError(
+            f"{symbol} 不在 anchors.rate_limits.handshake_allowlist 裡 —— "
+            "**握手不是通用退路**，要用就先把它連同理由寫進允許清單")
+    try:
+        import yfinance as yf
+    except ImportError as e:
+        raise RuntimeError(f"{symbol} 需要握手客戶端，但沒有安裝 yfinance：{e}") from e
+    df = yf.Ticker(symbol).history(period="10y", auto_adjust=False)
+    if df is None or not len(df):
+        raise RuntimeError(f"{symbol}：握手客戶端回空表 —— **空不是「沒有資料」**，"
+                           "多半是 yfinance 又被改壞或該代號不存在")
+    d = [x.strftime("%Y-%m-%d") for x in df.index]
+    v = [round(float(x), 4) for x in df["Close"].tolist()]
+    keep = [(a, b) for a, b in zip(d, v) if b == b]          # 濾掉 NaN
+    return {"id": symbol, "source": "Yahoo Finance（握手客戶端 yfinance）",
+            "d": [a for a, _ in keep], "v": [b for _, b in keep]}
+
+
 def yahoo(symbol: str, rng: str = "5y") -> dict:
     """指數用 ^GSPC / ^SOX / ^TWII，期貨用 GC=F / BZ=F，匯率用 JPY=X。"""
     url = ("https://query1.finance.yahoo.com/v8/finance/chart/"
@@ -328,6 +384,11 @@ def _route_and_fetch(ident: str, since: str, path: str) -> dict:
     2026-08-14 實測：9 條 Yahoo 代號因此各耗 30 秒且全部失敗。
     """
     src = route_of(ident)
+
+    # 允許清單上的代號走握手客戶端。**它排在所有路由之前**，因為那幾條的處境就是
+    # 「裸客戶端一定 429」——先跑一次路由再回退，等於每條白等一次限流退避。
+    if ident in handshake_allowlist():
+        return yahoo_handshake(ident)
 
     if src == "tw":
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

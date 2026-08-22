@@ -117,13 +117,30 @@ def twelvedata(sym: str, key: str) -> dict:
     把它自己給的代號拿去取序列，並把兩步的結果分開回報：
     找不到代號＝涵蓋率問題；找到了卻取不到＝方案權限或限流問題。**兩者處置不同。**
     """
+    # `q` **只剝交易所後綴（`005930.KS` → `005930`），不剝 `^` 與 `=F`**。
+    # 這是刻意的：留著它們，我們的指數與期貨代號就永遠不會與某個股票代號逐字相同，
+    # 於是一定走到下面那個「攤開候選讓人看」的分支。
+    # **剝掉的話 `HG=F` 會變成 `HG`，逐字命中 Hamilton Insurance Group** ——
+    # 一家保險公司會安靜地變成銅期貨。
     q = sym.split(".")[0].split(":")[0]
     js = json.loads(_get("https://api.twelvedata.com/symbol_search"
                          f"?symbol={urllib.parse.quote(q)}&outputsize=8").decode("utf-8"))
     cands = js.get("data") or []
     if not cands:
         raise RuntimeError(f"symbol_search 找不到「{q}」—— 這一條是涵蓋率問題")
-    best = cands[0]
+    # **不准自己挑第一個候選。** 2026-08-22 第三輪就是這樣製造出三個假的 ✓：
+    # `^SOX` 被解析成 SOXL（Direxion 三倍槓桿半導體 ETF）、`HG=F` 解析成 HG
+    # （Hamilton Insurance Group，一家保險公司）、`DXY` 解析成 DXYN。
+    # **三個都回了 30 點、末日正確、落後 1 天——每一個訊號都說它成功了。**
+    # 這是 anchors.proxies 那條「圖上標的是指數、數字卻是 ETF」的翻版，
+    # 而且更糟：那次是刻意的代理，這次是取數層自己決定的。
+    # 只接受**代號逐字相同**的候選；其餘一律把整份候選清單攤開來讓人看。
+    exact = [c for c in cands if str(c.get("symbol", "")).upper() == q.upper()]
+    if not exact:
+        shown = "；".join(f"{c.get('symbol')}@{c.get('exchange')}"
+                         f"（{str(c.get('instrument_name'))[:28]}）" for c in cands[:4])
+        raise RuntimeError(f"沒有逐字相同的代號，**不自行挑代替品**。候選：{shown}")
+    best = exact[0]
     got, exch = best.get("symbol"), best.get("exchange")
     url = ("https://api.twelvedata.com/time_series"
            f"?symbol={urllib.parse.quote(got)}&interval=1day&outputsize=30&apikey={key}")

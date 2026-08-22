@@ -87,8 +87,14 @@ python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 **不由取數層自動替換** —— 曾經寫成「`^SOX` 取不到就改抓 `SOXQ`」，
 那會把 ETF 的資料寫進指數的快取，**圖上標的是指數、數字卻是 ETF**。
 
-**429 是對方在說「慢一點」。等，不要繞。** 不可以換 host、改用瀏覽器規避。
+**429 是對方在說「慢一點」。等，不要繞。** 不可以換 host、不可以加碼重試。
 先分辨是哪一種：**第一個請求就 429 等再久也不會好**，打了一陣子才 429 才是該等的那種。
+
+**握手是另一件事，不要跟限流混在一起。** `anchors.rate_limits.handshake_allowlist`
+上那幾條（櫃買指數、韓綜、非美個股）走做完 cookie／crumb 的客戶端，
+取數層會自動走那條路，**你要做的是在該圖的 note 寫明來源與取法**，比照 ETF 代理。
+清單以外一律照上一段。預抓狀態檔的 `handshake.failed` 有東西＝那條路壞了，
+當日退回代理或改題並在 `about.run` 說明。
 
 **週頻發布的日頻序列另有一套門檻**（`anchors.freshness.weekly_release_series`）：
 `DTWEXBGS`／`DEXJPUS` 出自 H.10，**觀測每天有、發布每週一次**，
