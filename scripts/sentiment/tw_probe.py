@@ -37,7 +37,25 @@ START = dt.date(2014, 1, 1)      # 當沖統計自民國 103 年（2014）起
 TODAY = dt.date.today()
 
 
-THROTTLE = {"gap": float(os.environ.get("SENT_GAP", "3.0"))}   # 每次請求之間的基本間隔
+THROTTLE = {"gap": float(os.environ.get("SENT_GAP", "0.4"))}
+
+# TWSE 是**每分鐘約 40 次的配額桶**，不是固定間隔限制。
+# 2026-08-22 實測的鋸齒：前 40 筆全過 → 約 60–80 筆全掛 → 再放行約 40 筆。
+# 固定間隔擋不住這種桶（間隔小就撞桶底，間隔大就整體太慢），
+# **要用滑動視窗主動待在桶之下**。
+RATE = {"max": int(os.environ.get("SENT_MAX_PER_MIN", "30")), "hits": []}
+
+
+def throttle():
+    """任何 60 秒內不超過 RATE['max'] 次請求。撞到就等到最舊那次滿一分鐘。"""
+    now = time.time()
+    RATE["hits"] = [t for t in RATE["hits"] if now - t < 60]
+    if len(RATE["hits"]) >= RATE["max"]:
+        wait = 60 - (now - RATE["hits"][0]) + 0.2
+        if wait > 0: time.sleep(wait)
+        now = time.time()
+        RATE["hits"] = [t for t in RATE["hits"] if now - t < 60]
+    RATE["hits"].append(time.time())
 
 
 def get(url, referer=None, data=None, timeout=45, tries=3):
@@ -52,6 +70,7 @@ def get(url, referer=None, data=None, timeout=45, tries=3):
     """
     last = None
     for k in range(tries):
+        throttle()
         try:
             req = urllib.request.Request(url, data=data)
             req.add_header("User-Agent", UA)
@@ -141,7 +160,32 @@ def roc(s):
     return None
 
 
-def fetch_daily(cache, name, url_tpl, extract, sleep=None):
+T0 = {}
+
+
+def trading_days(cache, weekly=False):
+    """**交易日曆從已抓到的 `index`（FMTQIK 月表）推出來。**
+
+    以前是「所有平日都送一次請求」，於是每年約 10 天國定假日全部白打，
+    而且失敗會跟真正的錯誤混在一起。月表本來就列出了每個有開盤的日子——
+    **環境已經知道的事，不要再去問一次。**
+
+    weekly=True 只取每週最後一個交易日，請求數少八成。
+    """
+    days = sorted(d for mon in (cache.get("index") or {}).values() for d in mon)
+    if not weekly:
+        return days
+    out, cur = [], None
+    for d in days:
+        y, w, _ = dt.date.fromisoformat(d).isocalendar()
+        if cur and (y, w) != cur[0]:
+            out.append(cur[1])
+        cur = ((y, w), d)
+    if cur: out.append(cur[1])
+    return out
+
+
+def fetch_daily(cache, name, url_tpl, extract, days, sleep=None):
     """逐日抓一支端點，只補快取裡沒有的日子。
 
     **進度以「嘗試次數」計，不是以「成功次數」計。**
@@ -150,28 +194,29 @@ def fetch_daily(cache, name, url_tpl, extract, sleep=None):
     看起來就只是「還在跑」。**靜默失敗要長得跟成功不一樣。**
     """
     d = cache.setdefault(name, {})
-    day, tried, got, fail = START, 0, 0, 0
-    print(f"{name}: 開始…", flush=True)
-    while day <= TODAY:
-        k = day.isoformat()
-        if day.weekday() < 5 and k not in d:
-            try:
-                j = json.loads(get(url_tpl.format(d=day.strftime("%Y%m%d")),
-                                   referer="https://www.twse.com.tw/"))
-                v = extract(j) if j.get("stat") == "OK" else None
-                d[k] = v                      # None 也存：代表「這天問過了、沒有」
-                if v is not None: got += 1
-            except Exception:
-                fail += 1
-            tried += 1
-            time.sleep(sleep if sleep is not None else THROTTLE["gap"])
+    todo = [x for x in days if x not in d]
+    tried, got, fail = 0, 0, 0
+    print(f"{name}: 開始，待抓 {len(todo)} 天（已有 {len(d)}）…", flush=True)
+    T0[name] = time.time()
+    for k in todo:
+        try:
+            j = json.loads(get(url_tpl.format(d=k.replace("-", "")),
+                               referer="https://www.twse.com.tw/"))
+            v = extract(j) if j.get("stat") == "OK" else None
+            d[k] = v                          # None 也存：代表「這天問過了、沒有」
+            if v is not None: got += 1
+        except Exception:
+            fail += 1                          # 失敗不寫快取，下一輪會再試
+        tried += 1
+        if sleep: time.sleep(sleep)
+        if True:
             if tried % 20 == 0:
                 save_cache("tw", cache)
                 rate = got / tried * 100
                 flag = "　**解析成功率過低，八成是欄位沒對上**" if tried >= 60 and rate < 5 else ""
-                print(f"  {name}: 試 {tried}、有值 {got}（{rate:.0f}%）、失敗 {fail}{flag}",
-                      flush=True)
-        day += dt.timedelta(days=1)
+                eta = (len(todo) - tried) / max(tried, 1) * (time.time() - T0[name]) / 60
+                print(f"  {name}: 試 {tried}/{len(todo)}、有值 {got}（{rate:.0f}%）、"
+                      f"失敗 {fail}、剩約 {eta:.0f} 分{flag}", flush=True)
     save_cache("tw", cache)
     print(f"{name}: 共試 {tried}、有值 {got}、失敗 {fail}")
 
@@ -203,29 +248,28 @@ def ex_daytrade(j):
     return None
 
 
-def fetch_taifex_oi(cache):
+def fetch_taifex_oi(cache, days):
     """外資台指期未平倉淨額。**這支是整份設計的最高風險項**：
     GET 參數會被忽略，必須 POST；歷史深度未經驗證。失敗就明講失敗。"""
     d = cache.setdefault("fut_oi", {})
-    day, ok, fail = START, 0, 0
+    todo = [x for x in days if x not in d]
+    ok = fail = 0
     url = "https://www.taifex.com.tw/cht/3/futContractsDateDown"
-    while day <= TODAY:
-        k = day.isoformat()
-        if day.weekday() < 5 and k not in d:
-            body = urllib.parse.urlencode({
-                "firstDate": day.strftime("%Y/%m/%d"), "lastDate": day.strftime("%Y/%m/%d"),
-                "queryStartDate": day.strftime("%Y/%m/%d"), "queryEndDate": day.strftime("%Y/%m/%d"),
-                "commodityId": "TXF"}).encode()
-            try:
-                raw = get(url, referer="https://www.taifex.com.tw/cht/3/futContractsDate",
-                          data=body).decode("utf-8", "replace")
-                d[k] = parse_taifex(raw); ok += d[k] is not None
-            except Exception:
-                d[k] = None; fail += 1
-            time.sleep(THROTTLE["gap"])
-            if (ok + fail) % 20 == 0 and (ok + fail):
-                save_cache("tw", cache); print(f"  fut_oi: {ok} 筆…", flush=True)
-        day += dt.timedelta(days=1)
+    print(f"fut_oi: 開始，待抓 {len(todo)} 天…", flush=True)
+    for k in todo:
+        ds = k.replace("-", "/")
+        body = urllib.parse.urlencode({
+            "firstDate": ds, "lastDate": ds, "queryStartDate": ds, "queryEndDate": ds,
+            "commodityId": "TXF"}).encode()
+        try:
+            raw = get(url, referer="https://www.taifex.com.tw/cht/3/futContractsDate",
+                      data=body).decode("utf-8", "replace")
+            d[k] = parse_taifex(raw); ok += d[k] is not None
+        except Exception:
+            fail += 1
+        if (ok + fail) % 20 == 0 and (ok + fail):
+            save_cache("tw", cache)
+            print(f"  fut_oi: {ok + fail}/{len(todo)}、有值 {ok}、失敗 {fail}", flush=True)
     print(f"fut_oi: 有值 {ok} 筆，失敗 {fail}"
           + ("　**拿不到歷史 → 這一項降為候補，用三大法人現貨買賣超遞補**" if ok < 100 else ""))
 
@@ -247,16 +291,21 @@ def parse_taifex(raw):
     return None
 
 
-def do_fetch():
+def do_fetch(weekly=False):
     c = load_cache("tw")
     fetch_index(c);                                   save_cache("tw", c)
+    days = trading_days(c, weekly)
+    if not days:
+        print("**交易日曆是空的——index 沒抓到，先修那一步**"); return
+    print(f"交易日曆：{len(days)} 天（{days[0]} → {days[-1]}）"
+          f"{'　**週頻取樣**' if weekly else '　日頻'}\n")
     fetch_daily(c, "margin",
                 "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={d}&selectType=MS&response=json",
-                ex_margin);                           save_cache("tw", c)
+                ex_margin, days);                     save_cache("tw", c)
     fetch_daily(c, "daytrade",
                 "https://www.twse.com.tw/rwd/zh/dayTrading/TWTB4U?response=json&date={d}",
-                ex_daytrade);                         save_cache("tw", c)
-    fetch_taifex_oi(c);                               save_cache("tw", c)
+                ex_daytrade, days);                   save_cache("tw", c)
+    fetch_taifex_oi(c, days);                         save_cache("tw", c)
     print(f"\n快取寫在 {CACHE}/tw.json")
 
 
@@ -293,10 +342,12 @@ if __name__ == "__main__":
     ap.add_argument("--fetch", action="store_true")
     ap.add_argument("--analyze", action="store_true")
     ap.add_argument("--peek", action="store_true", help="抓一天，印出真實欄位名")
+    ap.add_argument("--weekly", action="store_true",
+                    help="每週只取最後一個交易日，請求數少八成")
     a = ap.parse_args()
     if a.peek:
         peek(); raise SystemExit(0)
-    if a.fetch: do_fetch()
+    if a.fetch: do_fetch(a.weekly)
     if a.analyze:
         import tw_analyze; tw_analyze.main(CACHE)
     if not (a.fetch or a.analyze): ap.print_help()
