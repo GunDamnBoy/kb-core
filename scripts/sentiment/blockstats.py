@@ -64,12 +64,23 @@ def min_detectable(fwd: np.ndarray, n_events: int, B: int = 4000,
     return None
 
 
-def verdict(point, lo, hi, mde, target):
+MIN_EVENTS = 8      # 少於這個數，任何「通過」都只是在對兩三次行情命名
+
+
+def verdict(point, lo, hi, mde, target, n_events=None):
     """三種結論，不是兩種。
 
     設計書第十節原本只有「有效」「無效」，於是所有**看不見**都被記成無效。
     加上「樣本不足以判定」才分得開。
+
+    **2026-08-22 補上獨立事件數下限。** 上一版只檢查「區間不含 0 且點估計夠大」，
+    於是 `當沖熱度·極端貪婪 52 週` 在 **n=2** 的情況下被判「通過」——
+    點估計 +44pp、信賴區間 [32, 70]，那是同一波行情被數了兩次。
+    **自助法的信賴區間不會因為只有兩個事件就變寬到誠實的程度**，
+    因為它重抽的是同一批資料。事件數必須另外擋。
     """
+    if n_events is not None and n_events < MIN_EVENTS:
+        return f"樣本不足以判定（獨立事件僅 {n_events}）"
     if point is None or lo is None:
         return "樣本不足以判定"
     if lo > 0 and point >= target:

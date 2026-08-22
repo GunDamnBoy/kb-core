@@ -122,9 +122,19 @@ register(System(
     build=build,
     cadence_hours=24,
     republish_rule=frozen,   # 日頻
-    # 投顧只產 data/。`raw/` 是 GitHub Actions 那一側寫的，由它自己 commit ——
-    # 兩個寫入者共用 main，這裡把 raw/ 也 add 進來會把對方寫到一半的東西帶上車。
-    staged_paths=lambda doc, repo: ["data"],
+    # 投顧產 data/ 與外殼 index.html。`raw/` 是 GitHub Actions 那一側寫的，由它自己
+    # commit —— 兩個寫入者共用 main，這裡把 raw/ 也 add 進來會把對方寫到一半的東西帶上車。
+    #
+    # 2026-08-22 加入 index.html。在那之前它**不在任何自動路徑上**：改了外殼會留在
+    # 本機，回執照樣 exit 0、檢查照樣全綠，而網站不會變 —— 又一個每個訊號都說成功的
+    # 靜默失效，只是這次失效的是「改動沒上線」而不是「檔案不存在」。
+    #
+    # 它與 raw/ 的差別是寫入者數量：raw/ 有兩個寫入者搶同一個 main，index.html 只有
+    # 維護工作階段一個。殘留的風險是**編輯到一半正好被 publish 撞上**，但 publish 只在
+    # outbox 有草稿時才動，實務上一天一次、約台北 07:30–09:00，窗口很窄。
+    # **真正沒有防線的是內容**：advisory suite 那 17 條檢查一條都不看外殼，
+    # 所以 index.html 改壞了會直接上線。要補就補在這裡（見 CHANGELOG 2026-08-22）。
+    staged_paths=lambda doc, repo: ["data", "index.html"],
     index_entry=index_entry,
     index_meta=index_meta,
 ))

@@ -1,86 +1,112 @@
 #!/usr/bin/env python3
 """台股籌碼的成分建構與回測。跑在 tw_probe.py 的快取上。
 
+## 頻率必須跟抓取一致（2026-08-22 訂正）
+
+上一版把面板建成**日頻**（約 3,083 天），而 `--weekly` 抓到的是**週頻**（652 筆）。
+於是 750 列的滾動視窗**永遠湊不滿 750 個觀測**，百分位全部回 NaN，
+當沖那項更直接被 `651 < 750` 的門檻擋掉——**輸出是一張看起來完整的空表**，
+每一格都寫「樣本不足以判定」，讀起來像結論。
+
+> **抓取的頻率與分析的頻率不一致，會安靜地產出一張全空但格式正確的表。**
+
+修法：**面板建在「實際有資料的日期」上**，視窗以那個頻率計（週頻 156＝3 年），
+前瞻天期也改成週。與 CFTC 那組同尺度，兩邊直接可比。
+
 ## 規模分母規則（設計書第十五節）
 
-**每一個部位或流量變數都要除以一個規模分母。** 不除，量到的是市場自己在長大，
-不是情緒在變。台股市值二十年翻了好幾倍，「融資餘額創新高」多數時候
-只是市值創新高的影子。
+每一個部位或流量變數都要除以規模分母。不除，量到的是市場自己在長大。
+台股市值二十年翻了好幾倍，「融資餘額創新高」多數時候只是市值創新高的影子。
 
-- 融資餘額 ÷ **20 日均成交值**（TWSE 不發布每日總市值，成交值是日頻且同源）
-- 外資期貨未平倉淨額 ÷ **自身 250 日絕對值均值**（拿不到全市場未平倉總量時的退援，
-  會在報告裡標明這是退援而不是規格）
+- 融資餘額 ÷ 20 期均成交值
 - 當沖占比本身就是比率，不需要分母
+- 外資期貨未平倉淨額 ÷ 自身 50 期絕對值均值（拿不到全市場未平倉總量時的退援）
 """
 from __future__ import annotations
 import json, os, sys
 import numpy as np, pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import rank_trailing, composite, episodes, independent, fwd_returns, WINDOW
+from core import rank_trailing, composite, episodes, independent
 from blockstats import circular_block_boot, min_detectable, verdict
 
 TARGET = 0.03
-HORIZONS = (21, 63, 126, 252)
-
-# 2026-08-22 第四階段的結果改寫了這裡的優先序：
-# 恐懼側的效果顯著大於貪婪側（4/15 格 p<0.10，雜訊期望 0.8），
-# 但恐懼訊號說的是「報酬分佈」不是「底部到了」——**MAE 才是使用者要的數字**。
-# 所以台股這一支也改成恐懼側優先，並且每個訊號都報 MAE。
-TAIL, GAP, COST = 10.0, 3, 0.00585      # 台股來回成本：手續費 0.1425%×2 ＋ 證交稅 0.3%
+TAIL, GAP = 10.0, 1
+COST = 0.00585          # 台股來回：手續費 0.1425%×2 ＋ 證交稅 0.3%
 
 
-def panel(cache_dir):
-    c = json.load(open(os.path.join(cache_dir, "tw.json"), encoding="utf-8"))
-    rows = {}
+def load_cache(cache_dir):
+    return json.load(open(os.path.join(cache_dir, "tw.json"), encoding="utf-8"))
+
+
+def panel(c):
+    """**面板建在實際有資料的日期上**，不是所有交易日。"""
+    px_all = {}
     for _, mon in (c.get("index") or {}).items():
         for d, v in mon.items():
-            if v and v[0]: rows[d] = {"px": v[0], "amt": v[1]}
-    df = pd.DataFrame.from_dict(rows, orient="index").sort_index()
-    df.index = pd.to_datetime(df.index)
-    def ser(name, f=lambda v: v):
-        s = {d: f(v) for d, v in (c.get(name) or {}).items() if v is not None}
-        s = pd.Series(s); s.index = pd.to_datetime(s.index)
-        return s.sort_index().reindex(df.index)
-    df["margin"] = ser("margin", lambda v: v.get("margin") if isinstance(v, dict) else v)
-    df["daytrade"] = ser("daytrade")
-    df["fut_oi"] = ser("fut_oi")
-    return df
+            if v and v[0]: px_all[d] = (v[0], v[1])
+    px_all = pd.DataFrame.from_dict(px_all, orient="index", columns=["px", "amt"]).sort_index()
+    px_all.index = pd.to_datetime(px_all.index)
+
+    def ser(name, f):
+        raw = {d: f(v) for d, v in (c.get(name) or {}).items() if v is not None}
+        raw = {d: x for d, x in raw.items() if x is not None}
+        if not raw: return pd.Series(dtype=float)
+        s = pd.Series(raw); s.index = pd.to_datetime(s.index)
+        return s.sort_index()
+
+    cols = {
+        "margin":   ser("margin", lambda v: v.get("margin") if isinstance(v, dict) else v),
+        "daytrade": ser("daytrade", lambda v: v),
+        "fut_oi":   ser("fut_oi", lambda v: v),
+    }
+    have = {k: v for k, v in cols.items() if len(v) >= 60}
+    if not have:
+        return None, None, {k: len(v) for k, v in cols.items()}
+
+    # 取樣日期＝所有成分日期的聯集，且必須有指數
+    idx = sorted(set().union(*[set(v.index) for v in have.values()]) & set(px_all.index))
+    df = px_all.loc[idx].copy()
+    for k, v in have.items():
+        df[k] = v.reindex(idx)
+
+    # **強制均勻頻率。** 先前中止的日頻抓取在早期留下密集的點，
+    # 於是「156 期視窗」在後段是 3 年、在前段只有 7 個月——
+    # **同一個「3 年百分位」在樣本裡代表不同的東西，而表面上完全看不出來。**
+    gaps = pd.Series(df.index).diff().dt.days.dropna()
+    if len(gaps) and gaps.median() <= 3 < gaps.quantile(0.9):
+        pass                                   # 本來就密，不動
+    wk = df.index.to_series().dt.to_period("W")
+    df = df.groupby(wk).last()
+    df.index = df.index.to_timestamp(how="end").normalize()
+    return df, {k: len(v) for k, v in cols.items()}, None
 
 
-def build(df):
+def build(df, win):
     p = pd.DataFrame(index=df.index)
-    amt20 = df["amt"].rolling(20).mean()
-    # 1) 融資餘額 ÷ 20 日均成交值 —— 規模分母
-    if df["margin"].notna().sum() > WINDOW:
-        p["融資強度"] = rank_trailing(df["margin"] / amt20)
-    # 2) 當沖占市場比重（本身即比率）
-    if df["daytrade"].notna().sum() > WINDOW:
-        p["當沖熱度"] = rank_trailing(df["daytrade"])
-    # 3) 外資期貨未平倉淨額 ÷ 自身 250 日絕對值均值（退援分母）
-    if df["fut_oi"].notna().sum() > WINDOW:
-        p["外資期貨"] = rank_trailing(df["fut_oi"] / df["fut_oi"].abs().rolling(250).mean())
-    return p
+    amt20 = df["amt"].rolling(20, min_periods=5).mean()
+    if "margin" in df and df["margin"].notna().sum() > win:
+        p["融資強度"] = rank_trailing(df["margin"] / amt20, win)
+    if "daytrade" in df and df["daytrade"].notna().sum() > win:
+        p["當沖熱度"] = rank_trailing(df["daytrade"], win)
+    if "fut_oi" in df and df["fut_oi"].notna().sum() > win:
+        base = df["fut_oi"].abs().rolling(50, min_periods=10).mean()
+        p["外資期貨"] = rank_trailing(df["fut_oi"] / base, win)
+    return p.dropna(how="all", axis=1)
 
 
-def extremes(s, tail=TAIL):
-    r = rank_trailing(s.dropna(), WINDOW)
+def extremes(s, win, tail=TAIL):
+    r = rank_trailing(s.dropna(), win)
     return (r <= tail).reindex(s.index, fill_value=False), \
            (r >= 100 - tail).reindex(s.index, fill_value=False)
 
 
-def ann(r): return (1 + r).prod() ** (252 / max(len(r), 1)) - 1
-def sharpe(r): return r.mean() / r.std() * np.sqrt(252) if r.std() > 0 else float("nan")
-def mdd(r):
-    cu = (1 + r).cumprod(); return float((cu / cu.cummax() - 1).min())
+def sharpe(x, per): return x.mean() / x.std() * np.sqrt(per) if x.std() > 0 else float("nan")
+def mdd(x):
+    c = (1 + x).cumprod(); return float((c / c.cummax() - 1).min())
 
 
 def mae(px, starts, h):
-    """買進後窗內的最大不利變動——「還要再痛多久」。
-
-    第四階段量出來：前瞻報酬效果最大的成分，進場代價也最大
-    （已實現波動 +7.27pp／MAE −10.5%），因為它是回頭看的、跌完一段才亮。
-    **只報中位數報酬而不報 MAE，會讓一個很晚才亮的訊號看起來跟很早亮的一樣好。**
-    """
+    """買進後窗內的最大不利變動——「還要再痛多久」。"""
     pos = {d: i for i, d in enumerate(px.index)}
     out = []
     for d in starts:
@@ -91,106 +117,101 @@ def mae(px, starts, h):
 
 
 def main(cache_dir):
-    df = panel(cache_dir)
-    parts = build(df)
-    if parts.empty:
-        print("**沒有任何一項籌碼成分累積到足夠長度（需 > 750 個交易日）——先跑 --fetch**")
-        return
-    px = df["px"]
-    print(f"樣本 {px.index[0].date()} → {px.index[-1].date()}　{len(px)} 個交易日")
-    print("可用成分：" + "、".join(parts.columns) +
-          f"（設計書列 3 項，本次 {len(parts.columns)} 項）\n")
-    for c in parts.columns:
-        print(f"  {c}: 有值 {int(parts[c].notna().sum())} 筆")
+    c = load_cache(cache_dir)
+    df, counts, err = panel(c)
+    print("快取筆數：" + "、".join(f"{k}={v}" for k, v in (counts or err).items()))
+    if df is None:
+        print("**沒有任何成分累積到 60 筆以上——先跑 --fetch**"); return
 
-    sig = {"合成籌碼": composite(parts)}
-    for c in parts.columns: sig[f"單項·{c}"] = parts[c]
+    gaps = pd.Series(df.index).diff().dt.days.dropna()
+    weekly = True if gaps.median() >= 5 else gaps.median() > 3
+    win = 156 if weekly else 750
+    per = 52 if weekly else 252
+    HOR = (4, 13, 26, 52) if weekly else (21, 63, 126, 252)
+    unit = "週" if weekly else "日"
+    print(f"面板 {df.index[0].date()} → {df.index[-1].date()}　{len(df)} 筆"
+          f"　中位間隔 {gaps.median():.0f} 天 → **{'週頻' if weekly else '日頻'}**"
+          f"　視窗 {win} {unit}（3 年）\n")
+
+    parts = build(df, win)
+    if parts.empty or not len(parts.columns):
+        print(f"**沒有成分通過 {win} 筆的熱身門檻。** 各成分有效筆數：")
+        for k in ("margin", "daytrade", "fut_oi"):
+            if k in df: print(f"  {k}: {int(df[k].notna().sum())}")
+        print(f"→ 需要 > {win} 筆才發分數（熱身期不縮短，縮短會讓前後不可比）")
+        return
+    print("可用成分：" + "、".join(f"{c_}（{int(parts[c_].notna().sum())} 筆）"
+                                  for c_ in parts.columns))
+
+    px = df["px"]
+    sig = {"合成籌碼": composite(parts)} if len(parts.columns) > 1 else {}
+    for c_ in parts.columns: sig[f"單項·{c_}"] = parts[c_]
     sig = pd.DataFrame(sig)
 
-    print("\n" + "=" * 88); print("T1（區塊自助法．含檢定力）"); print("=" * 88)
+    print("\n" + "=" * 92); print("T1（區塊自助法．含檢定力）"); print("=" * 92)
     rows = []
     for name in sig.columns:
-        lo, hi = extremes(sig[name])
-        for mask, tag in ((lo, "極端恐懼"), (hi, "極端貪婪")):
-            eps = episodes(mask, GAP)
-            for h in HORIZONS:
-                fwd = fwd_returns(px, h)
+        lo, hi = extremes(sig[name], win)
+        for m, tag in ((lo, "極端恐懼"), (hi, "極端貪婪")):
+            eps = episodes(m, GAP)
+            for h in HOR:
+                fwd = (px.shift(-h) / px - 1)
                 n_ind = len(independent(eps, px.index, h))
-                pt, l, u = circular_block_boot(mask.values, fwd.values, h)
-                mde = min_detectable(fwd.values, n_ind)
-                rows.append(dict(訊號=f"{name}·{tag}", 天期=h, 極端日=int(mask.sum()),
-                                 獨立事件=n_ind,
+                pt, l, u = circular_block_boot(m.values, fwd.values, h)
+                md = min_detectable(fwd.values, n_ind)
+                rows.append(dict(訊號=f"{name}·{tag}", 期=h, 極端=int(m.sum()), 獨立事件=n_ind,
                                  點估計pp=None if pt is None else round(pt*100, 2),
                                  CI下界=None if l is None else round(l*100, 2),
                                  CI上界=None if u is None else round(u*100, 2),
-                                 最小可測pp=None if mde is None else round(mde*100, 1),
-                                 結論=verdict(pt, l, u, mde, TARGET)))
+                                 最小可測pp=None if md is None else round(md*100, 1),
+                                 結論=verdict(pt, l, u, md, TARGET, n_ind)))
     t1 = pd.DataFrame(rows); print(t1.to_string(index=False))
 
-    print("\n" + "=" * 88); print(f"T2／T3 擇時（含成本 {COST*100:.3f}% 來回）"); print("=" * 88)
-    split = px.index[int(len(px) * 0.6)]
-    r = px.pct_change().fillna(0)
+    print("\n" + "=" * 92); print(f"T2／T3 擇時（含成本 {COST*100:.3f}%）"); print("=" * 92)
+    cut = int(len(px) * 0.6); r = px.pct_change().fillna(0)
+    ma = px.rolling(10 if weekly else 20).mean()
+    wma = pd.Series(0.75, index=px.index); wma[px > ma] = 1.0; wma[px < ma] = 0.5
+    sma = wma.shift(1).fillna(0.75) * r - wma.shift(1).fillna(0.75).diff().abs().fillna(0) * COST
+    print(f"{'訊號':<16}{'內':>8}{'外':>8}{'外 MDD':>10}")
+    print(f"{'買進持有':<16}{sharpe(r.iloc[:cut], per):>8.2f}{sharpe(r.iloc[cut:], per):>8.2f}"
+          f"{mdd(r.iloc[cut:])*100:>9.1f}%")
+    print(f"{'純均線（對照）':<16}{sharpe(sma.iloc[:cut], per):>8.2f}"
+          f"{sharpe(sma.iloc[cut:], per):>8.2f}{mdd(sma.iloc[cut:])*100:>9.1f}%")
     res = {}
     for name in sig.columns:
-        lo, hi = extremes(sig[name])
+        lo, hi = extremes(sig[name], win)
         w = pd.Series(0.75, index=px.index); w[hi] = 0.5; w[lo] = 1.0
         w = w.shift(1).fillna(0.75)
         s = w * r - w.diff().abs().fillna(0) * COST
-        res[name] = (sharpe(s.loc[:split]), sharpe(s.loc[split:]), mdd(s.loc[split:]))
-    bh = (sharpe(r.loc[:split]), sharpe(r.loc[split:]), mdd(r.loc[split:]))
-    print(f"{'訊號':<16}{'樣本內 Sharpe':>14}{'樣本外 Sharpe':>14}{'樣本外 MDD':>12}")
-    print(f"{'買進持有':<16}{bh[0]:>14.2f}{bh[1]:>14.2f}{bh[2]*100:>11.1f}%")
-    for k, v in res.items():
-        print(f"{k:<16}{v[0]:>14.2f}{v[1]:>14.2f}{v[2]*100:>11.1f}%")
-    best_single = max((v[1] for k, v in res.items() if k.startswith("單項")), default=None)
-    if best_single is not None and "合成籌碼" in res:
-        print(f"\nT3 判準：合成樣本外 Sharpe {res['合成籌碼'][1]:.2f} vs "
-              f"最好的單項 {best_single:.2f} → "
-              f"{'合成有加值' if res['合成籌碼'][1] > best_single else '**合成沒有加值**'}")
+        res[name] = sharpe(s.iloc[cut:], per)
+        print(f"{name:<16}{sharpe(s.iloc[:cut], per):>8.2f}{res[name]:>8.2f}"
+              f"{mdd(s.iloc[cut:])*100:>9.1f}%")
+    singles = [v for k, v in res.items() if k.startswith("單項")]
+    if "合成籌碼" in res and singles:
+        print(f"\nT3：合成 {res['合成籌碼']:.2f} vs 最好的單項 {max(singles):.2f} → "
+              f"{'合成有加值' if res['合成籌碼'] > max(singles) else '**合成沒有加值**'}")
+    print(f"對照：任何規則都要贏過純均線 {sharpe(sma.iloc[cut:], per):.2f}")
 
-    print("\n" + "=" * 88); print("T4 稀有度與時效性"); print("=" * 88)
-    yrs = (px.index[-1] - px.index[0]).days / 365.25
+    print("\n" + "=" * 92); print("MAE 與恐懼／貪婪不對稱"); print("=" * 92)
+    h = HOR[1]
     for name in sig.columns:
-        lo, hi = extremes(sig[name])
-        for mask, tag, side in ((lo, "極端恐懼", "low"), (hi, "極端貪婪", "high")):
-            eps = episodes(mask, GAP)
-            if not eps: continue
-            pos = {d: i for i, d in enumerate(px.index)}
-            lags = []
-            for st, _, _ in eps:
-                i = pos[st]; seg = px.iloc[max(0, i-60): i+61]
-                lags.append(i - pos[seg.idxmin() if side == "low" else seg.idxmax()])
-            print(f"{name}·{tag}: 事件 {len(eps)}、每年 {len(eps)/yrs:.2f} 次、"
-                  f"中位持續 {int(np.median([e[2] for e in eps]))} 日、"
-                  f"極端日佔比 {mask.mean()*100:.1f}%、相對轉折中位 {int(np.median(lags))} 日")
-
-    print("\n" + "=" * 88); print("MAE：買進後還要再痛多久（恐懼側）"); print("=" * 88)
-    for name in sig.columns:
-        lo, _ = extremes(sig[name])
-        eps = episodes(lo, GAP); st = independent(eps, px.index, 63)
-        m = mae(px, st, 63)
-        if len(m) < 3:
-            print(f"  {name:<14} 獨立事件 {len(m)}，樣本不足"); continue
-        print(f"  {name:<14} 獨立事件 {len(m):>2}　MAE 中位 {np.median(m)*100:>6.1f}%　"
-              f"最糟 {min(m)*100:>6.1f}%　"
-              f"{sum(1 for x in m if x > -0.05)}/{len(m)} 次跌幅未超過 5%")
-
-    print("\n" + "=" * 88); print("恐懼 vs 貪婪的不對稱（點估計差）"); print("=" * 88)
-    for name in sig.columns:
-        lo, hi = extremes(sig[name])
-        for h in (21, 63):
-            fwd = fwd_returns(px, h)
-            ef, _, _ = circular_block_boot(lo.values, fwd.values, h)
-            eg, _, _ = circular_block_boot(hi.values, fwd.values, h)
-            if ef is None or eg is None: continue
-            print(f"  {name:<14} {h:>3}日　恐懼 {ef*100:>6.2f}pp　貪婪 {eg*100:>6.2f}pp　"
-                  f"差 {(ef-eg)*100:>6.2f}pp")
+        lo, hi = extremes(sig[name], win)
+        eps = episodes(lo, GAP); st = independent(eps, px.index, h)
+        m = mae(px, st, h)
+        fwd = (px.shift(-h) / px - 1)
+        ef, _, _ = circular_block_boot(lo.values, fwd.values, h)
+        eg, _, _ = circular_block_boot(hi.values, fwd.values, h)
+        line = f"  {name:<16}"
+        line += (f"MAE 中位 {np.median(m)*100:>6.1f}%（n={len(m)}）"
+                 if len(m) >= 3 else f"MAE 樣本不足（n={len(m)}）")
+        if ef is not None and eg is not None:
+            line += f"　恐懼 {ef*100:>6.2f}pp　貪婪 {eg*100:>6.2f}pp　差 {(ef-eg)*100:>6.2f}pp"
+        print(line)
 
     out = os.path.join(cache_dir, "tw_results.json")
-    json.dump({"T1": t1.to_dict("records"),
-               "T2": {k: [round(x, 3) if x == x else None for x in v] for k, v in res.items()},
-               "買進持有": [round(x, 3) for x in bh],
-               "樣本": [str(px.index[0].date()), str(px.index[-1].date())],
+    json.dump({"T1": t1.to_dict("records"), "T2": {k: round(v, 3) for k, v in res.items()},
+               "頻率": "週" if weekly else "日", "視窗": win,
+               "樣本": [str(df.index[0].date()), str(df.index[-1].date())],
                "成分": list(parts.columns)}, open(out, "w"), ensure_ascii=False, indent=1)
     print(f"\n結果寫到 {out}")
 

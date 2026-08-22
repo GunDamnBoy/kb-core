@@ -22,7 +22,7 @@
 | Actions 保底層（兩條 OAS、黃金持倉、台股端點） | `tools/fetch_advisory.py` | 路由表在 `kbcore/fetch_tw.py` 的 `ROUTES` |
 | 每天怎麼跑 | `skills/advisory/SKILL.md`（正本） | 排程 prompt 整份取代，見下 |
 | 發布流程 | `tools/publish.py` | **三套系統共用，改它等於同時改三套** |
-| 網站呈現 | `advisory-rewrite/index.html` | 徽章表從檔案實際解析比對 |
+| 網站呈現 | `advisory-rewrite/index.html` | 徽章表從檔案實際解析比對。**2026-08-22 起它在 `staged_paths` 裡，改了會自動上線** —— 在那之前不會，而回執照樣 exit 0（見 CHANGELOG 該日第一節）。代價是**沒有任何檢查在看外殼**：改壞了會直接上線。改完至少要抽 script 跑 `node --check`，視覺請人工確認（`file://` 沒有自動路徑） |
 
 **不要改舊 checkout `~/advisory-knowledge-hub` 裡的任何東西。** 它已於 2026-08-21 搬到 `~/_to_delete/advisory-knowledge-hub-stale-20260818`。
 那份停在 2026-08-18，改它不會有任何徵兆，也不會有任何效果。

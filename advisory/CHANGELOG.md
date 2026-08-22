@@ -791,3 +791,154 @@ meta `2026-08-21T11:42:33.000Z`、頁面署名 `08-21 19:42` —— **11:42 UTC 
 但複驗這件事沒有排程，靠的是採集員回報時會提；
 ③`FILES.md` 重寫後，`maintain` 技能裡的副本仍是舊的 —— 技能子檔無法從工作階段更新，
 要打包 `.skill` 重裝，**在那之前從技能讀到的 `FILES.md` 還是錯的**。
+
+## 2026-08-22 晚｜配色改用台新企業識別，以及外殼從來不在自動路徑上
+
+**動到哪些檔**：`advisory-rewrite/index.html`（`:root` 整組換色、`--blue` 更名 `--brand`、
+12 處引用、頁首色帶、品牌圓點、兩處小字對比）、
+`systems/advisory.py`（`staged_paths` 由 `["data"]` 改為 `["data", "index.html"]`）、
+`skills/maintain/advisory/MODIFY.md`（網站呈現那一列補上發布路徑）。
+**沒有動**：任何 `data/YYYY-MM-DD.json`、`checks/advisory.py`、`anchors.json`。
+
+### 一、外殼改了不會上線，而每一個訊號都說成功
+
+`staged_paths` 是 `["data"]`，publish 每分鐘只 `git add data`。
+**所以在 2026-08-22 之前，改 `index.html` 的結果是：檔案留在本機、回執 exit 0、
+17 條檢查全綠、commit 推上去了 —— 而網站沒變。**
+這與 2026-08-21 五圖 `charts/` 那一條是同一個形狀，差別只在那次是「檔案在遠端不存在」，
+這次是「改動沒上線」。**publish.py 的 4b 對帳段抓不到它**：那一段問的是
+`ls-files --others`（有沒有沒進版控的檔），而 `index.html` 是**已追蹤、已修改**，
+不在 `--others` 的定義裡。
+
+改成 `["data", "index.html"]`。與 `raw/` 的差別是寫入者數量：`raw/` 有 Actions 與 publish
+兩個寫入者搶同一個 main，`index.html` 只有維護工作階段一個。
+
+**怎麼驗的**：照 MODIFY.md 在 `/tmp` 另建 bare origin ＋ 工作 repo，**不碰真 repo**。
+在工作 repo 的 `index.html` 打上 `E2E-MARK`、資料檔原封不動，跑 `publish.py` →
+回執 `exit 0 @ already-published`，`git --git-dir=origin.git show HEAD:index.html`
+確認 `E2E-MARK` 在遠端。**接著跑對照組**：把 `staged_paths` 改回 `["data"]`、
+打上 `E2E-MARK-2`、再跑一次 → 遠端沒有 `E2E-MARK-2`。
+**有對照組才知道差別來自 `staged_paths`，而不是來自「我剛好也 commit 了」。**
+
+真 repo 上線的方式是**重送一份與已發布內容位元組相同的草稿**：
+`already=True` 會跳過寫入、但 `git add` → commit → push 照跑（publish.py 第 2 節
+自己寫著這是刻意的）。回執 `exit 0 @ already-published`、commit `127c083`，
+local 與 origin 的 main 一致，`raw.githubusercontent.com` 讀回確認台新紅已在遠端。
+
+### 二、配色：品牌紅只當結構色
+
+台新新光金控手冊 A-5-1 的標準色是台新紅 Pantone 186 `#D70C18`、
+Dark Gray Cool Gray 11 `#464646`、Taishin Gray Cool Gray 2 `#D8D8D8`；
+輔助色 Light Red `#E38383`、Medium Gray `#656565`。
+
+**唯一真正的難處是台新紅與網站的偏空紅 `#dc2626` 對比只有 1.10:1** —— 並排是同一個紅。
+三個方案：A 品牌紅只當結構色、B 順便把漲跌改成台股慣例（紅漲綠跌）、C 紅只用在頁首頁尾。
+**選 A**，漲跌維持綠漲紅跌不動，兩個紅靠位置區隔（結構元件 vs 數值）。
+理由寫進 `index.html` 的 `:root` 註解，含一句「不要把 `--brand` 用在數值上」。
+
+**B 案沒有被否決，只是沒有今天做。** 它的代價是過去 23 天的歷史檔會跟著換色、
+視覺不連續；它的好處是讀者是台灣投顧，而綠漲紅跌是美股慣例。
+**要做 B 的時機是：有人回報看盤時方向讀反了。**
+
+`--blue` 更名為 `--brand` 而不是只改值 —— 這個 repo 最恨「名字說藍、值是紅」。
+連帶把整組帶藍調的中性色（`--bg` `--line` `--dim` `--faint`）換成中性灰，
+**那才是網站讀起來「藍」的主因，不是那個 accent**。
+
+**順手修好一個既有缺陷**：`--faint` 原本 `#8a93a5` 對白底 3.36:1，不到 WCAG AA 內文，
+而它用在所有 11–12.5px 的 metadata。改 `#727272` 後 4.81:1。
+改完全站實測：內文 15.91、次要 5.83、弱 4.81、連結 5.31、白字 on 紅 5.31、
+chip 紅字 on 淡紅底 4.81 —— 全部 ≥4.5:1。
+
+**字型不用動**：手冊要求中文思源黑體、禁止襯線，而網站的
+`-apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif`
+裡的 `Noto Sans TC` 就是思源黑體的 Google 版本名稱，整份也沒有任何襯線字體。
+
+**怎麼驗的**：`node --check` 抽出 inline script 通過；殘留檢查確認 14 個舊藍系色碼
+一個不剩；對比度逐組實算；`advisory_verify` 17 PASS · 0 FAIL。
+**視覺是使用者自己開預覽檔確認的，不是我驗的** —— Chrome MCP 的 `navigate`
+會把 `file://` 硬改成 `https://file://`，沙箱裡也沒有可以自己算圖的瀏覽器。
+做法是把最近三天的真資料內嵌成一份離線 HTML（覆寫 `window.fetch` 回傳內嵌物件），
+使用者雙擊開啟確認後才上線。**這個限制值得記住：外殼改動的視覺確認沒有自動路徑。**
+
+**怎麼倒回去**：`index.html` 與 `systems/advisory.py` 都在 git 裡，回到 `127c083` 之前那顆。
+注意兩者要一起倒 —— 只倒 `index.html` 會讓下一次 publish 把舊配色推上去（因為
+`staged_paths` 仍含 index.html），只倒 `staged_paths` 則新配色會留在遠端但之後改不動。
+
+**當時已知的風險**：
+①**17 條檢查一條都不看外殼** —— `index.html` 改壞了會在下一次 publish 直接上線，
+而回執照樣 exit 0。這是 `staged_paths` 加入 index.html 後**新增**的曝險面，
+在那之前外殼壞掉至少不會自己上線。考慮過但沒做：加一條檢查驗 `index.html`
+抽出 script 後 `node --check` 通過、且 `:root` 的必要變數都在。
+否掉的理由是它要新寫檢查加 fixture，而今天的改動已經人工驗過；
+**要做的時機是：第一次有人把外殼改壞並上線。**
+②**編輯到一半被 publish 撞上** —— publish 只在 outbox 有草稿時才動，
+實務上一天一次、約台北 07:30–09:00，窗口很窄但不是零。
+③**`--brand-bg` 與 `--brand-line` 是手冊沒有的衍生色**，若品牌方日後給出官方淡色，
+這兩個值要換掉；已在 `index.html` 註解裡標明它們是衍生的。
+
+## 2026-08-22 夜｜「關於與方法」壞了 20/22 天沒有人回報，先修好再撤掉
+
+**動到哪些檔**：`advisory-rewrite/index.html`（`tabAbout` 的 `L()` 修正 → commit `fb2e5f9`；
+移除分頁與 `tabAbout` → commit `8caf5e8`）。
+**沒有動**：`data/*.json`、`BRIEF.md`、`anchors.json`、`checks/advisory.py`。
+**`about` 欄位照常產出**，schema 不變，BRIEF 第二節與第十節都不用改 —— 撤掉的是呈現，不是資料。
+
+### 一、非空字串的 `.length` 為真、`.map` 不存在
+
+`tabAbout` 裡：`const L=(t,arr)=>arr?.length ? arr.map(...) : ""`。
+而 `about` 的 `run`／`limits` 有兩種方言：舊站十八天與重寫版的部分日子存**字串**，
+只有 8/19–8/20 存陣列。字串通過了 `.length` 的守衛、卻沒有 `.map`
+→ `arr.map is not a function` → **整頁炸掉**。
+
+實測 22 天裡 **20 天炸**（只有 8/19、8/20 正常）。
+`paint()` 不在 try 裡，所以點分頁時是拋未捕捉的錯誤；初次載入則被 `main()` 的
+try 接住、畫成紅色錯誤框。**兩種路徑都不會留下任何紀錄。**
+
+修法是把三個欄位一律正規化成陣列再走同一條路。
+驗法是用 node 把 `tabAbout` 抽出來對 22 個真日檔各跑一次：**22/22 渲染成功**（原本 2/22）。
+**這比截圖可靠** —— 截圖只證明今天那一份可以，跑完 22 天才知道兩種方言都吃得下。
+
+順帶：舊站那十八天的 `about` 有 `access` 欄，`tabAbout` 從來沒讀它 ——
+寫進去三週、一次都沒出現在畫面上。撤掉分頁之後這件事不再重要，此處記一筆。
+
+### 二、為什麼修好了還是要撤
+
+**「壞了三週沒有人回報」是這一頁有沒有人看最可靠的證據**，比任何對它價值的推測都硬。
+而 `checks/advisory.py` 對 `about` 一條檢查都沒有，所以也沒有機器在看。
+
+但**撤之前先修好**，理由是：撤掉一個從沒看過運作樣子的東西，撤的是黑盒不是決定。
+修好之後看到它其實是四塊讀者不同的東西：
+`timeliness`（窗口起訖）與 `limits`（合規）是給讀者的；
+`run`（執行模型、七個採集員代號、熔斷次數）是**維運遙測**，
+而遙測的家是回執與 CHANGELOG，不是投顧同仁早上那三分鐘；
+`notes` 兩者都有（今天那一份裡最有價值的是九月 FOMC 的欄位更正）。
+
+**合規沒有缺口**：頁尾那一行「內容為新聞彙整與研究輔助，非投資建議。
+報價口徑以各卡片標註為準。」就是 `limits` 的濃縮版，且每一頁都在。
+**舊深連結不會壞**：`paint()` 對不在清單裡的分頁會退回第一個，
+`#2026-08-22/about` 實測退回 `#2026-08-22/overview`、無錯誤框。
+
+**兩顆 commit 是刻意的**：先推修正（`fb2e5f9`）再推移除（`8caf5e8`），
+這樣「它修好之後長什麼樣」留在 git 歷史裡，而不是被移除那一顆吃掉。
+要復原只需 revert `8caf5e8`。
+
+### 三、被否決的另外三個做法
+
+- **直接刪掉不修** —— 那會把 bug 藏起來而不是解決它，而且是拿沒看過的東西做決定。
+- **保留分頁只修好** —— 沒有回答「這一頁的讀者是誰」，遙測還是會繼續上畫面。
+- **把 `timeliness`／`limits` 搬到頁尾** —— 我原本建議這個，但頁尾已有濃縮版，
+  再搬一次是重複；`timeliness` 的核心（新鮮度）在頁首「最後更新」已經有了。
+  **想把窗口起訖也放上頁首的話，那是一行的事，等有人問再做。**
+
+**怎麼驗的**：node 對 22 個真日檔跑 `tabAbout`（修正後 22/22）；
+`node --check` 抽出 script 通過；殘留檢查 `tabAbout` 歸零；
+上線後實測分頁剩五個、`#/about` 優雅退回總覽、無錯誤框。
+
+**怎麼倒回去**：revert `8caf5e8` 分頁就回來（且是修好的版本）。
+若連修正一起倒，回到 `fb2e5f9` 之前 —— 但那會讓 20/22 天重新炸掉，不建議。
+
+**當時已知的風險**：①`about` 現在**只存在於 JSON**，沒有任何 UI 讀它 ——
+下次有人改 `about` 的形狀不會有任何畫面壞掉來提醒，而 `checks` 也不驗它。
+**它現在是純粹的下游契約**（House View 與稽核讀），這件事沒有寫在 BRIEF 裡，
+只寫在這裡與 `index.html` 的註解裡。②同樣的 `L()` 型別陷阱可能還在別處：
+本輪只修了 `tabAbout` 一個，`tabOverview` 與 `tabSection` 沒有逐一檢查。
