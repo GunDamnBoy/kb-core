@@ -2,7 +2,7 @@
 system: podcast-knowledge-digest
 budget:
   tokens: 5000
-  source: "2026-08-23 實測 5,309 字元／約 4,826 token（**這個數字每次改本檔都會過期，看到就重量一次**；字元／token 比 1.1，出處：工單 11 量測舊 brief 38,570 字元 ~35k token）。歷次：08-19 首測 3,327 字元／~3,025 token、08-22 是 4,694 字元、08-23 是 5,309 字元。**餘裕只剩 174 token（3.5%），不要再當它有六成空間** —— 預算 5,000 當初取的是首測 3,025 的約 1.65 倍，那個倍數在 08-19 成立，現在是 1.04 倍。超過就是要砍，不是要調高。**08-23 那一批加了 937 字元、當場量到 5,119 token 超出預算，同批壓縮第八節一次收斂回 4,826** —— 「加字之後量一次」這條是 08-18 立的、那次沒做到，08-23 做到了。舊的 AGENT_BRIEF 實測 25,120 token、截斷於第 417 行——那個上限是這條預算存在的理由。"
+  source: "5,526 字元／~5,024 token（比值 1.1）。**改本檔就重量一次** —— `python3 tools/repo_check.py .`。量測史與預算由來見 `skills/maintain/podcast/MODIFY.md`。**超過就是要砍，不是要調高。**"
 ---
 
 # Podcast 知識庫摘譯｜什麼是對的產出
@@ -41,8 +41,7 @@ budget:
 **`minutes`**／`hosts`／`guest`／`source`／`url`／`chars`／`summary`／`guests`／`topics`／
 `quality{completeness,status,speakerNote,timestampNote}`／`takeaways`／`sections`／`quotes`。
 
-- **`trackId` 與 `minutes` 這兩個欄位在 2026-08-23 之前沒有寫在這裡**，只存在於實檔裡，
-  而兩個都是閘門的必要輸入 —— 漏掉的後果不一樣，所以分開講：
+- **`trackId` 與 `minutes` 都是閘門的必要輸入**，而漏掉的後果不一樣，所以分開講：
   **`minutes` 缺了 `chars_in_tier` 直接 FAIL**（看得見）；
   **`trackId` 缺了 `quote_misses()` 找不到逐字稿、整輪回 `None`、金句閘門判成 SKIPPED**
   —— 而 SKIPPED 的意思是「這一輪沒有比對過」，不是「比對過沒問題」，
@@ -54,8 +53,7 @@ budget:
 - **`topics` 只能從受控詞表選**（在 `anchors.json`）。
 - **`quotes[]` 三個欄位：`text`／`by`／`original`。** `original` 是逐字稿裡的原句、
   一字不改（含原文語言），`text` 是中譯，`by` 是講者。
-  （**這裡一度寫成 `speaker`，而實檔與 `systems/podcast.py` 都用 `by`**，2026-08-23 訂正。
-  照舊版寫成 `speaker` 的那一輪，講者欄位會安靜落空，而閘門的失敗訊息會印 `None`。）
+  **是 `by`，不是 `speaker`** —— 寫錯不會被擋下來，講者欄位安靜落空、閘門只印 `None`。
 
   `original` 存在的唯一理由是**它讓「金句是不是編的」變成機械可判** ——
   組檔時拿它回去對逐字稿做子字串比對，對不上就整條丟掉並具名記錄。
@@ -65,7 +63,7 @@ budget:
   正文用官方稿寫，`original` 仍要回 podfetch 稿挑** —— 官方稿是編修過的，用字對不上。
   2026-08-23 latentspace 五條全取自官方稿，機械比對 5／5 全 MISS。
   少了這個欄位，「金句必須是逐字稿裡實際出現的發言」就只是一條靠自覺的規則，
-  而**依賴自覺的紀律不是紀律**。2026-08-20 首輪 63 條金句全部通過比對。
+  而**依賴自覺的紀律不是紀律**。
 
   比對用**子字串包含**，不要用整行相等 —— Bloomberg 有幾行的講者標籤是
   `Speaker 6]`（右方括號不是冒號），整行比對會把完整的發言誤判成對不上。

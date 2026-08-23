@@ -78,7 +78,12 @@ def _brief_budget(p):
         if b["est_tokens"] > b["budget"]:
             over.append(f"{b['path']} ~{b['est_tokens']} token，預算 {b['budget']}")
     if over:
-        return fail("；".join(over) + " —— 超過預算就是執行時讀不完，要砍不是要調高")
+        # **兩件事一起說。** 舊版在這裡就 return，於是同一輪裡「沒有出處」那幾份
+        # 完全不會被提到 —— 2026-08-23 podcast 超標的那三個星期，research/BRIEF.md
+        # 沒有預算這件事一次都沒有被印出來，直到超標被修掉才浮出來。
+        # **一條檢查只講它最嚴重的那個發現，等於把其餘的發現藏在後面。**
+        extra = ("；另外沒有預算或沒有出處：" + "、".join(nosource)) if nosource else ""
+        return fail("；".join(over) + " —— 超過預算就是執行時讀不完，要砍不是要調高" + extra)
     if nosource:
         return warn("沒有預算或沒有出處：" + "、".join(nosource) +
                     " —— 沒有出處的數字不算量測過")
