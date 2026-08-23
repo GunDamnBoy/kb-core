@@ -714,7 +714,9 @@ def measure_session_tokens(day):
     # 要開它，先讓它有辦法只算日報那一段。可用的界線已經存在：
     # `~/outbox/podcast/<date>.receipt.json` 的 `at` 就是那一輪落地的時刻
     # （本檔 `scheduled_run()` 已經在讀它）。缺的是 `usage_report.py` 沒有 `--until`。
-    # **補上 `--until` 之前不要拿掉這個 return。**
+    # `usage_report.py` 2026-08-23 已補上 `--until`／`--until-receipt`，
+    # **但這裡還沒有去用它**——底下那段仍然是整份掃完。
+    # **在這裡也會切界線之前，不要拿掉這個 return。**
     #
     # 在那之前，**這四欄由維護者在 Mac 上手動量**，指令見下面的 TOKEN_NOTE。
     # 量出來的列寫進 `kb-core/metrics/usage.csv`（欄位較全），
@@ -936,15 +938,12 @@ def build_metric_row(day, is_today):
     # 根本不存在。同一個 repo 裡 `snapshot.sh:85` 就同時試兩個任務名，
     # **一支腳本知道搬過家，另一支不知道。**
 
-    # podfetch 當日完成段數（日誌裡每段完成一行）
-    lp = os.path.join(PODFETCH, "logs", day + ".log")
-    if os.path.exists(lp):
-        body = open(lp, encoding="utf-8", errors="replace").read()
-        # `segments_done` 也是**退休欄位**（metrics-columns.md：2026-08-21 起留空），
-        # 2026-08-23 停止填值。舊值保留：那是當時量到的東西，只是定義沒有人
-        # 說得出來了。（原始定義：日誌裡「段完成」的出現次數，**不是 API 請求數**
-        # ——重試、探測、過載嘗試與快取段都不在裡面，08-05 實測請求數是段數的
-        # 2.5 倍；舊名 podfetch_requests 會讓人拿它估 RPD 而系統性低估。）
+    # `segments_done` 是**退休欄位**（metrics-columns.md：2026-08-21 宣布留空），
+    # 2026-08-23 停止填值，連同讀日誌那一步一起拿掉——**留著讀檔只為了讓註解有地方掛，
+    # 等於每天把整份 podfetch 日誌讀進記憶體換一個沒有人要的數字**（pyflakes 當場報死碼）。
+    # 原始定義記在這裡備查：日誌裡「段完成」的出現次數，**不是 API 請求數**——
+    # 重試、探測、過載嘗試與快取段都不在裡面，08-05 實測請求數是段數的 2.5 倍；
+    # 舊名 podfetch_requests 會讓人拿它估 RPD 而系統性低估。
 
     global TOKEN_NOTE
     keep = TOKEN_NOTE

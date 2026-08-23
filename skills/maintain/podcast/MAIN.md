@@ -62,19 +62,18 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
    `request_cowork_directory` **明文拒絕掛載工作階段儲存區**、
    `session_info__read_transcript` 不回 usage 欄位。三條路 08-23 全部實測過。
    > **但不要把它寫成「排程不留 transcript」** —— 那個結論 08-14 寫過一次、08-16 就被推翻
-   > （原因是「五次都是從外面找」），本檔第 6 節與 `healthcheck.py:681` 都記著這件事。
+   > （原因是「五次都是從外面找」），本檔第 6 節與 `healthcheck.py` 的 `measure_session_tokens()` 都記著這件事。
    > **08-23 用 `Glob` 實地確認逐字稿存在**：
    > `~/Library/Application Support/Claude/local-agent-mode-sessions/<帳號>/<工作區>/local_<階段>/.claude/projects/<專案>/<uuid>.jsonl`，
    > 子代理在同層 `<uuid>/subagents/agent-*.jsonl`。
-   > **而 `healthcheck.py:703-704` 那段被 early-return 擋掉的程式，glob 樣式正好對得上**
+   > **而 `measure_session_tokens()` 裡那段被 early-return 擋掉的程式，glob 樣式正好對得上**
    > （`local-agent-mode-sessions/*/*/*/.claude/projects`，08-23 驗過 `fnmatch` 為 True）。
-   > **所以在 Mac 上跑 healthcheck，那四欄是量得到的** —— 要復活它就是把 `:692` 那個
-   > `return "", "", ""` 拿掉再實跑一次，**但要先在 Mac 上驗，沙箱驗不了**。
+   > **所以在 Mac 上跑 healthcheck，那四欄是量得到的** —— **但復活它不是拿掉那個 `return` 就好**——它整份掃完會把日報與事後維護算在一起（08-23 實測高估 4.6 倍），要先讓它會切界線。見 `MAINTENANCE.md` 第 6 節。
    > **所以不要「看到空欄就抄回報裡的數字」。** 那是自述不是量測，而
    > `scripts/podcast/metrics-columns.md` 開頭就寫著**用另一套定義填進同一欄比留白更糟**。
-   > 實害已經發生：`eff_tokens_k` 08-21＝4913、08-22＝235、08-23＝276，**差 20 倍**。
+   > 實害已經發生：`eff_tokens_k` 08-21＝4913、08-22＝235（自述），而 08-23 實測是 **6,611** —— 當天的自述值是 276，**低估 24 倍**。
    > 08-23 那一列的自述值已在同日抽掉，08-21／08-22 兩列保留不改寫歷史。
-   > 要恢復這條基線得先讓 `usage_report.py` 在 Cowork 側拿得到逐字稿 —— 見 `MAINTENANCE.md` 第 6 節。
+   > **量測本身 08-23 已經成功**（在 Mac 上跑 `usage_report.py`，日報那一輪 6,611K），結果寫進 `kb-core/metrics/usage.csv`；`metrics.csv` 那四欄維持留空。
    > **`healthcheck.py` 的那則「每日指標」WARN 已於 08-23 改寫**，不再催人去填、改成說明為什麼留空。
    > **注意它在沙箱裡整條不會出現**（`metrics()` 寫 `~/.podfetch/`，沒掛載就整個 except 掉，
    > 輸出裡連「每日指標」四個字都沒有）—— 08-23 就是這樣才發現本節上一版寫的

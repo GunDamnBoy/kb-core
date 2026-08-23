@@ -46,6 +46,11 @@ STALE_MIN = 90          # 最新逐字稿超過這麼久沒動，就不是「這
 # **值域擋在這裡。** 打錯一個字（`podcasts`、`research`）不會有任何徵兆，
 # 而那一列會變成一套從此只有一列的「系統」，永遠不會被拿來比較。
 SYSTEMS = ("advisory", "chart", "podcast", "broker-research")
+# **系統 id 不等於 outbox 目錄名。** `--until-receipt` 要去 `~/outbox/<目錄>/` 找回執，
+# 而 broker-research 在 outbox 底下叫 `research`，advisory 根本沒有 outbox 目錄。
+# 2026-08-23 實測：不做這層對照，`broker-research --until-receipt` 一律 exit 12，
+# **而它正是四套裡最需要切界線的那一套**（08-22 那一輪 43,339k／617 輪）。
+OUTBOX_DIR = {"podcast": "podcast", "chart": "chart", "broker-research": "research"}
 
 
 def eff(u):
@@ -64,6 +69,31 @@ def rows(path):
                     yield json.loads(line)
                 except ValueError:
                     pass
+
+
+def _norm_iso(s):
+    """把使用者或回執給的 ISO8601 正規化成與逐字稿同一種格式（UTC、`Z` 結尾）。
+
+    **為什麼一定要正規化**：`usage_of()` 做的是字串比較，而字串序只有在同格式下
+    才等於時間序。台北位移的 `2026-08-23T11:41:10+08:00` 與逐字稿的
+    `2026-08-23T03:41:10.000Z` 指同一刻，字串比起來卻是前者大——**界線會失效**。
+
+    naive（沒有位移）一律當 UTC，**不吃本機時區**：2026-08-23 實測，
+    吃 `$TZ` 會讓同一份回執在 Mac（Asia/Taipei）與 CI（UTC）算出差 8 小時的界線。
+    `Z` 結尾在 Python 3.10 的 `fromisoformat` 會直接 ValueError，先換掉。
+    """
+    s = str(s).strip().replace("Z", "+00:00")
+    # **純日期要明確擋掉。** `fromisoformat("2026-08-23")` 會成功並變成當天 00:00，
+    # 於是界線看起來生效、實際上把整場切光——2026-08-23 實測就是這樣，
+    # 而 docstring 已經寫了「純日期不接受」。**文件說不接受、程式接受，
+    # 比兩邊都沒寫更糟**：讀文件的人以為有守衛。
+    if "T" not in s:
+        raise ValueError(f"{s!r} 只有日期沒有時間 —— 界線必須帶時間，"
+                         "例如 2026-08-23T04:00:00Z")
+    d = dt.datetime.fromisoformat(s)          # 其餘格式不對就讓它丟 ValueError
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=dt.timezone.utc)
+    return d.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def usage_of(path, since=None, until=None):
@@ -147,25 +177,49 @@ def main():
             return 12
 
     until = a.until
+    if until:
+        # **界線是字串比較，所以格式不對不會報錯、只會安靜不切。**
+        # 2026-08-23 實測：傳台北位移（`...+08:00`）或純日期（`2026-08-23`）
+        # 都會讓界線完全失效，而輸出印的是整場、exit 0 ——
+        # **「切過了」與「沒切」在畫面上長得一樣**，正是這套系統反覆記的那種失效。
+        # 所以在這裡正規化成與逐字稿同一種格式（UTC、`Z` 結尾），對不上就擋下。
+        try:
+            until = _norm_iso(until)
+        except ValueError as e:
+            print(f"--until 解析不了：{e}\n"
+                  "  要 ISO8601，例如 2026-08-23T04:00:00Z 或 2026-08-23T12:00:00+08:00。"
+                  "\n  **純日期（2026-08-23）不接受** —— 它沒有時間，切出來的界線是任意的。",
+                  file=sys.stderr)
+            return 12
     if a.until_receipt:
+        if a.until:
+            print("--until 與 --until-receipt 同時給了，**以回執為準**"
+                  f"（忽略 --until {a.until}）", file=sys.stderr)
         # **界線用回執，不用猜。** publish 寫回執的時刻就是那一輪真正落地的時刻。
-        rp = os.path.expanduser(f"~/outbox/{a.system}/{a.until_receipt}.receipt.json")
+        sub = OUTBOX_DIR.get(a.system)
+        if not sub:
+            print(f"{a.system} 沒有 outbox 目錄，用不了 --until-receipt；"
+                  "改用 --until 明講界線", file=sys.stderr)
+            return 12
+        rp = os.path.expanduser(f"~/outbox/{sub}/{a.until_receipt}.receipt.json")
         if not os.path.exists(rp):
             print(f"找不到回執 {rp} —— 沒有界線就不要硬切，"
                   f"寧可印整場並在報告裡講明", file=sys.stderr)
             return 12
         try:
             at = json.load(open(rp, encoding="utf-8"))["at"]
+            until = _norm_iso(at)
         except Exception as e:
-            print(f"回執讀不開：{e}", file=sys.stderr)
+            print(f"回執的 at 讀不開或解析不了：{e}", file=sys.stderr)
             return 12
-        until = dt.datetime.fromisoformat(at).astimezone(
-            dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         print(f"界線　　--until {until}（取自 {os.path.basename(rp)} 的 at={at}）")
 
     tot, turns, out, cr, cw, first, last = usage_of(tp, a.since, until)
     if not turns:
-        print("這份逐字稿裡沒有帶用量的輪次 —— 挑錯檔了", file=sys.stderr)
+        bounds = "／".join(x for x in (f"--since {a.since}" if a.since else "",
+                                       f"--until {until}" if until else "") if x)
+        why = f"界線把它切光了（{bounds}）" if bounds else "挑錯檔了"
+        print(f"這份逐字稿裡沒有帶用量的輪次 —— {why}", file=sys.stderr)
         return 12
 
     sub_dir = os.path.join(os.path.dirname(tp),
