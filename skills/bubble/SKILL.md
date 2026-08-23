@@ -74,8 +74,11 @@ healthcheck 因此出現過期 WARN 時，在交付訊息註明「本週已查�
 - **(a) 循環融資**（大廠對客戶／供應鏈投資、供應商融資、SPV 表外融資）→ `circular`
 - **(b) 弱資質信用**（CoreWeave／Oracle CDS 或債券、AI 私募信貸壓力、再融資事件）→ `weakcredit`
 - **(c) VC 與 IPO 管道**（大型輪、Crunchbase 數據、OpenAI／Anthropic IPO 進度）→ `vc`。
-  **IPO 進度只反映在 `stage.checklist` 第 4 項** —— 人工旗標 `params.megaipo_done`
-  已於 2026-08-23 退場，沒有旗標要設。
+  **IPO 進度落在兩個地方**：`stage.checklist` 第 4 項（人讀的證據），
+  以及 `megaipo` 觸發器 —— 它的 `state` 由人工旗標 `params.megaipo_done` 直接決定
+  （`update_data.py` 的 `set_trig("megaipo", bool(params["megaipo_done"]), …)`），
+  **所以那個旗標是這一輪要維護的**。口徑見 `AGENT_BRIEF` §3.5；
+  注意 **SpaceX 2026-06-12 的掛牌不計入** —— 它不是 AI 標的。
 - **(d)「AI bubble」敘事** 1–5 級（映射 10/30/50/70/90）→ `narrative`
 - **(e) Token 經濟**（OpenRouter 用量、中國模型市占、token 價格戰）→ `tokens`
 - **(f) 財報季**：三大雲（**1／4／7／10 月底**）營收年增 → `cloudrev`；
@@ -94,7 +97,8 @@ healthcheck 因此出現過期 WARN 時，在交付訊息註明「本週已查�
 **改 `params` 不會立刻反映在頁面上**（§8.2）：`nvda_eps` 要等下一次引擎跑 `nvdape`、
 `ngdp_nominal` 要等下一次引擎重評 `triggers` —— **不要自己去改 `triggers` 的 `state`
 來「讓它一致」**，註明「已更新 `params.X`，將於下一個交易日生效」即可。
-**這條自 2026-08-23 起沒有例外**：`params` 現在只剩 `nvda_eps` 與 `ngdp_nominal` 兩個鍵。
+**`megaipo_done` 是這條的例外**：它不經引擎重算，改了下一次 `set_trig` 就生效。
+`params` 目前三個鍵：`nvda_eps`、`ngdp_nominal`、`megaipo_done`。
 
 **(i) `stage` 整塊**：`checklist` 六項的 `state`／`evi`、`stage.note`，
 以及 `stage.current`（1–4 的小數）、`stage.label`、`stages[]` 的 `active`／`done`。
@@ -142,9 +146,10 @@ healthcheck 因此出現過期 WARN 時，在交付訊息註明「本週已查�
 `heat`／`support` 也是 null、`regime` 寫「待數據」**）
 → ⑤ `tw.subs`／`tw.heat`（null 子群剔除後重新歸一）
 → ⑥ `history` 附加一筆（含 `quad` 與 **`trig`＝觸發器點亮數**，上限 400）
-→ ⑦ **`meta.built` 改成今天、`meta.builtTime` 改成「YYYY-MM-DD（每週質化覆核）」**。
+→ ⑦ **`fresh`**（改過 `asof` 的指標才需要）
+→ ⑧ **`meta.built` 改成今天、`meta.builtTime` 改成「YYYY-MM-DD（每週質化覆核）」**。
 
-**第 ⑦ 步不能省**：healthcheck 硬性要求 `history` 最後一筆的日期等於 `meta.built`。
+**第 ⑧ 步不能省**：healthcheck 硬性要求 `history` 最後一筆的日期等於 `meta.built`。
 **但 `meta.lastAutoRun` 絕對不要動** —— 它描述的是最後一次**自動**更新的成敗。
 
 **`history` 只附加，永遠不改寫既有的日期或數值**；同日只留一筆。
@@ -167,12 +172,21 @@ healthcheck 會檢查 `note` 裡**最後一組**軌跡的終點等於現在的 `
 寫回後**再跑一次 `python3 /tmp/bubble-<今天>/healthcheck.py，FAIL 必須是 0`**。
 FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 
-**唯一的例外是 `fresh` 那條 FAIL**（「fresh 與 asof／IND_MAXAGE 不一致」）：
-那是引擎的 `set_fresh` 還沒跑到最新狀態造成的，**不要手改 `data.json` 的 `fresh`，
-也不要動 `asof` 去消音** —— 照常交付，註明一行「fresh 待下一個交易日的自動更新重標」。
-除此之外的 FAIL 一律擋住交付。
+### `fresh` 是導出欄位，不是例外
 
-**完成條件**：`healthcheck.py` 的 FAIL 是 0（或只剩 `fresh` 那一條）。
+改了任何指標的 `asof`，`fresh` 就必須跟著重算 —— 用**引擎自己的**
+`set_fresh()`（`scripts/update_data.py:109`），不要手改 `data.json` 的 `fresh`、
+也不要動 `asof` 去消音。這與「依 `score` 重算 `zone`」是同一件事，不是手動修補。
+
+> **2026-08-23 之前這裡寫的是「`fresh` FAIL 可以照常交付」，那是個陷阱。**
+> `auto_publish.py` 把 `healthcheck.py` 當閘門，**任何 FAIL 都會擋住發布**
+> （`scripts/auto_publish.py` 第 121 行起，不過就 `return 5`、草稿改名成 `.parked`）。
+> 那條例外是雲端時代留下的 —— 當時沒有閘門，交付訊息照樣送到人手上，
+> 所以「可以照常交付」是真的。**搬到本機之後閘門變成真的，例外就變成一個
+> 讀起來合理、做下去必定被 park 的指令。** 2026-08-23 那輪的第一次投遞
+> 就是這樣在 15:01 被 park（回執 exit 5），是那一輪自己認出來並改用 `set_fresh()` 的。
+
+**完成條件**：`healthcheck.py` 的 FAIL 是 **0**，沒有例外。
 
 ## 5. 交出草稿
 
@@ -235,17 +249,21 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 **`tw.heat` 於 2026-08-23 由 46.8 跳到 44.4，那一跳也是系統改動造成的**（§6.20）。
 
 觸發器自 2026-08-22 起有 **8 項**（新增 `sahm05`：Sahm Rule ≥0.50pp，FRED SAHMREALTIME，
-唯一量實體經濟的一項）。**2026-08-23 起第 7 項由 `megaipo` 換成 `conc48`**
-（標普 500 前十大市值集中度 ≥48%）。它由引擎每交易日從既有的 SlickCharts 抓取順帶算出，
-**覆核不必也不可以手動維護它**；巨型 IPO 事件改由 `stage.checklist` 第 4 項承接
-（§3.5、MAINTENANCE §6.24）。**八項現在全部都有 `prog`。**
+唯一量實體經濟的一項）。第 7 項是 `megaipo`（OpenAI／SpaceX 巨型 IPO 完成），
+**八項裡唯一沒有進度條的一項**（`prog: null`）—— 它是人工旗標，沒有可連續量測的外部數列。
+其餘七項都有 `prog`。
+
+> 舊 prompt 曾寫「2026-08-23 起第 7 項換成 `conc48`（前十大市值集中度 ≥48%）、
+> `megaipo_done` 退場、白名單新增 slickcharts」。**那三件事一件都沒有落地** ——
+> 2026-08-23 實測 repo HEAD（`data.json`／`update_data.py`／`healthcheck.py`／
+> `AGENT_BRIEF` §3.5）全部還是 `megaipo`，整個 repo 找不到 `conc48` 這個字串。
+> **這一輪照現況做，不要去實作它。** 要換是 `/bubble-maintain` 的工作。
 
 異常處理：單項研究失敗不影響其他步驟。healthcheck 若出現
 「白名單來源連續成功 ≥15 次」的 WARN，那是提醒把該來源從 §9 與 healthcheck 的
 `KNOWN_FAIL` 一起移除 —— **那是維護工作階段要做的事，覆核只要提一行**。
-目前白名單有三項：AAII、台積電權重，以及 2026-08-23 隨 `conc48` 新加的
-**slickcharts 前十大**（性質不同：前兩者是「已知會失敗」，後者是「還沒在 Actions 端
-被驗證」，由 streak 見真章）。**已退場的來源不在白名單裡 —— CBOE（2026-08-17 退場）
+目前白名單**兩項**：AAII 與台積電權重（`healthcheck.py` 的 `KNOWN_FAIL`，2026-08-23 實測）。
+AAII 持續在 Actions 端被擋、台積電權重要人工更新。**已退場的來源不在白名單裡 —— CBOE（2026-08-17 退場）
 與 CNN F&G（2026-08-22 退場）若出現在 fail 就是 healthcheck FAIL、會擋住交付**，
 那是刻意的，不要當成已知正常放過。
 
