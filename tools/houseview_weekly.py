@@ -68,8 +68,22 @@ WATCHED = ("4. 匯流訊號報", "5. 外資報告")
 
 
 def sh(cmd, cwd=None, env=None):
+    """跑一個外部指令。**執行檔不存在也要回退出碼，不要拋例外。**
+
+    2026-08-23：`subprocess.run` 對「找不到執行檔」丟的是 `FileNotFoundError`，
+    不是回非零退出碼。而下面那道 `if sh(["node","-v"])[0] != 0` 的守衛，
+    全部職責就是把「這台機器沒有 node」講清楚 —— 結果它自己炸成 traceback，
+    而且因為是拋例外不是走 `die()`，**回執一個字都沒寫**。
+    排程真的這樣失敗時 outbox 是空的，看起來跟沒跑過一模一樣。
+
+    **我量的是退出碼，比真正的失敗低一層。** 127 是 shell 對 command not found
+    的慣例碼，這裡沿用。
+    """
     e = dict(os.environ); e.update(env or {})
-    p = subprocess.run(cmd, cwd=cwd, env=e, capture_output=True, text=True)
+    try:
+        p = subprocess.run(cmd, cwd=cwd, env=e, capture_output=True, text=True)
+    except OSError as ex:
+        return 127, "", f"{cmd[0]}: {ex.strerror or ex}"
     return p.returncode, (p.stdout or ""), (p.stderr or "")
 
 
@@ -127,8 +141,13 @@ def main(argv):
     if not os.path.isdir(a.dir):
         return die(2, f"houseview 目錄不在：{a.dir}"
                       f"（本支位於 {KBCORE}，兄弟目錄找的是 {SIBLING}）")
-    if sh(["node", "-v"])[0] != 0:
-        return die(2, "這台機器沒有 node —— 產生器與邊界測試都跑不了，**這不是通過**")
+    rc_node, ver, _ = sh(["node", "-v"])
+    if rc_node != 0:
+        return die(2, "PATH 上沒有 node —— 產生器與邊界測試都跑不了，**這不是通過**。"
+                      f"（PATH={os.environ.get('PATH', '')[:200]}）"
+                      "　Cowork 工作區有 node，Mac 的 login shell 不一定有："
+                      "**兩邊是不同的機器**，不要用其中一邊的結果推另一邊")
+    R["node"] = ver.strip()
     if not os.path.isdir(os.path.join(a.dir, "node_modules")):
         return die(2, "node_modules 不在（跑 `npm ci`）—— 邊界測試會全部以載入錯誤收場，"
                       "而那種失敗長得跟守衛叫了一樣")
@@ -245,7 +264,14 @@ def selftest():
         okk = got == want
         bad += not okk
         print(("PASS  " if okk else "FAIL  ") + name)
-    print(f"\n{len(cases) + 2 - bad}/{len(cases) + 2} 通過")
+    # 執行檔不存在時 sh() 要回 127，不是拋例外
+    extra = [("sh · 執行檔不存在要回 127 不要拋",
+              sh(["這個執行檔不存在-xyzzy"])[0] == 127)]
+    for name, okk in extra:
+        bad += not okk
+        print(("PASS  " if okk else "FAIL  ") + name)
+    n = len(cases) + 2 + len(extra)
+    print(f"\n{n - bad}/{n} 通過")
     return 1 if bad else 0
 
 
@@ -289,5 +315,30 @@ def report(R):
     print(f"\n退出碼 {R['exit']}　回執 {R['stamp']}.receipt.json")
 
 
+def _guarded(argv):
+    """**炸掉也要留下回執。** 沒有回執的失敗與沒有跑過長得一樣，
+    而這支存在的理由就是回答「上週到底跑了沒有」。"""
+    try:
+        return main(argv)
+    except SystemExit:
+        raise
+    except BaseException as ex:
+        import traceback
+        outbox = next((argv[i + 1] for i, x in enumerate(argv) if x == "--outbox"),
+                      os.path.join(sibling("outbox"), "houseview"))
+        now = dt.datetime.now(TPE)
+        try:
+            write(outbox, now.date().isoformat(), {
+                "system": "houseview", "stamp": now.date().isoformat(),
+                "at": now.isoformat(), "exit": 2, "checks": {},
+                "crashed": traceback.format_exc()[-2000:],
+                "notes": ["這支自己炸了 —— 回執是在例外處理裡寫的，"
+                          "所以有這個檔就代表它至少跑到了這裡"]})
+        except Exception:
+            pass
+        traceback.print_exc()
+        return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(_guarded(sys.argv))
