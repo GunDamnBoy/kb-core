@@ -78,6 +78,8 @@ houseview.script_falsifier_present
 houseview.script_landing_present
 houseview.script_quote_is_judgment
 houseview.script_quote_present
+houseview.script_red_page_share
+houseview.script_red_per_para
 podcast.chars_in_tier
 podcast.completeness_band
 podcast.crosscut_present

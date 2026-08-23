@@ -550,3 +550,71 @@ _reg("houseview.script_anchor3_recycled",
                          "pages": [{"chapter": "策略", "script": [{"paras": ["收尾沒有提到那個數字。"]}]}]}},
      near_miss={"script": {"anchor3": ["營建支出年增 46%"],
                            "pages": [{"chapter": "策略", "script": [{"paras": ["回到開場那三個數字：年增 46%。"]}]}]}})
+
+
+# ── 紅字密度 ────────────────────────────────────────────────
+#
+# `**紅字**` 在講稿與投影片是同一個記號，而它的意思是**品牌紅強調**，
+# 不是 markdown 的粗體。2026-08-23 首次實際渲染時整頁幾乎每一段都是紅的 ——
+# 因為寫的時候當成 markdown 的粗體在用。
+#
+# 規格早就有這條（「每段至少一處，以 1–2 處為度」「近半段落都是紅粗體時
+# 強調就失去層級」），只是從來沒有東西在驗。
+
+RED_MAX_PER_PARA = 2
+RED_MAX_PAGE_SHARE = 0.5
+
+
+def _red_hits(s):
+    import re
+    return len(re.findall(r"\*\*[^*]+\*\*", str(s)))
+
+
+def _para_texts(pg):
+    out = [x for sec in (pg.get("script") or []) for x in (sec.get("paras") or [])]
+    out += list(pg.get("landing") or [])
+    return out
+
+
+def _red_per_para(p):
+    def why(pg):
+        bad = [(i, n) for i, x in enumerate(_para_texts(pg), 1)
+               for n in [_red_hits(x)] if n > RED_MAX_PER_PARA]
+        return (f"{len(bad)} 段的紅字超過 {RED_MAX_PER_PARA} 處"
+                f"（最多的一段 {max(n for _, n in bad)} 處）") if bad else ""
+    return _each(p, why, f"有段落的紅字超過 {RED_MAX_PER_PARA} 處"
+                 "——`**` 在這裡是品牌紅強調，不是 markdown 的粗體：")
+
+
+_reg("houseview.script_red_per_para",
+     f"單一段落的 `**紅字**` 不超過 {RED_MAX_PER_PARA} 處",
+     ["**只數處數，不看標對地方沒有** —— 兩處紅字標在無關緊要的詞上照樣 PASS",
+      "標題與【金句】不算在內（它們整句就是強調）"],
+     _red_per_para,
+     fixture={"script": {"pages": [{"no": "P1", "script": [
+         {"paras": ["**一** 和 **二** 和 **三**"]}]}]}},
+     near_miss={"script": {"pages": [{"no": "P1", "script": [
+         {"paras": ["**一** 和 **二**"]}]}]}})
+
+
+def _red_share(p):
+    def why(pg):
+        ps = _para_texts(pg)
+        if not ps:
+            return ""
+        hit = sum(1 for x in ps if _red_hits(x))
+        share = hit / len(ps)
+        return (f"{hit}/{len(ps)} 段帶紅字（{share:.0%}）"
+                if share > RED_MAX_PAGE_SHARE else "")
+    return _each(p, why, "有頁面過半的段落都帶紅字——**近半段落都是紅粗體時，強調就失去層級**：")
+
+
+_reg("houseview.script_red_page_share",
+     f"單頁帶紅字的段落不超過 {RED_MAX_PAGE_SHARE:.0%}",
+     ["**比例過得了，仍可能整頁沒有重點** —— 這條只擋太多，不擋太少",
+      "缺紅字（一段都沒有）這條不管，那是另一個方向的問題"],
+     _red_share,
+     fixture={"script": {"pages": [{"no": "P1", "script": [{"paras": [
+         "**紅**", "**紅**", "白"]}]}]}},
+     near_miss={"script": {"pages": [{"no": "P1", "script": [{"paras": [
+         "**紅**", "白", "白"]}]}]}})
