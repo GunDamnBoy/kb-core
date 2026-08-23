@@ -18,7 +18,7 @@
 | `com.kenny.kbwatch` | 每 4 小時 | 看門狗：Actions 上的哨兵還活著嗎、本機程式有沒有漂移 |
 | `com.kenny.kbwatch.podcast` | 02／06／10／14／18／22 時 | podcast 的看門狗（`kbwatch-podcast.sh`）：哨兵＋`healthcheck.py` |
 | `com.kenny.kbwatch.chart` | 00／04／08／12／16／20 時 | chart 的看門狗：只跑 `watch_sentinel.py`（chart 沒有 healthcheck） |
-| `com.kenny.kbdocx.podcast` | 每天 04:00 | 把**已發布的**當日 JSON 排版成 Word（`kbdocx-podcast.sh`）→ `~/Documents/podcast-reports` |
+| `com.kenny.kbdocx.podcast` | 每天 04:00／07:00／10:00／13:00 | 把**已發布的**當日 JSON 排版成 Word（`kbdocx-podcast.sh`）→ `~/Documents/podcast-reports`。**四個時刻是重試不是重做**：它只在回執 `exit 0` 時轉檔，而回執每輪被覆寫，發布晚成功的那天值會從非 0 翻成 0（2026-08-24 只釘 04:00 時漏過一次）。冪等守衛讓後面三輪各是一次 stat 比較 |
 | `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
 | `com.kenny.kbprefetch.advisory` | 每天 07:20 | 投顧保底層預抓（`kbprefetch-advisory.sh`）：curl origin 的 `raw/<date>.json` → `~/.advisoryfetch/raw/` 快取。**不跑 git** |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |

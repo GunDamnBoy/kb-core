@@ -74,14 +74,26 @@ def dirty_outside(porcelain: str, paths) -> list:
     porcelain 的格式是兩個狀態字元 ＋ 一個空白 ＋ 路徑，所以路徑從第 4 個字元
     開始。兩個要小心的形態：改名是 `R  舊 -> 新`（取新的那一邊，舊的已經不存在了），
     含空白或非 ASCII 的路徑會被 git 包成 `"..."`（引號不是路徑的一部分）。
+
+    **`staged_paths` 裡可以是檔案，不只是目錄**，所以比對要同時認「等於」與
+    「在它底下」。初版只寫了後者（`p.startswith(q + "/")`），於是投顧的
+    `["data", "index.html"]` 裡那個 `index.html` **被判成不歸 publish 管** ——
+    一個系統明文宣告要推的檔，被擋在推它的那一步之前，而且是每 60 秒一次。
+    同一版的註解還宣稱「不可能讓事情比現況更糟」：那句話對目錄型的
+    `staged_paths` 成立，對檔案型的**不成立**（改動前 `git add -- index.html`
+    會把它 commit 掉、rebase 順利通過）。**驗的時候只測了目錄型的多路徑系統，
+    而唯一含檔案的那一套沒被測到 —— 會壞的正好是沒測的那一個。**
     """
-    owned = tuple(f"{p.rstrip('/')}/" for p in paths)
     out = []
     for line in porcelain.splitlines():
         if not line.strip():
             continue
         p = line[3:].split(" -> ")[-1].strip().strip('"')
-        if p and not p.startswith(owned):
+        if not p:
+            continue
+        q = p.rstrip("/")
+        if not any(q == own or q.startswith(own + "/")
+                   for own in (s.rstrip("/") for s in paths)):
             out.append(p)
     return out
 
@@ -200,9 +212,10 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     # 於是 rebase 每一輪都倒在同一個地方。
     #
     # 2026-08-24 實際發生過：08-23 一場維護改了 README.md、AGENT_BRIEF.md、
-    # MAINTENANCE.md 沒有提交，隔天 03:32 起每 60 秒重試一次、連續 188 輪，
-    # **而每一輪都先成功 commit 了一次 data**，三小時累積 188 筆本地 commit
-    # （其中 187 筆只改了 index.json 的一個時間戳），沒有任何一筆推得出去。
+    # MAINTENANCE.md 沒有提交，隔天 03:32 到 06:43 每 60 秒重試一次、
+    # **回執連續 191 輪都是 `exit 14 @ rebase`**，而每一輪都先成功 commit 了一次
+    # data，累積 188 筆推不出去的本地 commit（其中 187 筆只改了 index.json
+    # 的一個時間戳）。**191 是輪數、188 是 commit 數，兩個數字都量過，不要混用。**
     #
     # 三個決定，每個都有理由：
     #
@@ -216,8 +229,14 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     #   - **不嘗試代為 stash 或提交。** 那些是別人做到一半的工作，
     #     publish 不知道它們完成了沒有。擋下來讓人看，比替人決定安全。
     #
-    # 這一條**不可能讓事情比現況更糟**：它擋下來的每一種狀態，原本都會在
-    # 三行之後的 rebase 倒下。它只是把一個無限迴圈換成一次具名的停止。
+    # **這一條只在比對正確時才「不會讓事情更糟」，而初版的比對是錯的。**
+    # 原本想寫的是：它擋下來的每一種狀態，原本都會在三行之後的 rebase 倒下，
+    # 所以它只是把無限迴圈換成一次具名的停止。那句話對**目錄型**的
+    # `staged_paths` 成立 —— 但初版把 `staged_paths` 一律當目錄，於是投顧的
+    # `index.html`（檔案）被判成外人，而它原本會被下一行 add 掉、順利推上去。
+    # **同一場的驗證只測了目錄型的多路徑系統，漏掉唯一含檔案的那一套。**
+    # 修正見 dirty_outside() 的 docstring。教訓不是「要多測幾個案例」，是
+    # **宣稱「不可能更糟」之前，先去數有幾種輸入形狀，而不是數自己測了幾個**。
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no",
                 check=False).stdout.strip()
     if dirty:
