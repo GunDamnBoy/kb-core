@@ -67,12 +67,20 @@ REQUIRED_BY_LABEL = {
     # `advisory-rewrite/sentinel/heartbeat.json` 因此停在 08-22 07:20Z、`latest_date`
     # 停在 08-22，即使 08-23 已經正常發布。**一個永遠紅的看門狗把真訊號埋掉了。**
     #
-    # 它是唯一一支不跑 `tools/publish.py` 的（跑 ai-bubble-monitor 的
-    # `scripts/auto_publish.py`，plist 正本也在那個 repo）。**我沒有讀到那支程式**
-    # —— 這台機器上的工作階段掛載不到 `~/Projects/ai-bubble-monitor`。
-    # 依 README「發布 → `ai-bubble-monitor`」推定它會 push，故登記 `git`。
-    # 兩個方向的錯不對稱：多登記 git 的代價是零（git 一定在，另外七支都要它），
-    # 漏登記的代價是一個安靜的洞。**下次碰得到那個 repo 時要拿 auto_publish.py 複驗。**
+    # 它是唯一一支不跑 `tools/publish.py` 的：plist 直接跑 venv 的 python 執行
+    # `~/Projects/ai-bubble-monitor/scripts/auto_publish.py`，沒有包裝腳本，
+    # plist 正本也在那個 repo。
+    #
+    # **同日在機器上實測過，不是推定**（工作階段掛載不到那個 repo，所以是在終端機跑的）：
+    # 掃 `auto_publish.py` 與 `gate.py` 的所有 list 字面值首元素，只有 `git` 與 `composite`
+    # 兩個，而 `composite` 是 `gate.py:76` 的必要 JSON 鍵清單、不是指令。
+    # git 共 12 個呼叫點（auto_publish 10、gate 2），全走同一個 `subprocess.run` 包裝，
+    # **整個 repo 沒有任何 `shell=True`** —— 所以 PATH 白名單的推理成立，
+    # 沒有第二條經由 shell 展開的路徑。
+    # 該 plist 宣告的 PATH 是 `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`，
+    # **沒有 `/opt/homebrew/bin`**；用 `env -i` 只留那個 PATH 實測，git 解析到
+    # `/usr/bin/git`（Xcode CLT 那支）。**它不依賴 Homebrew，這是它的運氣不是它的設計** ——
+    # 哪天有人往那支程式加一個只有 Homebrew 才有的指令，這條會叫，而那正是它該做的事。
     "com.kenny.kbpublish.bubble":  ["git"],
     # 2026-08-23：advisory 的保底層預抓。只用 curl 抓 origin 上的 raw JSON 到
     # `~/.advisoryfetch/`，**不跑任何 git**（跑 git 會與每 60 秒的 kbpublish 搶 index.lock）。

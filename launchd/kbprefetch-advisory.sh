@@ -47,7 +47,9 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"; }
 log "=== 開始預抓 $TODAY ==="
 
 if [ -f "$DEST" ]; then
-  log "已經有 $DEST，不重抓（要重抓就先刪掉它）"
+  # 變數一律用 ${} 包起來：後面接全形標點時，`$DEST，` 會被 bash 當成變數名
+  # `DEST，` 而展開成空字串 —— 2026-08-23 首次實跑就是這樣把路徑印丟了。
+  log "已經有 ${DEST}，不重抓（要重抓就先刪掉它）"
   exit 0
 fi
 
@@ -107,6 +109,6 @@ fi
 
 # 原子寫入：輪次可能正好在讀這個目錄。
 mv "$TMP" "$DEST"
-log "落地 $DEST（$(wc -c < "$DEST") bytes）：$summary"
+log "落地 ${DEST}（$(wc -c < "$DEST") bytes）：${summary}"
 log "=== 結束，exit=0 ==="
 exit 0

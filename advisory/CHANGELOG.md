@@ -1072,6 +1072,14 @@ index.html 是單檔、不引入任何 CDN，加互動要嘛寫一堆事件、�
 與 `kbprefetch-chart.sh` 同一個紀律。腳本會驗 `date` 是今天、`failed_essential` 是空的
 才落地（不合格 exit 10）：**拿到一份日期不對的檔案而以為保底層正常，比抓不到更糟。**
 
+**當天在機器上實跑了一次**（沒有等隔天 07:20 —— 那時候沒有人在場）：exit 0、
+1,396,732 bytes 落地、驗證欄位全對。**而這一跑抓到一個 `bash -n` 抓不到的 bug**：
+log 那一行寫的是 `log "落地 $DEST（… bytes）"`，全形括號直接接在變數後面，
+bash 把 `DEST（` 整串當成變數名、展開成空字串，於是**路徑印丟了**。
+語法完全合法，所以 `bash -n` 是綠的；要跑一次、而且要看輸出，才看得見。
+已改成 `${DEST}` 並在該行留下註解。**這支腳本的 log 就是「今天到底有沒有跑」的唯一證據，
+少印一個路徑等於少一半價值。**
+
 ### 四、正本改了、prompt 沒重推，於是那一節安靜地不存在了
 
 `skills/advisory/SKILL.md` 正本 17,870 bytes、排程副本 16,890，差的是**整節「用量：量它，不要估它」**。
@@ -1093,10 +1101,21 @@ STAT News 那次**不在 `.article-content` 內文區塊裡**（逐段掃內文�
 但 `watch.external_binaries` 持續 FAIL：`com.kenny.kbpublish.bubble` 不在 `REQUIRED_BY_LABEL` 裡。
 **一個永遠紅的看門狗把真訊號埋掉了**，而它紅的理由與它守的東西無關。
 
-登記進去了，但**這一條是本次唯一沒有實測依據的改動**：`kbpublish.bubble` 跑的是
-`~/Projects/ai-bubble-monitor/scripts/auto_publish.py`，這台機器的工作階段掛載不到那個 repo，
-**我沒有讀到那支程式**。依 README「發布 → `ai-bubble-monitor`」推定它會 push，故登記 `git`。
-兩個方向的錯不對稱：多登記 git 的代價是零（另外七支都要它），漏登記的代價是一個安靜的洞。
+登記進去了。**推定值當天就在機器上驗掉了**（工作階段掛載不到 `~/Projects/ai-bubble-monitor`，
+所以是在終端機跑的）：掃 `auto_publish.py` 與 `gate.py` 的所有 list 字面值首元素，
+只有 `git` 與 `composite` 兩個，而 `composite` 是 `gate.py:76` 的必要 JSON 鍵清單、不是指令；
+git 共 12 個呼叫點（auto_publish 10、gate 2），**整個 repo 沒有任何 `shell=True`**，
+所以 PATH 白名單的推理成立、沒有第二條經由 shell 展開的路徑。
+用 `env -i` 只留該 plist 宣告的 PATH（`/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`，
+**沒有 `/opt/homebrew/bin`**）實測，git 解析到 `/usr/bin/git`。
+**它不依賴 Homebrew 是運氣不是設計** —— 哪天那支程式加了一個只有 Homebrew 才有的指令，
+這條檢查會叫，而那正是它該做的事。
+
+**驗這一條的過程本身值得記**：我第一版的 grep 只比對了一份自己列的指令白名單
+（git／ssh／rsync／curl／node／npm／bash／sh／osascript），它印出「只有 git」——
+**而那證明不了「沒有別的指令」，只證明了「白名單裡的只有 git」。**
+改成不限白名單重掃才跑出 `composite`，才知道要再看一行才能下結論。
+白名單式的查核會給出一個看起來完整、實際上只覆蓋你想得到的那些的答案。
 
 **怎麼驗的**：`py_compile` 全綠；檢查自檢 0 失敗（新檢查的 fixture 與 near_miss
 擺在邊界兩側、只差一個數字）；`advisory_verify` 對已發布的 `2026-08-23.json`
