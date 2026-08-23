@@ -290,12 +290,16 @@ register(Check(
         "那是偶發、非結構性的重疊，處置是寫進 `gaps`，這條看不到",
     ],
     run=_resonance_independent,
+    # **這一對同時測兩件事**：券商算不算獨立票，以及投顧＋圖表算不算一票。
+    # fixture 是投顧＋圖表＋券商 = 2 個聲音（narrative_adv ＋ sellside）→ 不足。
+    # near_miss 只把圖表換成節目 = 3 個聲音 → 剛好夠。
+    # **兩邊差一格，所以它證明的是「在哪裡叫」而不只是「會叫」。**
     fixture={"draft": {"sections": [{"id": "resonance", "items": [
         {"title": "t", "tags": [{"t": "共振"}],
-         "evidence": [{"s": "投顧"}, {"s": "圖表"}]}]}]}},
+         "evidence": [{"s": "投顧"}, {"s": "圖表"}, {"s": "券商"}]}]}]}},
     near_miss={"draft": {"sections": [{"id": "resonance", "items": [
         {"title": "t", "tags": [{"t": "共振"}],
-         "evidence": [{"s": "投顧"}, {"s": "圖表"}, {"s": "節目"}, {"s": "監控"}]}]}]}},
+         "evidence": [{"s": "投顧"}, {"s": "節目"}, {"s": "券商"}]}]}]}},
     suite="convergence",
 ))
 
@@ -357,15 +361,33 @@ register(Check(
 CODE_RX = re.compile(r"<code>([a-z0-9_]+)</code>")
 
 
+def legal_ids(bub):
+    """監控庫裡**所有可以被 `<code>` 引用的名字**。
+
+    2026-08-23：`quant_grounded` 與 `watch_bound` 各自建了一份這種集合，
+    然後**它們不一致** —— 前者收了 `stage`／`twheat` 等 quant 欄位名，
+    後者只收 trigger 與 indicator，於是一條寫對的 watch
+    （「`tw_export` 一旦更新，`twheat` 會上升」）被判成非法。
+
+    一個定義兩個家，遲早會有一天只對了一半。這裡是那一個家。
+
+    **引用慣例是全小寫**（`CODE_RX` 是 `[a-z0-9_]+`），而 JSON 的欄位名不是
+    （`twHeat`）—— 所以最後統一補上小寫形式。
+    """
+    out = {i.get("id") for i in (bub.get("indicators") or [])}
+    out |= {t.get("id") for t in (bub.get("triggers") or [])}
+    out |= set((bub.get("dims") or {}).keys())
+    out |= {i.get("id") for i in ((bub.get("tw") or {}).get("items") or [])}
+    out |= {"composite", "twHeat", "stage", "quadrant", "zone"}
+    out = {x for x in out if x}
+    return out | {x.lower() for x in out}
+
+
 def _quant_grounded(p):
     bub = p.get("bub")
     if not bub:
         return skipped("這一輪沒有監控庫快照 —— 跟「對過、都對」是兩件事")
-    legal = {i.get("id") for i in (bub.get("indicators") or [])}
-    legal |= {t.get("id") for t in (bub.get("triggers") or [])}
-    legal |= set((bub.get("dims") or {}).keys())
-    legal |= {i.get("id") for i in ((bub.get("tw") or {}).get("items") or [])}
-    legal |= {"composite", "twHeat", "stage", "quadrant"}
+    legal = legal_ids(bub)
     ev_txt = [e.get("t", "") for _, it in _items(p) for e in (it.get("evidence") or [])
               if e.get("s") == "監控"]
     bad, unmarked = [], 0
@@ -488,20 +510,30 @@ def _watch_bound(p):
         return skipped("這一輪沒有監控庫快照")
     trig = {t.get("id") for t in (bub.get("triggers") or [])}
     ind = {i.get("id") for i in (bub.get("indicators") or [])}
+    legal = legal_ids(bub)
     ws = _d(p).get("watch") or []
-    bad = []
+    bad, second = [], []
     for w in ws:
         t = w if isinstance(w, str) else json.dumps(w, ensure_ascii=False)
         for i in CODE_RX.findall(t):
             if i in trig:
                 continue
-            if i in ind:
-                # **標成合法的 indicator id 是最危險的那一種**：
-                # `ccc` 本身合法，過度標記檢查會放它過，而下一期沒東西可驗收。
-                bad.append(f"`{i}` 是 indicator 不是 trigger —— "
-                           f"是不是想標 {sorted(x for x in trig if x.startswith(i))[:1] or '對應的 trigger'}？")
+            # **判準是「有沒有對應的 trigger」，不是「是不是 trigger」。**
+            # 第一版把所有非 trigger 都判 FAIL，於是擋掉一個規格明文允許的做法：
+            # 沒有現成門檻時綁 indicator 是「可證偽但無法自動驗收」的次選
+            # （第 003 期的 `capexocf` 與 `tw_export` 就是這樣，當時是被接受的）。
+            #
+            # 真正的事故形狀是另一種：標了 `<code>ccc</code>` 而**對應的
+            # `ccc12` 就在那裡** —— `ccc` 本身是合法欄位名，過度標記檢查會放它過，
+            # 而下一期查 `ccc` 的 state 查不到東西。那一種才是 FAIL。
+            near = sorted(x for x in trig if x.startswith(i))
+            if near:
+                bad.append(f"`{i}` 有對應的 trigger `{near[0]}` 卻標成了 `{i}` —— "
+                           "下一期會查不到 state")
+            elif i in legal:
+                second.append(i)
             else:
-                bad.append(f"`{i}` 既不是 trigger 也不是 indicator")
+                bad.append(f"`{i}` 不是監控庫裡任何一個可引用的名字")
     if bad:
         return fail("；".join(bad[:4]))
     marked = sum(1 for w in ws if CODE_RX.search(
@@ -509,6 +541,10 @@ def _watch_bound(p):
     if ws and not marked:
         return warn(f"{len(ws)} 條 watch **一條都沒有綁 trigger id** —— "
                     "純中文描述門檻的條目機器擋不了，下一期會沒有東西可以驗收")
+    if second:
+        return warn(f"{len(ws)} 條 watch，{marked} 條有綁 id；其中 {sorted(set(second))} "
+                    "綁的是 indicator／tw 項目而不是 trigger —— **可證偽但無法自動驗收**，"
+                    "下一期要人工裁決。規格允許，但要知道自己選了次選")
     return ok(f"{len(ws)} 條 watch，{marked} 條綁了正確的 trigger id")
 
 
@@ -519,6 +555,9 @@ register(Check(
         "**沒有監控庫快照的輪次整條跳過**（SKIPPED，不是 PASS）",
         "**整條用中文描述門檻、明文裡根本沒有 id** —— 出 WARN 不出 FAIL，"
         "因為「這條該不該綁 trigger」機器判不了",
+        "**綁 indicator 而確實沒有對應 trigger 的那些** —— 出 WARN 不出 FAIL。"
+        "那是規格允許的次選（可證偽但無法自動驗收），機器分不出「刻意選次選」"
+        "與「沒想到有現成的」",
         "綁對了 id 但門檻描述與 trigger 的定義不一致",
     ],
     run=_watch_bound,
@@ -530,7 +569,112 @@ register(Check(
 ))
 
 
-# ── 9. gaps 每期都要有 ──────────────────────────────────────────────
+# ── 9. 賣方裁決：到期的主張一條都不能漏 ────────────────────────────
+# **詞彙不是自己訂的，是外資報告 `research/anchors.json` 的 `status_vocab`** ——
+# 而那一套又跟 podcast 的 `observations.json` 逐字相同。anchors 寫著理由：
+# 「同一個判斷的詞彙只有一套，不然兩個庫的『部分應驗』會慢慢變成兩件事」。
+# 第一版寫成 `("應驗","落空","未定")` —— **那是第三套詞彙**，而它會安靜地
+# 在帳本裡長出一個 podcast 那邊不認得的狀態。
+TERMINAL = ("應驗", "部分應驗", "落空", "無法驗證")
+
+# `延後` 是**匯流自己的狀態，不進帳本**。
+# 「還判不了」與「判了但無法驗證」是兩件事：前者下週還要再看，
+# 後者已經結案。把前者寫成 `無法驗證` 等於用一個結案掩蓋一次沒做完的功課。
+# 延後的那些會維持 `觀察中`、下一期照樣被 `prepare.py` 撈出來 —— 那是刻意的。
+DEFER = "延後"
+RESULTS = TERMINAL + (DEFER,)
+
+# 往前看一週再撈。**這跟 anchors 的 `overdue_grace_days`（14 天）不是同一件事**：
+# 那個是「到期多久之後才算逾期」，這個是「多早開始把它端到面前」。
+# 到期當週才發現要判，那一期已經沒有時間去找證據了。
+HORIZON_DAYS = 7
+
+
+def _verdicts_complete(p):
+    """**到期而沒有被裁決的主張，是安靜地掉的。**
+
+    外資報告的 `stances.json` 有 96 筆帶到期日的分析師主張，而在匯流接手之前
+    **沒有任何流程負責判它們**。這條檢查是那個接手的機械保證：
+    當週到期的每一筆，要嘛有裁決，要嘛明講為什麼還判不了。
+
+    `未定` 必須寫理由，理由不是形式 —— 一個可以無理由填「未定」的欄位，
+    就是「為了讓燈變綠而全部改判無法驗證」那條失效模式的入口，
+    而那條**機器擋不住**，只能逼它留下痕跡讓人看得到。
+    """
+    d = _d(p)
+    st = p.get("stances")
+    if st is None:
+        return skipped("這一輪沒有立場帳本 —— 跟「都判完了」是兩件事")
+    if not d.get("schemaVer"):
+        return skipped("這是 v2 之前的期，沒有賣方對帳")
+    items = {x.get("id"): x for x in (st.get("items") or [])}
+    rulings = d.get("rulings") or []
+    bad = []
+    seen = set()
+    for r in rulings:
+        i = r.get("id")
+        if i in seen:
+            bad.append(f"`{i}` 裁決了兩次")
+        seen.add(i)
+        if i not in items:
+            bad.append(f"`{i}` 不在立場帳本裡")
+            continue
+        if items[i].get("verdict"):
+            bad.append(f"`{i}` 已經裁決過了 —— **不重複結案**")
+        if r.get("result") not in RESULTS:
+            bad.append(f"`{i}` 的 result 是 {r.get('result')!r}，合法值只有 {RESULTS}")
+        if not (r.get("why") or "").strip():
+            bad.append(f"`{i}` 沒有寫理由 —— **裁決沒有理由就不是裁決**"
+                       + ("；「延後」尤其要寫，不然它就是把判斷推掉"
+                          if r.get("result") == DEFER else ""))
+    # 到期而沒被碰的
+    try:
+        cut = (dt.date.fromisoformat(d["date"]) + dt.timedelta(days=HORIZON_DAYS)).isoformat()
+    except Exception:
+        return fail(f"`date` 不是合法日期：{d.get('date')!r}")
+    due = [x for x in (st.get("items") or [])
+           if not (x.get("verdict") or "").strip() and str(x.get("due", "")) <= cut]
+    missed = [x["id"] for x in due if x["id"] not in seen]
+    if missed:
+        bad.append(f"{len(missed)} 筆到期而完全沒有裁決：{missed[:3]} —— "
+                   "**到期而沒被碰的主張是安靜地掉的**，判不了就寫「未定」加理由")
+    if bad:
+        return fail("；".join(bad[:5]))
+    n = {r: sum(1 for x in rulings if x.get("result") == r) for r in RESULTS}
+    n_def = n.get(DEFER, 0)
+    detail = (f"到期 {len(due)} 筆全部處理："
+              + "、".join(f"{k} {v}" for k, v in n.items() if v))
+    if n_def and n_def == len(rulings) and rulings:
+        # **全部延後不是失敗，但它值得被看見。** 那是「這一期沒有裁決任何東西」，
+        # 而它跟「這一期沒有到期的」在戰績上長得一模一樣。
+        return warn(detail + " —— **本期一筆都沒有結案**，全部延後。"
+                    "偶爾如此是正常的；連續幾期如此代表裁判方法選錯了")
+    return ok(detail)
+
+
+register(Check(
+    id="convergence.verdicts_complete",
+    covers="當週到期的每一筆分析師主張都有處理；result 在 `status_vocab` 的值域"
+           "（加匯流自己的「延後」）；每一筆都有理由；不重複結案",
+    blind_to=[
+        "**沒有立場帳本的輪次整條跳過**（SKIPPED，不是 PASS）",
+        "**v2 之前的期整條跳過** —— 那時還沒有賣方對帳",
+        "**判得對不對** —— 這條只看有沒有判、格式合不合法",
+        "**為了省事全部judge成「未定」加一句敷衍的理由** —— 機器分不出敷衍與誠實，"
+        "這條只逼它留下痕跡",
+        "還沒到期但已經明顯落空的那些 —— 這條只看到期的",
+    ],
+    run=_verdicts_complete,
+    fixture={"draft": {"date": "2026-09-29", "schemaVer": "2", "rulings": []},
+             "stances": {"items": [{"id": "s1", "due": "2026-09-23", "verdict": ""}]}},
+    near_miss={"draft": {"date": "2026-09-29", "schemaVer": "2",
+                         "rulings": [{"id": "s1", "result": "應驗", "why": "HY 走闊 92bp"}]},
+               "stances": {"items": [{"id": "s1", "due": "2026-09-23", "verdict": ""}]}},
+    suite="convergence",
+))
+
+
+# ── 10. gaps 每期都要有 ─────────────────────────────────────────────
 def _gaps_present(p):
     """**這一套順便是另外五套的健康度哨兵。**
 

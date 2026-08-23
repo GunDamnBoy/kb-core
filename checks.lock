@@ -42,6 +42,7 @@ convergence.quant_grounded
 convergence.quant_reconcile
 convergence.resonance_independent
 convergence.structure
+convergence.verdicts_complete
 convergence.watch_bound
 demo.date_present
 demo.items_nonempty

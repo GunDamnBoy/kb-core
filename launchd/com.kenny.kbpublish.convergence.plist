@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 2026-08-23 新增：主題匯流訊號報是第六套系統。形狀與另外四支 kbpublish 一致 ——
+       publish.py 的參數是 (outbox, repo, 系統 id) 三件一組，一個 plist 只發一套。
+
+       **outbox 是 ~/outbox/convergence/ 這個子目錄，不是 ~/outbox/。**
+       publish 的 glob 是 `*.draft.json` 且非遞迴，所以各套系統的草稿放在不同層
+       就互相看不見。這是物理隔離，不靠紀律。
+
+       這一套是**週頻**的，所以絕大多數輪次都會是空輪次 —— 跟外資報告一樣。
+
+       ## 這一套跟前五套不同的地方
+
+       它的 payload 要讀**五個上游**的原始資料（敘事語料逐字回查、量化數字對回
+       監控庫、賣方原句對回立場帳本），而那些東西全部在 `work/` 底下、不在 repo 裡。
+       所以 `CONVERGENCE_WORK` 必須明寫。
+
+       **缺語料時 `build()` 會 raise，回執是 BAD_INPUT。** 那是刻意的：
+       空語料會讓每一條逐字比對的檢查 vacuously 通過 —— 十幾條全綠、回執 exit 0，
+       而一條佐證都沒有被驗到。**寧可發不出去，不要發一份沒驗過的。** -->
+  <key>Label</key>
+  <string>com.kenny.kbpublish.convergence</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/publish.py</string>
+    <string>/Users/macmini/outbox/convergence</string>
+    <string>/Users/macmini/convergence-weekly</string>
+    <string>convergence-weekly</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+    <!-- **路徑寫在這裡而不是靠 `~` 展開。** 理由跟 research 那支逐字相同：
+         沙箱裡有同名的舊拷貝時，兩邊會算出不同的結果，而兩邊看起來都很合理。 -->
+    <key>CONVERGENCE_WORK</key>
+    <string>/Users/macmini/convergence-weekly/work</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/convergence/publish.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/convergence/publish.log</string>
+</dict>
+</plist>

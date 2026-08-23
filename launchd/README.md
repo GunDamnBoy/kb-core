@@ -24,6 +24,7 @@
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
 | `com.kenny.kbcorepush` | 每 300 秒 | 推 **kb-core 自己**（`push_kbcore.py`），帶靜置與自檢閘門 |
 | `com.kenny.kbpublish.bubble` | 每 60 秒 | 發布 **AI 泡沫監控**的每週質化覆核：`~/outbox/bubble/` → `ai-bubble-monitor` |
+| `com.kenny.kbpublish.convergence` | 每 60 秒 | 發布**主題匯流訊號報**：`~/outbox/convergence/` → `convergence-weekly` |
 
 **`kbpublish.bubble` 是唯一一支不跑 `tools/publish.py` 的。** 它跑的是
 `~/Projects/ai-bubble-monitor/scripts/auto_publish.py`，**plist 的版控正本也在那個
