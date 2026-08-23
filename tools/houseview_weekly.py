@@ -38,6 +38,30 @@ repo-lint 顧的是「**我們**有沒有改壞」，每次 push 跑。
 import argparse, datetime as dt, glob, json, os, re, subprocess, sys
 
 TPE = dt.timezone(dt.timedelta(hours=8))
+
+# ── 路徑：從**自己的位置**推，不要猜 `~` ────────────────────────
+#
+# 這支住在 `<某處>/kb-core/tools/`，而其他 repo 是 kb-core 的兄弟：
+#
+#     Mac 本機          /Users/macmini/kb-core     → 兄弟在 /Users/macmini/
+#     Cowork 工作區      $HOME/mnt/kb-core          → 兄弟在 $HOME/mnt/
+#
+# **同一條規則在兩邊都對**，所以不必判斷自己在哪裡。
+# 2026-08-23 第一版用 `~/houseview` 當預設，在 Cowork 工作區裡
+# `~` 是 session 目錄而不是 /Users/macmini —— 排程會炸在第一行。
+# 這個坑 `prep_hv.py` 的 `find_repo()` 與 `build_hv3.js` 的 `CHART_REPO`
+# 都各自踩過一次，而我第三次又踩了。
+KBCORE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SIBLING = os.path.dirname(KBCORE)
+
+
+def sibling(name, fallback_sub=None):
+    """kb-core 的兄弟 repo。找不到就回最可能的那個路徑 —— **讓錯誤訊息指得出地方**。"""
+    p = os.path.join(SIBLING, name)
+    if os.path.isdir(p):
+        return p
+    alt = os.path.expanduser("~/" + name)
+    return alt if os.path.isdir(alt) else p
 # 這一節掉到 0 就是訊號。1、2 節（每日五圖、上一期骨架）不列入：
 # 前者月初本來就空，後者在第一期時本來就沒有。
 WATCHED = ("4. 匯流訊號報", "5. 外資報告")
@@ -77,9 +101,9 @@ def parse_sections(out):
 
 def main(argv):
     ap = argparse.ArgumentParser(add_help=False)
-    ap.add_argument("--dir", default=os.path.expanduser("~/houseview"))
-    ap.add_argument("--outbox", default=os.path.expanduser("~/outbox/houseview"))
-    ap.add_argument("--kbcore", default=os.path.expanduser("~/kb-core"))
+    ap.add_argument("--dir", default=sibling("houseview"))
+    ap.add_argument("--outbox", default=os.path.join(sibling("outbox"), "houseview"))
+    ap.add_argument("--kbcore", default=KBCORE)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     a = ap.parse_args(argv[1:])
@@ -99,8 +123,10 @@ def main(argv):
         print(f"跑不起來：{why}", file=sys.stderr)
         return code
 
+    R["paths"] = {"houseview": a.dir, "kbcore": a.kbcore, "outbox": a.outbox}
     if not os.path.isdir(a.dir):
-        return die(2, f"houseview 目錄不在：{a.dir}")
+        return die(2, f"houseview 目錄不在：{a.dir}"
+                      f"（本支位於 {KBCORE}，兄弟目錄找的是 {SIBLING}）")
     if sh(["node", "-v"])[0] != 0:
         return die(2, "這台機器沒有 node —— 產生器與邊界測試都跑不了，**這不是通過**")
     if not os.path.isdir(os.path.join(a.dir, "node_modules")):
