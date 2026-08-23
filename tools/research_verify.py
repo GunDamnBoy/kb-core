@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import checks  # noqa: F401,E402
+from systems.research import reference_anchors  # noqa: E402
 from kbcore.report import report, run_all  # noqa: E402
 from kbcore.result import Exit  # noqa: E402
 
@@ -55,7 +56,8 @@ def main(argv):
             print(f"BAD_INPUT  {os.path.basename(f)} 不是合法 JSON：{e}", file=sys.stderr)
             return Exit.BAD_INPUT
 
-    anchors = json.loads((ROOT / "research" / "anchors.json").read_text(encoding="utf-8"))
+    refs = reference_anchors()
+    anchors = refs["anchors"]
     miss = [k for k in REQUIRED if k not in anchors]
     if miss:
         print(f"research/anchors.json 缺 {miss} —— 門檻沒有家，這一輪沒有資格判",
@@ -67,10 +69,10 @@ def main(argv):
     dfiles = sorted(glob.glob(os.path.join(dig, "*.json")))
     digest = json.load(open(dfiles[-1], encoding="utf-8")) if dfiles else None
 
-    payload = {"docs": docs, "anchors": anchors, "digest": digest,
-               # **theme 值域的家在投顧那份**，跟每日五圖讀同一個地方
-               "advisory_anchors": json.loads(
-                   (ROOT / "advisory" / "anchors.json").read_text(encoding="utf-8")),
+    # **三張參照表跟 `build()` 讀同一個 `reference_anchors()`。**
+    # 兩邊各自組的時候漂過一次：第 14 條檢查讀 `chart_anchors`，build() 有、這裡沒有，
+    # 於是這支紅燈而 publish 綠燈 —— 而檔頭正好把這個情況寫成「更糟的反過來」。
+    payload = {"docs": docs, "digest": digest, **refs,
                "now": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
     eng = {d.get("engine") for d in docs}
     print(f"{len(docs)} 份｜digest {'有' if digest else '無（那兩條回 SKIPPED）'}｜抽取器 {'／'.join(sorted(e or '?' for e in eng))}｜{out}")

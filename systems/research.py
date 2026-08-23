@@ -38,6 +38,31 @@ EXTRACTED = os.path.join(
     "extracted")
 
 
+def reference_anchors() -> dict:
+    """payload 裡的三張**參照表**，一個出處。
+
+    這三個鍵 `build()`（發布那條）與 `tools/research_verify.py`（唯讀那條）
+    都要帶，而兩邊各自組一次的結果是：2026-08-23 有人往 `checks/research.py`
+    加了第 14 條、它讀 `chart_anchors`，`build()` 有、verify 沒有 ——
+    於是 verify 紅燈、publish 照樣綠燈。
+
+    verify 的檔頭**早就寫著**「兩邊形狀要一致，不一致的樣子是這裡全綠、
+    publish 擋下來，或更糟的反過來」。它把風險寫成註解，然後下一次加鍵時照樣漂了。
+    **註解不是機制。** 所以改成同一個函式：往這裡加一張表，兩條路一起拿到。
+
+    · `research/anchors.json`  —— 這一套自己的門檻
+    · `chart/anchors.json`     —— **圖型 → 資料住哪個欄位**的表，家在每日五圖那邊。
+      讀它、不抄它：抄一份的話，哪天加了新圖型，這一套會安靜地繼續用舊表。
+    · `advisory/anchors.json`  —— **theme 值域**的家，跟每日五圖讀同一個地方。
+    """
+    return {
+        "anchors": json.loads((ROOT / "research" / "anchors.json").read_text(encoding="utf-8")),
+        "chart_anchors": json.loads((ROOT / "chart" / "anchors.json").read_text(encoding="utf-8")),
+        "advisory_anchors": json.loads(
+            (ROOT / "advisory" / "anchors.json").read_text(encoding="utf-8")),
+    }
+
+
 def build(draft: dict, repo: Path) -> dict:
     files = sorted(glob.glob(os.path.join(EXTRACTED, "*.json")))
     docs = [json.loads(open(f, encoding="utf-8").read()) for f in files]
@@ -59,13 +84,7 @@ def build(draft: dict, repo: Path) -> dict:
         "docs": docs,
         "chart_files": chart_files(draft, repo),
         "ledger": ledger_of(repo),
-        "anchors": json.loads((ROOT / "research" / "anchors.json").read_text(encoding="utf-8")),
-        # **圖型 → 資料住哪個欄位**的表在每日五圖那邊，2026-08-20 為了同一個問題建的。
-        # 這裡讀它、不抄它 —— 抄一份的話，哪天加了新圖型，這一套會安靜地繼續用舊表。
-        "chart_anchors": json.loads(
-            (ROOT / "chart" / "anchors.json").read_text(encoding="utf-8")),
-        "advisory_anchors": json.loads(
-            (ROOT / "advisory" / "anchors.json").read_text(encoding="utf-8")),
+        **reference_anchors(),
         "digest": draft,
         "now": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
     }
