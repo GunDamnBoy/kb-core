@@ -34,6 +34,15 @@
 `0 次` 代表那個差異已經不存在了，那一條該刪掉。沒有這一行，
 放行清單只會愈長，而它有沒有用沒有人知道。
 
+## 日檔怎麼找
+
+`days[].file` 是**選用的**：每日五圖 15 天裡只有 2 天有、podcast 23 天裡只有 4 天有，
+而兩套的日檔每一天都在（站台是 `fetch(`data/${day}.json`)`，照慣例拼路徑）。
+所以有 `file` 就用它，沒有就退回 `data/<日期>.json`，兩個都找不到才失敗。
+
+第一版把它當必要欄位，結果那兩套會天天紅燈 —— **而一個天天紅的守衛會被關掉，
+然後它本來要擋的東西就再也沒人擋。**
+
 ## 「一天都沒比到」直接失敗
 
 上次的失效就是「檢查了 0 列」被當成「都對」。所以每一天都印出比了幾對，
@@ -88,15 +97,33 @@ def main(argv=None):
     if not days:
         print("索引裡沒有任何 days —— **空索引不算通過**", file=sys.stderr); return 3
 
-    bad, blank, n_sc, n_id = [], [], 0, 0
+    bad, blank, n_sc, n_id, fell_back = [], [], 0, 0, 0
     for day in days:
+        # **`file` 是選用的，不是必要的。**
+        # 第一版把「沒有 `file`」當成失敗，於是每日五圖 13/15 天、podcast 19/23 天
+        # 全部紅燈 —— 而那兩套的日檔其實**每一天都在**，只是索引沒填 `file`
+        # （每日五圖的站台是 `fetch(`data/${day}.json`)`，照慣例拼路徑，根本不讀 `file`）。
+        #
+        # **一個把選用欄位當必要欄位的守衛，會對完全正常的資料天天亮紅燈** ——
+        # 而一個天天紅的守衛會被關掉，然後它本來要擋的東西就再也沒人擋。
+        # 所以這裡照站台的實際作法：有 `file` 就用，沒有就退回 `data/<日期>.json`。
+        date = day.get("date")
         rel = day.get("file")
-        label = rel or day.get("date") or "?"
+        used_fallback = False
+        if not rel or not os.path.exists(os.path.join(a.site, rel)):
+            cand = f"data/{date}.json" if date else None
+            if cand and os.path.exists(os.path.join(a.site, cand)):
+                if rel:
+                    bad.append(f"{date}：索引指著 {rel}，那個檔不在，"
+                               f"而 {cand} 在 —— **索引指錯了地方**"); continue
+                rel, used_fallback = cand, True
+        label = rel or date or "?"
         if not rel:
-            bad.append(f"{label}：索引這一筆沒有 `file`，無從比對"); continue
+            bad.append(f"{label}：既沒有 `file`，也找不到 data/<日期>.json"); continue
         p = os.path.join(a.site, rel)
         if not os.path.exists(p):
             bad.append(f"{label}：索引指著 {rel}，而那個檔不在要部署的內容裡"); continue
+        fell_back += used_fallback
         try:
             doc = json.load(open(p, encoding="utf-8"))
         except Exception as e:
@@ -134,6 +161,9 @@ def main(argv=None):
         print(f"  {label:34s} 同名純量 {pairs:>3}　以 id 對上 {idp:>4}")
 
     print(f"\n{len(days)} 天｜同名純量欄位 {n_sc} 對｜以 id 對上的欄位 {n_id} 對")
+    if fell_back:
+        print(f"  其中 {fell_back} 天索引沒填 `file`，照慣例用了 data/<日期>.json —— "
+              "**這不是錯誤**，但 `file` 半填半不填值得知道")
     for k in sorted(allow):
         print(f"  放行 `{k}`：擋掉 {used[k]} 次"
               + ("　**0 次 —— 這條放行已經沒有作用，刪掉它**" if not used[k] else ""))
