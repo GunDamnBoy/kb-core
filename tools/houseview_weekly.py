@@ -128,7 +128,11 @@ def main(argv):
 
     now = dt.datetime.now(TPE)
     stamp = now.date().isoformat()
+    import platform
     R = {"system": "houseview", "stamp": stamp, "at": now.isoformat(),
+         # 哪一台機器跑的。Cowork 工作區與 Mac 是不同的機器，而回執只有一份，
+         # 沒有這一欄就分不出「哪一邊的結論」。
+         "host": f"{platform.node()}／{platform.system()}",
          "checks": {}, "sections": None, "exit": 0, "notes": []}
 
     def die(code, why):
@@ -286,15 +290,47 @@ def load_prev(outbox, stamp):
     return None
 
 
-def write(outbox, stamp, R):
-    """**每一次都寫，綠的也寫。** 沉默的成功與沒有跑過長得一模一樣 ——
-    這是 ai-bubble-monitor 那次空輪次 0 bytes 的教訓。"""
-    os.makedirs(outbox, exist_ok=True)
-    p = os.path.join(outbox, f"{stamp}.receipt.json")
-    tmp = p + ".new"
+def _dump(path, R):
+    tmp = path + ".new"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(R, fh, ensure_ascii=False, indent=1)
-    os.replace(tmp, p)
+    os.replace(tmp, path)
+
+
+def write(outbox, stamp, R):
+    """**每一次都寫，綠的也寫。** 沉默的成功與沒有跑過長得一模一樣 ——
+    這是 ai-bubble-monitor 那次空輪次 0 bytes 的教訓。
+
+    但「每次都寫」加上「檔名只有日期」會產生另一個問題：
+    **同一天的第二次執行會蓋掉第一次**，而且是不分方向地蓋。
+
+    2026-08-23 實際發生過：排程環境跑完五項全綠（exit 0），
+    然後在 Mac 的 Terminal 手動跑一次、因為 PATH 上沒有 node 而 exit 2，
+    **那份「跑不起來」把全綠那份蓋掉了**。隔天早上看 outbox 的人
+    會得到「這套系統壞了」的結論，而它其實在該跑的地方好好地跑過。
+
+    所以加一條規則：**跑不起來的那種失敗（exit 2、一項檢查都沒做）
+    不會蓋掉一份真的跑完的回執**，改寫到 `<日期>.blocked.json`。
+    兩份都留著，誰也沒有消失。完成 vs 完成則後來者勝——那反映較新的狀態。
+    """
+    os.makedirs(outbox, exist_ok=True)
+    p = os.path.join(outbox, f"{stamp}.receipt.json")
+    blocked = not R.get("checks")
+    if blocked and os.path.exists(p):
+        try:
+            old = json.load(open(p, encoding="utf-8"))
+        except Exception:
+            old = None
+        if old and old.get("checks"):
+            side = os.path.join(outbox, f"{stamp}.blocked.json")
+            R = dict(R, superseded_by=os.path.basename(p),
+                     note_write=("這次跑不起來，而同一天已經有一份真的跑完的回執——"
+                                 "不蓋掉它，改寫在這裡"))
+            _dump(side, R)
+            print(f"　（同一天已有跑完的回執，這次的寫到 {os.path.basename(side)}，"
+                  "沒有覆蓋）", file=sys.stderr)
+            return
+    _dump(p, R)
 
 
 def report(R):
