@@ -4,6 +4,7 @@ advisory.card_vocab
 advisory.cross_version_dedup
 advisory.date_ts_consistent
 advisory.dispatch_wellformed
+advisory.exempt_card_freshness
 advisory.fixed_structure
 advisory.group_floors
 advisory.group_names
@@ -33,6 +34,15 @@ chart.size
 chart.structure
 chart.theme_unique
 chart.track_of_the_day
+convergence.evidence_grounded
+convergence.evidence_source
+convergence.gaps_present
+convergence.index_snapshot
+convergence.quant_grounded
+convergence.quant_reconcile
+convergence.resonance_independent
+convergence.structure
+convergence.watch_bound
 demo.date_present
 demo.items_nonempty
 demo.note_length
