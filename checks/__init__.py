@@ -13,3 +13,4 @@ from . import repo      # noqa: F401  suite=repo
 from . import watch     # noqa: F401  suite=watch
 from . import research  # noqa: F401  suite=research
 from . import convergence  # noqa: F401  suite=convergence
+from . import houseview    # noqa: F401  suite=houseview
