@@ -2,7 +2,7 @@
 system: podcast-knowledge-digest
 budget:
   tokens: 5000
-  source: "2026-08-22 實測 4,694 字元（**這個數字每次改本檔都會過期，看到就重量一次**；2026-08-19 首次量測是 3,327 字元） ~3,025 token（字元／token 比 1.1，出處：工單 11 量測舊 brief 38,570 字元 ~35k token）。預算取實測的約 1.65 倍，留給第一輪實跑後補規格的空間；超過就是要砍，不是要調高。舊的 AGENT_BRIEF 實測 25,120 token、截斷於第 417 行——那個上限是這條預算存在的理由。"
+  source: "2026-08-23 實測 5,309 字元／約 4,826 token（**這個數字每次改本檔都會過期，看到就重量一次**；字元／token 比 1.1，出處：工單 11 量測舊 brief 38,570 字元 ~35k token）。歷次：08-19 首測 3,327 字元／~3,025 token、08-22 是 4,694 字元、08-23 是 5,309 字元。**餘裕只剩 174 token（3.5%），不要再當它有六成空間** —— 預算 5,000 當初取的是首測 3,025 的約 1.65 倍，那個倍數在 08-19 成立，現在是 1.04 倍。超過就是要砍，不是要調高。**08-23 那一批加了 937 字元、當場量到 5,119 token 超出預算，同批壓縮第八節一次收斂回 4,826** —— 「加字之後量一次」這條是 08-18 立的、那次沒做到，08-23 做到了。舊的 AGENT_BRIEF 實測 25,120 token、截斷於第 417 行——那個上限是這條預算存在的理由。"
 ---
 
 # Podcast 知識庫摘譯｜什麼是對的產出
@@ -37,19 +37,33 @@ budget:
 
 頂層：`date`／`label`／`generatedAt`／`crossCut`／`postscript`／`episodes`。
 
-每集：`id`／`showKey`／`show`／`title`（`節目名｜標題`）／`meta`／`published`／`hosts`／
-`guest`／`source`／`url`／`chars`／`summary`／`guests`／`topics`／
+每集：`id`／**`trackId`**／`showKey`／`show`／`title`（`節目名｜標題`）／`meta`／`published`／
+**`minutes`**／`hosts`／`guest`／`source`／`url`／`chars`／`summary`／`guests`／`topics`／
 `quality{completeness,status,speakerNote,timestampNote}`／`takeaways`／`sections`／`quotes`。
+
+- **`trackId` 與 `minutes` 這兩個欄位在 2026-08-23 之前沒有寫在這裡**，只存在於實檔裡，
+  而兩個都是閘門的必要輸入 —— 漏掉的後果不一樣，所以分開講：
+  **`minutes` 缺了 `chars_in_tier` 直接 FAIL**（看得見）；
+  **`trackId` 缺了 `quote_misses()` 找不到逐字稿、整輪回 `None`、金句閘門判成 SKIPPED**
+  —— 而 SKIPPED 的意思是「這一輪沒有比對過」，不是「比對過沒問題」，
+  檢查自己就寫著這句話。**一個會叫，一個安靜地把閘門打開。**
 
 - **`showKey` 一律取自 `shows.json`。** 在網站端另取一套，徽章永遠對不上。
 - **`chars` 由組檔時的 python 機械覆寫**，定義在 `anchors.json` 的 `char_definition`。
   **不是為了精確，是為了讓所有集數用同一把尺。**
 - **`topics` 只能從受控詞表選**（在 `anchors.json`）。
-- **`quotes[]` 三個欄位：`speaker`／`original`／`text`。** `original` 是逐字稿裡的原句、
-  一字不改（含原文語言），`text` 是中譯。
+- **`quotes[]` 三個欄位：`text`／`by`／`original`。** `original` 是逐字稿裡的原句、
+  一字不改（含原文語言），`text` 是中譯，`by` 是講者。
+  （**這裡一度寫成 `speaker`，而實檔與 `systems/podcast.py` 都用 `by`**，2026-08-23 訂正。
+  照舊版寫成 `speaker` 的那一輪，講者欄位會安靜落空，而閘門的失敗訊息會印 `None`。）
 
   `original` 存在的唯一理由是**它讓「金句是不是編的」變成機械可判** ——
   組檔時拿它回去對逐字稿做子字串比對，對不上就整條丟掉並具名記錄。
+
+  **比對基準是 podfetch 稿，不是官方稿。** `quote_misses()` 寫死了
+  `~/podcast-transcripts/<date>/<showKey>-<trackId>.md`。所以**A 類走第一層時，
+  正文用官方稿寫，`original` 仍要回 podfetch 稿挑** —— 官方稿是編修過的，用字對不上。
+  2026-08-23 latentspace 五條全取自官方稿，機械比對 5／5 全 MISS。
   少了這個欄位，「金句必須是逐字稿裡實際出現的發言」就只是一條靠自覺的規則，
   而**依賴自覺的紀律不是紀律**。2026-08-20 首輪 63 條金句全部通過比對。
 
@@ -142,7 +156,14 @@ budget:
 
 免責聲明、來源標註、管線自檢、純敘述性總結都不是觀察點。
 
-**開帳之後不得改寫。** 判定到期由哨兵開 issue。
+**開帳之後不得改寫。**
+
+~~判定到期由哨兵開 issue。~~ **這一句沒有執行者**（2026-08-23 標；哨兵實際印 ⏭️ 未執行，
+且帳本形狀與它不相容，細節在 `MAINTENANCE.md` 第 6 節）。實際在看的是發布閘門的
+`podcast.ledger_no_overdue`，**而它對沒有到期日的舊項目是瞎的** ——
+08-23 量測 74 條裡 64 條觀察中、52 條沒有到期日。**綠燈不等於帳本乾淨。**
+（第七節第五條 08-22 才標過同型的洞，隔一節又寫了一次 ——
+**寫「由某某負責」之前先確認某某真的在跑。**）
 
 ## 九、合規
 

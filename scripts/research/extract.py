@@ -42,6 +42,7 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _paths  # noqa: E402   路徑只有一個家，見該檔的檔頭
+import title   # noqa: E402   真實標題的取法，見該檔的檔頭
 
 _KB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 A = json.load(open(os.path.join(_KB, "research", "anchors.json"), encoding="utf-8"))
@@ -63,7 +64,14 @@ WATERMARK = [
 ]
 
 BROKERS = [
-    ("Nomura",        re.compile(r"\bNomura\s*\|", re.I)),
+    # **`\bNomura\b`，不是 `\bNomura\s*\|`。** 2026-08-23 量出來的：
+    # 舊規則在剃除頁首頁尾之後的文字上得分是 **0**（7 份全部） ——
+    # 它整條依賴 `Nomura |` 這個頁尾字串，而那正是流程下一步要刪掉的東西。
+    # 辨識刻意跑在剃除之前，所以它能work；但那讓野村的訊號強度只有 6–9 次，
+    # 而高盛是 81–134、花旗 144–200。**三家不在同一個尺度上被量。**
+    # 放寬之後野村 60–83，`min_hits=3` 的餘裕從 2.0× 變成 20×，
+    # 而 27 份的歸屬**一份都沒有改變**，非野村的報告提到 Nomura 的次數是 0。
+    ("Nomura",        re.compile(r"\bNomura\b", re.I)),
     ("Goldman Sachs", re.compile(r"\bGoldman\s+Sachs\b", re.I)),
     ("Citi",          re.compile(r"\bCiti\s*(?:Research|group)\b", re.I)),
 ]
@@ -108,23 +116,50 @@ def raw_pages(path):
 
 
 def tables_of(path, max_pages=200):
+    """回 (表格, 原始偵測數, 表格裡剃掉幾處浮水印)。
+
+    ## 這裡也要剃浮水印
+
+    2026-08-23：`research.no_pii` 擴大到掃 `tables` 之後，**27 份裡 6 份當場亮紅燈** ——
+    分析師信箱 ×19（花旗那份）、一個 32 位追蹤雜湊、一個反寫的 `evisulcxe`。
+
+    原因就在這個函式：浮水印剃除跑在 `extract()` 的第 ① 步，剃的是 `raw_pages()`
+    出來的**文字流**；而這裡**用 pdfplumber 重開一次 PDF**，走的是另一條路，
+    從來沒經過 `strip_watermark`。
+
+    **同一份文件的兩個表示法，守衛只裝在其中一個上面。**
+    而 `no_pii` 當時也只掃那一個，於是它對 27 份一致回報「PII 與追蹤碼零殘留」——
+    **一個只檢查了一半的守衛，輸出跟全部檢查過長得一模一樣。**
+
+    剃除用的是同一組 `WATERMARK` 規則，因為問題本來就是同一個，
+    分成兩份規則遲早會變成兩種判準。
+    """
     try:
         import pdfplumber
     except ImportError:
         return None                      # None ＝ 沒抽，跟「抽了但沒有表格」是兩件事
-    out, raw = [], 0
+    out, raw, wm = [], 0, 0
     with pdfplumber.open(path) as pdf:
         for i, pg in enumerate(pdf.pages[:max_pages]):
             for t in (pg.extract_tables() or []):
                 raw += 1
-                rows = [[(c or "").strip() for c in r] for r in t if any(r)]
+                rows = []
+                for r in t:
+                    if not any(r):
+                        continue
+                    cells = []
+                    for c in r:
+                        c, k = strip_watermark((c or "").strip())
+                        wm += k
+                        cells.append(c.strip())
+                    rows.append(cells)
                 if len(rows) >= 2:
                     out.append({"page": i + 1, "rows": rows})
     # **原始偵測數與留下來的數要分開報。** 2026-08-21 實測 Oil Analyst：
     # `extract_tables` 回 14 個、過濾後剩 0 —— 那 14 個全是**圖框**，
     # pdfplumber 把圖表的框線當成表格，儲存格是空的。
     # 探測程式當初報的「14 個表格」是一個看起來很有說服力的錯數字。
-    return out, raw
+    return out, raw, wm
 
 
 def strip_watermark(text):
@@ -250,9 +285,17 @@ def split_columns(path, min_gap=18.0, right_max_frac=0.42, straddle_max_frac=0.0
 
     left = [w for w in words if w["x0"] < cut]
     right = [w for w in words if w["x0"] >= cut]
-    return ("\n".join(lines(left)) + "\n\n"
-            + "─── 右欄（分析師欄，原句不要從這裡取）───\n"
-            + "\n".join(lines(right)))
+    # **這裡也要剃。** 這是第三個繞過浮水印剃除的表示法（前兩個是文字流與表格）——
+    # 它同樣用 pdfplumber 重開 PDF，而剃除只裝在 `extract()` 第 ① 步的文字流上。
+    # 右欄整欄就是分析師聯絡區塊，所以殘留幾乎必然：實測 5 份、30 個信箱、
+    # 4 個 `Prepared for`。而 `no_pii` 當時連掃都沒掃到這個欄位。
+    #
+    # **同一個守衛漏掉三次，三次都是「同一份文件的另一個表示法」。**
+    # 教訓不是「再補一個地方」，是**任何新的 `pdfplumber.open(path)` 都要先問
+    # 它的輸出會不會被存下來** —— 會的話就得經過 `strip_watermark`。
+    return strip_watermark("\n".join(lines(left)) + "\n\n"
+                           + "─── 右欄（分析師欄，原句不要從這裡取）───\n"
+                           + "\n".join(lines(right)))[0]
 
 
 def slugify(s):
@@ -315,14 +358,24 @@ def extract(path):
                 break
             except ValueError:
                 pass
+    # **`product` 與 `slug` 刻意還是從檔名來，即使檔名是 `1317180`。**
+    # slug 是這一套的身分：`dossier` 的條目 id 是 `{slug}-{n}`、圖檔名、
+    # `digest/*.json` 的鍵、已發布的 `data/*.json` 全部指著它。
+    # 改 slug 不是改顯示，是**讓已發布的追蹤紀錄失去它追的那份報告**。
+    # 而且 `build_index.merge` 對新 slug 的反應是「新增」而不是「更新」——
+    # 重跑一次抽取就會多出五筆孤兒。標題可以改，身分不行。
     product = base.split("_")[0].strip() if "_" in base else base
     issue = (re.search(r"ISSUE\s+(\d+)", p1_raw) or [None, None])[1]
     claimed = (re.search(r"(\d+)\s+pages\b", p1_raw) or [None, None])[1]
+    # 真實標題：見 title.py 的檔頭（三家券商三個來源，認不出來就回檔名並標記）
+    tt = title.resolve(broker, os.path.basename(path), p1, path)
 
     return {
         "slug": f"{date or 'undated'}-{slugify(broker or 'unknown')}-{slugify(product)}",
         "broker": broker, "broker_tally": tally, "product": product, "date": date,
-        "title": base, "source_file": os.path.basename(path),
+        "title": tt["title"], "title_source": tt["title_source"],
+        "title_confident": tt["title_confident"], "title_note": tt["title_note"],
+        "source_file": os.path.basename(path),
         "pages": npage, "claimed_pages": claimed and int(claimed), "issue": issue,
         "sha256": hashlib.sha256(open(path, "rb").read()).hexdigest(),
         "engine": ENGINE,
@@ -336,7 +389,8 @@ def extract(path):
         # 所以它只多給一份重排版，由讀的人一眼判斷哪一份可用。
         "page_one_columns": split_columns(path),
         "body": kept[1:],
-        **dict(zip(("tables", "tables_raw"), tables_of(path) or (None, 0))),
+        **dict(zip(("tables", "tables_raw", "tables_watermark_hits"),
+                   tables_of(path) or (None, 0, 0))),
         "strip_report": {
             "watermark_hits": wm,
             "header_footer_lines_removed": dropped,
@@ -392,6 +446,7 @@ def main(argv=None):
         os.makedirs(out, exist_ok=True)
     bad = 0
     fresh_files = set()          # 這一輪**應該存在**的輸出路徑
+    written = {}                 # slug → (sha256, source_file)，撞號守衛用
     for p in pdfs:
         d = extract(p)
         s = d["strip_report"]
@@ -411,8 +466,48 @@ def main(argv=None):
             # **先登記再判斷要不要重寫。** 跳過重寫的檔案照樣是「這一輪該有的」，
             # 漏掉這一行會讓沒更動的檔全部被當成孤兒。
             fresh_files.add(os.path.abspath(f))
+
+            # ── slug 撞號：兩份不同的報告算出同一個 slug ──────────────
+            # `slug` ＝ 日期 ＋ 券商 ＋ 產品線，而產品線來自檔名的第一段。
+            # 同一天、同一家、同一個系列出兩篇（`Oil Monitor` 這種日頻系列很平常），
+            # 兩份就會撞在同一個檔名上，而**第二份直接覆蓋第一份**。
+            #
+            # 損失比「少一個檔」更糟：`build_index.merge` 對已收錄的 slug 不改寫，
+            # 於是**索引留著第一份的標題與 sha256，而 `extracted/` 裡是第二份的內文**。
+            # 之後每一條逐字比對都拿第二份的原句去比第二份的文字 —— 全部通過，
+            # 而網站顯示的是第一份的標題。
+            #
+            # `research.no_duplicates` 有一條專門抓 slug 撞號，但**它抓不到這個**：
+            # 它讀的是 `extracted/`，而覆蓋發生在它執行之前 ——
+            # 到它看的時候，兩份已經變成一份，`by_slug` 只有一個值。
+            # **守衛量的是撞號之後的狀態，而證據在那時已經被刪掉了。**
+            #
+            # 所以這裡不寫、記一筆 bad、讓整輪回非零。要哪一份由人決定。
+            prev = written.get(d["slug"])
+            other = None
+            if prev and prev[0] != d["sha256"]:
+                other = prev[1]
+            elif not prev and os.path.exists(f):
+                try:
+                    old_doc = json.load(open(f, encoding="utf-8"))
+                except Exception:
+                    old_doc = {}
+                if (old_doc.get("sha256") and old_doc["sha256"] != d["sha256"]
+                        and old_doc.get("source_file") != d["source_file"]):
+                    other = old_doc.get("source_file")
+            if other:
+                print(f"      **slug 撞號，這一份沒有寫入**：{d['slug']}\n"
+                      f"        這份　{os.path.basename(p)}\n"
+                      f"        已占用 {other}\n"
+                      "        同一天同一家同一個系列的兩篇。**覆蓋會讓索引與內文指向不同的報告。**\n"
+                      "        處置：把其中一份的檔名加上區別（例如結尾加 ` II`）再重跑。")
+                bad += 1
+                continue
+
             if os.path.exists(f) and not a.force and os.path.getmtime(f) > os.path.getmtime(p):
+                written[d["slug"]] = (d["sha256"], d["source_file"])
                 print("      （已是最新，跳過）"); continue
+            written[d["slug"]] = (d["sha256"], d["source_file"])
             with open(f, "w", encoding="utf-8") as fh:
                 json.dump(d, fh, ensure_ascii=False, indent=1)
     # **孤兒**：輸出檔名是從 slug 來的，而 slug 是**衍生值**（日期＋券商＋產品線）。

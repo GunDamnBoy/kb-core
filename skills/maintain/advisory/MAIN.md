@@ -71,7 +71,7 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    python3 /Users/macmini/kb-core/tools/advisory_verify.py /Users/macmini/advisory-rewrite /Users/macmini/advisory-rewrite/data/<日期>.json
    ```
 
-   十七條檢查跑在 `advisory` suite 上，**完全無副作用**。
+   十八條檢查跑在 `advisory` suite 上，**完全無副作用**。
    輸出與 `about.run` 對照著看：run 說正常但檢查有紅字＝執行者沒發現。
 5. Read `/Users/macmini/advisory-rewrite/data/index.json` 看近幾期的
    跨日記憶欄位（`thermo`／`threads`／`watch`／`pulse`／`snap`）。

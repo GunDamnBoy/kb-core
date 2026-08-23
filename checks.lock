@@ -72,6 +72,7 @@ research.strip_bounded
 research.summary_length
 research.tags_wellformed
 research.theme_in_domain
+research.title_resolved
 sentinel.data_fresh
 sentinel.ledger_overdue
 sentinel.no_data_loss

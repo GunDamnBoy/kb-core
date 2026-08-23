@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """量這一輪花了多少 token。**這支只讀不寫**（除了 `--append` 指定的那個檔）。
 
-用法：usage_report.py <系統 id> [--transcript FILE] [--append CSV] [--since ISO8601]
+用法：usage_report.py <系統 id> [--transcript FILE] [--append CSV]
+                        [--since ISO8601] [--until ISO8601] [--until-receipt DATE]
+
+## 一個工作階段可能不只裝一件事
+
+Cowork 的排程與事後的維護對話**會共用同一份逐字稿**——2026-08-23 實測，同一個
+`.jsonl` 前段是 03:07 的日報、後段是 08:40 起的維護。整份掃完得到 30,744k，
+而日報那一輪其實是 **6,611k**，**高估 4.6 倍**。
+所以切界線不是選配：`--since` 切掉前面、`--until` 切掉後面，
+`--until-receipt <DATE>` 直接拿 `~/outbox/<系統>/<DATE>.receipt.json` 的 `at` 當界線
+——那是那一輪真正落地的時刻，比任何自述都可靠。
 
 ## 為什麼要有它
 
@@ -56,13 +66,21 @@ def rows(path):
                     pass
 
 
-def usage_of(path, since=None):
-    """回傳 (有效 token, 輪次, 產出, 重讀, 寫入, 最早, 最晚)。"""
+def usage_of(path, since=None, until=None):
+    """回傳 (有效 token, 輪次, 產出, 重讀, 寫入, 最早, 最晚)。
+
+    `since`／`until` 都是 ISO8601 字串，直接做字串比較——**這是刻意的**：
+    逐字稿裡的 `timestamp` 一律是 `...Z` 的 UTC ISO8601，同格式下字串序等於時間序，
+    不必解析就不會有時區解析錯誤。**但也因此傳進來的界線必須是同一種格式**，
+    所以 `--until-receipt` 會把回執的 `at` 正規化成 UTC 的 `Z` 形式再用。
+    """
     tot = turns = out = cr = cw = 0
     first = last = None
     for d in rows(path):
         ts = d.get("timestamp") or ""
         if since and ts and ts < since:
+            continue
+        if until and ts and ts >= until:
             continue
         if ts:
             first = first or ts
@@ -88,6 +106,12 @@ def main():
     ap.add_argument("--since", default=None,
                     help="只算這個時間點之後的輪次（ISO8601）。同一個工作階段跑了"
                          "不只一件事時用它切開。")
+    ap.add_argument("--until", default=None,
+                    help="只算這個時間點之前的輪次（ISO8601）。與 --since 成對，"
+                         "把一個工作階段裡的某一段切出來。")
+    ap.add_argument("--until-receipt", metavar="DATE", default=None,
+                    help="用 ~/outbox/<系統>/<DATE>.receipt.json 的 `at` 當 --until。"
+                         "那是那一輪真正落地的時刻，比任何自述都可靠。")
     a, unknown = ap.parse_known_args()
     if unknown:
         print(f"不認得的旗標：{' '.join(unknown)}", file=sys.stderr)
@@ -103,9 +127,16 @@ def main():
             # 錯誤是動手之後讀的 —— 而「找不到檔案」跟「你在錯的機器上」
             # 在畫面上長得一模一樣。
             print(f"{base}/projects 底下找不到逐字稿。\n"
-                  "  **這支要在雲端容器跑（`Bash`），不是使用者的 Mac（`device_bash`）**"
-                  " —— 逐字稿只存在於雲端那一側。\n"
-                  "  在 Mac 的終端機直接執行也會走到這裡，同樣是這個原因。\n"
+                  "  **先確認 CLAUDE_CONFIG_DIR 指對地方。** 不同執行環境不一樣：\n"
+                  "  · Claude Code／雲端容器：預設的 `~/.claude` 通常就對\n"
+                  "  · **Cowork：逐字稿在 Mac 上**，要指到某一場的 `.claude`——\n"
+                  "      BASE=$(ls -dt \"$HOME/Library/Application Support/Claude/"
+                  "local-agent-mode-sessions\"/*/*/local_*/.claude | head -1)\n"
+                  "      CLAUDE_CONFIG_DIR=\"$BASE\" python3 …\n"
+                  "    **Cowork 的沙箱那一側看不到它，也掛不上**（掛載會被明文拒絕），\n"
+                  "    所以這支在 Cowork 要在 Mac 的終端機跑。\n"
+                  "  （2026-08-23 訂正：這裡原本寫「逐字稿只存在於雲端那一側、"
+                  "在 Mac 上跑一定失敗」——**那是錯的，剛好講反**。）\n"
                   "  **這跟「這一輪沒花 token」是兩件事。**", file=sys.stderr)
             return 14
         tp = max(cands, key=os.path.getmtime)
@@ -115,7 +146,24 @@ def main():
                   f"**那不像是這一輪**。要就用 --transcript 明講。", file=sys.stderr)
             return 12
 
-    tot, turns, out, cr, cw, first, last = usage_of(tp, a.since)
+    until = a.until
+    if a.until_receipt:
+        # **界線用回執，不用猜。** publish 寫回執的時刻就是那一輪真正落地的時刻。
+        rp = os.path.expanduser(f"~/outbox/{a.system}/{a.until_receipt}.receipt.json")
+        if not os.path.exists(rp):
+            print(f"找不到回執 {rp} —— 沒有界線就不要硬切，"
+                  f"寧可印整場並在報告裡講明", file=sys.stderr)
+            return 12
+        try:
+            at = json.load(open(rp, encoding="utf-8"))["at"]
+        except Exception as e:
+            print(f"回執讀不開：{e}", file=sys.stderr)
+            return 12
+        until = dt.datetime.fromisoformat(at).astimezone(
+            dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        print(f"界線　　--until {until}（取自 {os.path.basename(rp)} 的 at={at}）")
+
+    tot, turns, out, cr, cw, first, last = usage_of(tp, a.since, until)
     if not turns:
         print("這份逐字稿裡沒有帶用量的輪次 —— 挑錯檔了", file=sys.stderr)
         return 12
@@ -124,7 +172,7 @@ def main():
                            os.path.basename(tp)[:-6], "subagents")
     subs = []
     for f in sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl"))):
-        st, sturns, *_ , sfirst, _ = usage_of(f, a.since)
+        st, sturns, *_ , sfirst, _ = usage_of(f, a.since, until)
         if sturns:
             subs.append((os.path.basename(f)[6:23], st, sturns))
 

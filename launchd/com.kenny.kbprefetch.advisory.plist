@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 投顧知識庫 · 保底層預抓。安裝位置 ~/Library/LaunchAgents/。
+
+       為什麼是 07:20：GitHub Actions 的 fetch-floor 在台北約 07:00 落地
+       （2026-08-23 實測 fetched_at 06:59），執行輪次是 07:30（cron）＋約 5 分鐘
+       jitter，實際 07:35。07:20 起跑、最多重試到 07:24，仍早於輪次。
+       **這三個時刻是一組的** —— 動了排程 advisory-daily-0730 的 cron 就要回頭動這裡。
+
+       為什麼它不跑 git：com.kenny.kbpublish 每 60 秒跑一次，任何 git 指令留下的
+       index.lock 都會擋住它。這支只用 curl 抓一個檔到 ~/.advisoryfetch/，
+       不碰 ~/advisory-rewrite —— 與 kbprefetch.chart 同一個紀律。
+
+       Mac 若在 07:20 睡著，launchd 會延到喚醒才跑，可能落在輪次之後。
+       那一輪拿不到快取，會照 SKILL 步驟 1 的表退回 Chrome 那條路，
+       **不會靜默地用昨天的保底層** —— 因為腳本會驗 date 是不是今天。
+
+       RunAtLoad 為 false —— 載入時不要立刻跑。要手動驗證就直接跑
+       launchd/kbprefetch-advisory.sh，不要靠 load 觸發。 -->
+  <key>Label</key>
+  <string>com.kenny.kbprefetch.advisory</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/macmini/kb-core/launchd/kbprefetch-advisory.sh</string>
+  </array>
+
+  <!-- PATH 與 HOME 明寫在這裡，即使包裝腳本自己也 export 一次。
+       **watch.external_binaries 讀的是 plist，不是腳本** —— 而 launchd 的預設
+       環境只有 /usr/bin:/bin:/usr/sbin:/sbin，兩者不一致時安靜的那一邊會贏。
+       這一支需要的外部指令是 curl，已登記在 kbcore/env.py 的 REQUIRED_BY_LABEL。 -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>7</integer>
+    <key>Minute</key><integer>20</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/kbprefetch-advisory.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/kbprefetch-advisory.err</string>
+</dict>
+</plist>

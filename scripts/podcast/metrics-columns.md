@@ -28,6 +28,24 @@
 > 這裡這四欄保留給既有的歷史列，**新的一輪寫進 `usage.csv`，不再寫這裡** ——
 > 同一個數字兩個家，遲早會有一天只對了一半。
 
+> **⚠ 但 podcast 這一套實際上兩個家都寫不了（2026-08-23 實測）。**
+> `usage_report.py` 要讀工作階段逐字稿，而 **Cowork 排程在沙箱裡跑，逐字稿不在這一側**：
+> 沙箱沒有 `~/.claude/projects`（`exit 14`）；逐字稿確實在 Mac 的
+> `local-agent-mode-sessions/<id>/.claude/projects/…`、目錄結構與腳本預期一致，
+> 但 `request_cowork_directory` **明文拒絕掛載**（「Cowork's internal session storage…
+> intentionally not accessible」）；`session_info__read_transcript` 只回訊息內容、不含 usage。
+> 佐證：`usage.csv` 至今只有 `2026-08-22,broker-research` 一列——那是唯一跑在別種執行環境的系統。
+> **⚠ 但這不等於「排程不留 transcript」**（那個結論 08-14 寫過、08-16 被推翻，別寫第三次）：
+> 逐字稿**存在**，在 `~/Library/…/local-agent-mode-sessions/<帳號>/<工作區>/local_<階段>/.claude/projects/`，
+> 08-23 用 `Glob` 實地看到。**搆不到的是排程那一側，不是這份資料。**
+> `healthcheck.py:703-704` 的 glob 樣式對得上（08-23 驗過），**在 Mac 上把 `:692` 的 early-return 拿掉就量得到**。
+>
+> **在修好之前，這四欄對 podcast 一律留空。** 08-22 與 08-23 兩輪都因為排程副本
+> 沒同步到那段指示，照舊版抄了自述值進來，於是 `eff_tokens_k` 出現
+> 4913／235／276 三個相差 20 倍的值 —— **正是本檔開頭那句「用另一套定義填進同一欄，
+> 比留白更糟」的實例，而且是發生在寫下那句話的同一份檔案所管的欄位上。**
+> 08-23 那一列已抽掉，08-21／08-22 保留原樣（不改寫歷史，但它們不可比，別拿來畫曲線）。
+
 **比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`。**
 後者混了固定開銷與當場的維護動作，除以集數得到的數字不可比（08-15、08-17 都踩過）。
 

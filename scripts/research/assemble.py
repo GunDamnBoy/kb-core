@@ -98,6 +98,22 @@ def render_charts(part, ex, outdir):
         kw.setdefault("subtitle", "")
         kw.setdefault("y_fmt", _fmt_for(spec))
         kw["slug"] = base
+        # **`series` 與 `markers` 是 dataclass，不是 dict。**
+        # 2026-08-23 用 `tools/chartkit_smoke.py` 把九種圖型逐一畫過才發現：
+        # 這裡把撰寫者給的 dict 原樣塞進 `Chart(**kw)`，於是 `timeseries` 與
+        # `range_area` 一定丟 `AttributeError: 'dict' object has no attribute 'dates'`。
+        #
+        # **那兩種圖型從來沒有被畫出來過**，而失敗被下面的 `except` 收進
+        # `render_error`，網站又（直到同一天）對沒有 png 的圖回空字串 ——
+        # 三層各自合理的處置疊起來，結果是**撰寫者照規格寫的圖，安靜地不存在**。
+        # 已經用過的 `grouped_bar` 與 `waterfall` 剛好只吃 list，所以一路沒露餡。
+        for f, cls in (("series", C.Series), ("markers", C.Marker)):
+            if kw.get(f) and isinstance(kw[f][0], dict):
+                try:
+                    kw[f] = [cls(**x) for x in kw[f]]
+                except TypeError as e:
+                    # 欄位對不上就明講是哪個欄位，不要讓它變成 AttributeError
+                    raise TypeError(f"`{f}` 的欄位對不上 {cls.__name__}：{e}") from None
         try:
             out = C.render_static(C.Chart(**kw), outdir, base, brand=A["charts"]["brand"])
             spec["png"] = os.path.basename(out["png"])
@@ -177,7 +193,9 @@ def main(argv=None):
         src = d["source_file"]
         reports.append({
             "slug": slug, "broker": d["broker"], "product": d["product"],
-            "title": d["title"], "date": d["date"], "pages": d["pages"], "issue": d.get("issue"),
+            "title": d["title"], "title_source": d.get("title_source"),
+            "title_confident": d.get("title_confident"),
+            "date": d["date"], "pages": d["pages"], "issue": d.get("issue"),
             "file": f"~/broker-research/inbox/{src}",
             "file_url": "file:///Users/macmini/broker-research/inbox/" + urllib.parse.quote(src),
             "tier_target": t["target"], "tier_band": [lo, hi],
@@ -286,16 +304,38 @@ def build_stances(digest_dir, repo):
 
     `status`／`verdict`／`verdictDate` **由既有檔案沿用，永不覆寫** ——
     這支每一輪重建列表，但**判決是人下的，重建不能把它洗掉**。
+
+    ## 讀不到既有帳本時要炸，不能吞
+
+    原本這裡是 `except Exception: pass`。於是帳本壞掉（截斷、編碼壞、被半份寫入）時
+    `old` 是空的，**全部的 `status` 靜靜退回預設值、`verdict` 全部變成空字串**，
+    而輸出跟「第一次建帳本」逐字相同 —— 沒有任何一行 print 不一樣。
+
+    **人下的判決是這個庫裡唯一無法重建的東西。** 抽取可以重跑、精華可以重寫、
+    圖可以重畫，判決不行。所以這一步的失敗必須停下來，
+    而「檔案本來就不存在」與「檔案在但讀不動」要分得開 —— 前者是第一輪，後者是事故。
     """
     O = A["observations"]
     dst = os.path.join(repo, "data", "stances.json")
     old = {}
     if os.path.exists(dst):
         try:
-            for it in json.load(open(dst, encoding="utf-8")).get("items") or []:
+            doc = json.load(open(dst, encoding="utf-8"))
+        except Exception as e:
+            raise SystemExit(
+                f"**既有帳本讀不動**：{dst}\n"
+                f"  {type(e).__name__}: {e}\n"
+                "  這裡刻意不繼續。繼續下去會把人工填的 status／verdict 全部重置成預設，\n"
+                "  **而產出會跟第一次建帳本長得一模一樣**。\n"
+                "  先從 git 取回上一版（`git -C <repo> checkout -- data/stances.json`）再跑。")
+        for it in doc.get("items") or []:
+            if "id" in it:
                 old[it["id"]] = it
-        except Exception:
-            pass
+        if not old:
+            print(f"  **既有帳本讀得動但一筆都沒有**（{dst}）—— "
+                  "如果這不是第一輪，那是資料掉了，先確認再往下")
+    else:
+        print(f"  帳本不存在，這是第一輪（{dst}）")
 
     items = []
     for jf in sorted(glob.glob(os.path.join(digest_dir, "2026-W*.json")), reverse=True):

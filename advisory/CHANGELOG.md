@@ -1007,3 +1007,126 @@ try 接住、畫成紅色錯誤框。**兩種路徑都不會留下任何紀錄�
 ③圖是 inline SVG、沒有互動（不能 hover 看某一天的值），**刻意如此** ——
 index.html 是單檔、不引入任何 CDN，加互動要嘛寫一堆事件、要嘛引函式庫，
 兩個都比這個問題大。要看某一天的值，日期列的膠囊上本來就標著。
+
+---
+
+## 2026-08-23｜八件維護：一次採集事故、一個時序缺口，以及一條盲點檢查終於等到它的觸發事件
+
+**動到哪些檔**：`scripts/advisory/preamble.md`（第四節改寫、選擇器表補七列補強三列、
+新增第七之二節、六之二改寫）、`checks/advisory.py`（新增第 18 條
+`advisory.exempt_card_freshness`）、`kbcore/env.py`（`REQUIRED_BY_LABEL` 補兩支）、
+`launchd/kbprefetch-advisory.sh` 與 `com.kenny.kbprefetch.advisory.plist`（新檔）、
+`launchd/README.md`（表加一列、新增一節）、`skills/advisory/SKILL.md`（步驟 1 的表改成三層、
+步驟 3／5／6／7／9 各補一段）、排程 prompt `advisory-daily-0730`（整份取代）、
+`skills/maintain/advisory/{MAIN,FILES,MODIFY}.md`（17→18、加一列）。
+**沒有動**：`anchors.json`、`BRIEF.md`、`data/*.json`、`index.html`、`publish.py`、`systems/advisory.py`。
+
+### 一、NYT 整輪報廢：它繞過了規則的字面，沒有繞過規則要防的東西
+
+當輪採集員 E 沒有逐篇 `navigate`，改用同網域 `fetch()` 對 20 個 NYT 文章網址做時間戳預篩
+（兩批、中間沒有延遲）。之後 **NYT 每一個文章頁都渲染成空殼**：`document.title` 變成
+`nytimes.com`、內文 0 段、`<script>` 只剩 2 個，而**列表頁與 `fetch()` 本身都還正常**。
+換分頁、換文章、reload、從列表頁點進去帶 referrer，四種變體全部一樣。NYT 當日零成卡。
+
+`preamble` 第四節當時寫的是「**預篩時間戳不要逐篇開頁**」——那句話在 `fetch()` 出現之前
+剛好等價於「不要打太多次」，之後就不等價了。**規則數的是開頁方式，風控數的是請求次數。**
+
+改成不分工具一律：每個對外請求間隔 500–600ms、單一來源預篩總數 ≤20 次、與文章頁計數分開算、
+不要連發兩批中間不喘息。**同輪對照組是乾淨的**：E 出事後對 Politico／The Hill／IBD／Barron's
+全部加了延遲，那四家全程無異狀；第二批與補位輪照做，七家再無一家出事。
+
+**這件事只會出現在回報的最後一段。** 沒有任何檢查看得到它 —— 症狀是「這家今天讀不到」，
+與選擇器失效、與付費牆長得一模一樣。所以 `preamble` 現在要求回報時寫出「對這家發了幾次請求」，
+那是事後唯一分得出來的線索。
+
+### 二、豁免清單的盲點等到了它的觸發事件，於是那條檢查現在存在
+
+`anchors._dedup_exempt_cost` 在 2026-08-22 寫下了動手時機：
+**「要做這條檢查的時機是：第一次有人發現某張保底卡連續兩天數字一樣。」**
+2026-08-23 就是第一次 —— Investing.com Fed Rate Monitor 的降息／維持機率
+（61.0%／39.0%）與前一版逐字相同，因為週末 CME 期貨休市、頁面 `Updated` 停在前一天。
+當輪執行者自己發現並寫進了 `about.notes`，**但沒有任何機器在問這件事**。
+
+新增 `advisory.exempt_card_freshness`：對 `dedup_exempt` 上的每一個網址，
+比對當日卡片與前一版卡片的**數字集合**（`body` ＋ `bullets` 抽出的所有數字）。
+比集合而不是比整段文字，因為盲點的原話就是「**數字**沒更新」。
+
+**是 WARN 不是 FAIL，而這是設計不是妥協**：機器分不出「真的沒更新」與「忘了更新」。
+週末休市、FRED 落後兩個交易日、SPDR 歸檔落後一天，都會讓數字合法地重複。
+判成 FAIL 會逼執行者去改數字，**那比重複更糟**。
+
+### 三、`raw/` 每天早上落後一天，而我第一次的診斷是錯的
+
+當輪報告寫的是「本機 clone 永遠落後，因為這一輪不跑 git」。**查 mtime 才發現不對**：
+`raw/2026-08-23.json` 的 mtime 是當天 09:31，正是那一輪回執的時刻 ——
+`publish.py` push 前會 rebase，origin 上的東西（含 Actions 產的 `raw/`）就是那時候進來的。
+
+真正的形狀是**時序**：Actions 約 07:00 落地 → 輪次 07:35 開跑（此時本機最新的是昨天的）
+→ 09:31 publish 才拉下來。**每天固定在需要它的前兩小時差一步。**
+錯的診斷會變成錯的待修事項（「叫 publish push 後順手 fetch」——那解不了任何事），
+而那比沒有待修事項貴。
+
+新增 `com.kenny.kbprefetch.advisory`（07:20），**只用 curl 抓到 `~/.advisoryfetch/raw/`，
+不跑任何 git**：`kbpublish` 每 60 秒一次，任何 git 指令留下的 `index.lock` 都會擋住它，
+而那一次的症狀會是**發布失敗**而不是預抓失敗 —— 錯的地方會叫、出錯的地方不會。
+與 `kbprefetch-chart.sh` 同一個紀律。腳本會驗 `date` 是今天、`failed_essential` 是空的
+才落地（不合格 exit 10）：**拿到一份日期不對的檔案而以為保底層正常，比抓不到更糟。**
+
+### 四、正本改了、prompt 沒重推，於是那一節安靜地不存在了
+
+`skills/advisory/SKILL.md` 正本 17,870 bytes、排程副本 16,890，差的是**整節「用量：量它，不要估它」**。
+後果實測：`metrics/usage.csv` 只有 header ＋ 一列 `2026-08-22,broker-research`，
+**advisory 一列都沒有**，08-23 那一輪也沒跑 —— 因為排程拿到的那份沒有這一節。
+這正是本檔開頭與 `MAIN.md` 都警告過的形狀。本次整份重推，並在該節末尾記下這件事本身。
+
+### 五、注入字串跨站了，而上一次學到的辨識法今天全部失效
+
+08-22 記載的是 STAT News 一站、鏡像站 `archive.today｜archive.ph`、位置在可見內文。
+08-23 三處同時被推翻：鏡像站換成 `archive.li`（STAT News）與 `archive.is`（**WSJ**）；
+STAT News 那次**不在 `.article-content` 內文區塊裡**（逐段掃內文沒有命中）；
+而它已經出現在付費訂閱的大報上。`preamble` 六之二 改成**認句型、不認站名也不認網域**。
+
+### 六、哨兵紅了 18 小時沒有人看見，因為紅的是它自己
+
+`sentinel/heartbeat.json` 停在 2026-08-22T07:20:49Z、`latest_date` 停在 08-22，
+而 index.json 已經是 count 23 / 08-23。`com.kenny.kbwatch` 每 4 小時有在跑（log 有紀錄），
+但 `watch.external_binaries` 持續 FAIL：`com.kenny.kbpublish.bubble` 不在 `REQUIRED_BY_LABEL` 裡。
+**一個永遠紅的看門狗把真訊號埋掉了**，而它紅的理由與它守的東西無關。
+
+登記進去了，但**這一條是本次唯一沒有實測依據的改動**：`kbpublish.bubble` 跑的是
+`~/Projects/ai-bubble-monitor/scripts/auto_publish.py`，這台機器的工作階段掛載不到那個 repo，
+**我沒有讀到那支程式**。依 README「發布 → `ai-bubble-monitor`」推定它會 push，故登記 `git`。
+兩個方向的錯不對稱：多登記 git 的代價是零（另外七支都要它），漏登記的代價是一個安靜的洞。
+
+**怎麼驗的**：`py_compile` 全綠；檢查自檢 0 失敗（新檢查的 fixture 與 near_miss
+擺在邊界兩側、只差一個數字）；`advisory_verify` 對已發布的 `2026-08-23.json`
+**18 PASS · 0 WARN · 0 FAIL**；**新檢查拿 23 期封存全部回測**，22 次比對全部 PASS
+且逐期印出它實際比了幾個豁免網址（最多一期 4 個）——
+**證明它有讀到東西，不是對著空集合全綠**（2026-08-21 五圖那條檢查就是這樣假綠的）；
+再拿 08-23 當自己的前一版跑一次，**三張豁免卡全部 WARN**，把黃金那張的數字改掉後
+只剩兩張 —— 真實卡片文字、兩個方向都證明過。
+`kbprefetch-advisory.sh` 過 `bash -n`；plist 用 `plistlib` 解析出 Label／07:20／PATH 宣告；
+腳本的驗證區塊拿今天的真檔跑回 `1`、拿昨天的檔冒充今天跑回 `0`。
+`anchors.json` 與 24 個日檔全部 `json.load` 通過；資料 repo symlink 歸零。
+
+**怎麼倒回去**：`preamble.md`、`checks/advisory.py`、`kbcore/env.py`、`SKILL.md`
+四個檔 revert 本日 commit 即可。launchd 那兩個新檔刪掉、
+並把 `~/Library/LaunchAgents/com.kenny.kbprefetch.advisory.plist` bootout ＋ 刪除
+（**沒裝就不用**，見下）。排程 prompt 要手動貼回舊版 —— 它不在版控裡，
+唯一的備份是本次之前的 `skills/advisory/SKILL.md`（frontmatter 兩行不同）。
+
+**當時已知的風險**：
+①**新的 plist 還沒安裝。** 工作階段碰不到 `~/Library/LaunchAgents/`，
+所以 07:20 那一支**明天不會跑**，步驟 1 會落到第 ② 層（本機、昨天的）再落到第 ③ 層（Chrome）——
+**與今天一樣，不會更糟，但也還沒變好。** 安裝指令在 `launchd/README.md`，要在機器上手動跑。
+②`kbpublish.bubble` 的 `["git"]` 是推定值，見上。碰得到那個 repo 時要拿 `auto_publish.py` 複驗。
+③新檢查比的是數字集合，**只改一個無關緊要的數字就能繞過**它 ——
+那已經寫進 `blind_to`。它防的是「忘了更新」，不是防人。
+④`preamble` 這一輪長了約 40%（選擇器表從 11 列到 18 列、多了一整節）。
+**採集員的任務卡沒有變長，但它要讀的那份變長了** —— 若下一輪的採集成本明顯上升，
+第一個要查的就是這件事，而不是別的。
+⑤這一輪動到了共用底盤（`kbcore/env.py`）。**自檢是全域的**——`selftest()` 跑遍
+九個 suite 合計 85 條、0 失敗，所以「有沒有哪條檢查壞掉或永遠 PASS」這個問題已經答完。
+沒答的是**拿真資料實跑**：chart／podcast／research 的資料 repo 沒有掛載進這個工作階段，
+那三組只驗到 import 與自檢，沒有驗到「對著今天的產出跑起來會怎樣」。
+`groups` 一個字都沒改，所以 `chart.theme_unique` 不受影響（MODIFY 只在動 `groups` 時要求回跑五圖）。

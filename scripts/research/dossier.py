@@ -109,9 +109,17 @@ def build(d):
          "**要哪一頁就取哪一頁，不要整份載入。** 下面每一行是那一頁的第一句可讀的話。", ""]
     for i, pg in keep:
         L.append(f"- **第 {i + 2} 頁**（`body[{i}]`，{len(pg):,} 字元）　{head(pg)}")
+    # **這一行不能寫死絕對路徑。** 卷宗會活過產生它的那個工作階段，而
+    # `_paths.extracted()` 在 Cowork 裡展開成
+    # `/sessions/<階段 id>/mnt/broker-research/extracted` —— 階段 id 每次都不一樣。
+    # 2026-08-23 讀到的卷宗裡就還留著上一個階段的 id，
+    # **照著它跑會拿到「檔案不存在」，而那看起來像資料掉了，不像路徑過期。**
+    # 改成執行時才決定：跟 `_paths.root()` 同一套規則（環境變數優先，沒設才退回 `~`）。
     L += ["", "取單頁：", "```",
-          f"python3 -c \"import json;d=json.load(open('{_paths.extracted()}/{d['slug']}.json',"
-          "encoding='utf-8'));print(d['body'][N])\"", "```", ""]
+          "python3 -c \"import json,os;"
+          f"r=os.environ.get('{_paths.ENV}') or os.path.expanduser('~/broker-research');"
+          f"d=json.load(open(r+'/extracted/{d['slug']}.json',encoding='utf-8'));"
+          "print(d['body'][N])\"", "```", ""]
 
     tb = d.get("tables") or []
     if tb:

@@ -90,6 +90,26 @@
 `subtitle`、`cats` 與 `groups`／`series`、`y_label`、`source`（券商＋報告名＋日期）、
 以及 **`grounding`：一個字串陣列，逐一列出圖裡每個數字在報告中的原句片段**。
 
+**每一種 `kind` 吃的欄位不一樣**，對照表在 `chart/anchors.json` 的 `kinds`：
+
+| kind | 要給 |
+|---|---|
+| `timeseries` | `series`：`[{"name":…, "dates":["YYYY-MM-DD",…], "values":[…]}, …]` |
+| `range_area` | `band`：`[[日期, 下界, 上界], …]` ＋ `band_label` ＋ `series` |
+| `grouped_bar`／`stacked_bar`／`pct_stacked_bar` | `cats` ＋ `groups`：`[{"name":…, "values":[…]}, …]` |
+| `waterfall` | `cats` ＋ `vals`（可選 `total_label`） |
+| `scatter` | `pts`：`[[x, y], …]`（可選 `hi_pts`：`[[x, y, 標籤], …]`） |
+| `heatmap` | `cats`（欄）＋ `rows`（列）＋ `matrix` |
+| `gauge` | `gauge`：`{"value":…, "lo":…, "hi":…, "ref":…}` |
+
+**`markers` 只有 `timeseries` 與 `range_area` 吃得下。** 其餘圖型的 x 軸是類別，
+「在某個日期畫一條垂直線」在它們身上沒有意義 —— 2026-08-11 有一期這樣寫過，
+檢查通過而兩軌都沒畫出來。
+
+`dates` 與 `values` 要一樣長。**2026-08-23 之前 `timeseries` 與 `range_area`
+在這條線上從來沒有畫出來過**（組檔層把 dict 原樣塞進渲染層，一定丟例外），
+現在修好了；`tools/chartkit_smoke.py` 每一種都會實際畫一張出來驗。
+
 **每一個數字都要能在抽取文字裡逐字找到**，跟 `quote` 同一條紀律。
 找不到出處的數字**不要放進圖裡**。
 

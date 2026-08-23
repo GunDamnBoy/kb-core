@@ -49,6 +49,17 @@
 **第一支報孤兒時不要自己加 `--prune`**，先看它列出什麼、確認那些真的是舊 slug
 留下的，再決定。刪除要明確。
 
+**標題不是檔名。** `extract.py` 會叫 `title.py` 去 PDF 中繼資料或第一頁取真實標題，
+並記下 `title_source`（`pdf_meta`／`page_one`／`filename`）。
+`research.title_resolved` 看到 `filename` 就 FAIL —— 那代表**這家券商的取法還沒量過**。
+
+遇到新券商時：先跑一次 `title.py --selftest`（對著 `~/broker-research/title_fixture.json`），
+把那幾份的期望標題人工讀出來寫進 fixture，**再**去 `title.py` 加對照表。
+順序不能反 —— 沒有驗證集的調參，判為成功的份數會在兩個數字之間跳，而你分不出哪次是對的。
+
+**`product` 與 `slug` 仍然來自檔名，即使檔名是 `1317180`。** 那是身分不是顯示：
+`dossier` 條目 id、圖檔名、已發布的 `data/*.json` 全部指著它。要改得另外規劃遷移。
+
 `research_verify` 這時第 2 層那幾條會是 **SKIPPED 不是 PASS**（還沒做）。**有 FAIL 就停在這裡**
 —— 抽取層的問題不會因為往下做而變好，只會被寫進盤點裡。
 

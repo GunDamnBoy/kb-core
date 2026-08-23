@@ -20,6 +20,7 @@
 | `com.kenny.kbwatch.chart` | 00／04／08／12／16／20 時 | chart 的看門狗：只跑 `watch_sentinel.py`（chart 沒有 healthcheck） |
 | `com.kenny.kbdocx.podcast` | 每天 04:00 | 把**已發布的**當日 JSON 排版成 Word（`kbdocx-podcast.sh`）→ `~/Documents/podcast-reports` |
 | `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
+| `com.kenny.kbprefetch.advisory` | 每天 07:20 | 投顧保底層預抓（`kbprefetch-advisory.sh`）：curl origin 的 `raw/<date>.json` → `~/.advisoryfetch/raw/` 快取。**不跑 git** |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
 | `com.kenny.kbcorepush` | 每 300 秒 | 推 **kb-core 自己**（`push_kbcore.py`），帶靜置與自檢閘門 |
 | `com.kenny.kbpublish.bubble` | 每 60 秒 | 發布 **AI 泡沫監控**的每週質化覆核：`~/outbox/bubble/` → `ai-bubble-monitor` |
@@ -73,7 +74,26 @@ repo 的 `launchd/` 底下**，不在這裡——因為它與它發布的東西�
 釘在整點就沒有這個問題：**02:00** 在 podfetch（01:00）之後、官方稿（02:20）與
 日報（03:00）之前；**06:00** 是日報發完之後的第一次，人起床時已經有兩份報告了。
 
-### 為什麼預抓釘在 11:00
+### 為什麼投顧的預抓釘在 07:20，而且不跑 git
+
+`fetch-floor` 那個 Actions 在台北約 07:00 落地（2026-08-23 實測 `fetched_at` 06:59），
+輪次是 07:30 的 cron ＋ 約 5 分鐘 jitter。07:20 起跑、最多重試到 07:24，仍在輪次之前。
+**三個時刻是一組的**：動了 `advisory-daily-0730` 的 cron 就要回頭動這支 plist。
+
+它解的不是「沒人拉」，是**時序**。本機 `~/advisory-rewrite` 的確會拿到 Actions 推的
+`raw/`，但要等 `com.kenny.kbpublish` 下一次 `pull --rebase` —— 而發布是那一輪的
+**最後**一步（2026-08-23 實測：`raw/2026-08-23.json` 的 mtime 09:31 ＝ 當輪回執時刻）。
+於是每天輪次開跑時，本機最新的 raw 都是昨天的。
+
+**不跑 git 是硬要求**，不是偏好：`kbpublish` 每 60 秒一次，任何 git 指令留下的
+`index.lock` 都會擋住它，而那一次的症狀是**發布失敗**而不是預抓失敗 ——
+錯的地方會叫、出錯的地方不會。所以它只 curl 一個檔到 `~/.advisoryfetch/`，
+與 `kbprefetch-chart.sh` 同一個紀律。
+
+它會驗 `date` 是不是今天、`failed_essential` 是不是空的，**不合格就不落地**（exit 10）。
+拿到一份日期不對的檔案而以為保底層正常，比抓不到更糟。
+
+### 為什麼五圖的預抓釘在 11:00
 
 它跟 `chart/anchors.json` 的 `schedule.prefetch`／`schedule.run`（11:00／11:30）是**一組的**，
 不是各寫各的。預抓 46 條實測約 9 分鐘，11:00 起跑留半小時緩衝。

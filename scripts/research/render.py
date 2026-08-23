@@ -30,14 +30,28 @@ def anchor(slug):
 
 
 def title_of(r):
-    """`title` 是檔名去副檔名 —— macOS 的檔名放不了冒號，券商就用 `_` 代替，
-    於是標題讀起來像 `Top of Mind_ Assessing a less transparent Fed`。
+    """標題直接用，**不再猜標點**。
 
-    **這一層只改顯示，不回寫 digest.json。** 冒號是猜的，猜錯了要能一眼看出來
-    是排版的問題；寫回資料庫就變成無法分辨的既成事實。
+    舊版在這裡把 `_ ` 猜成「：」、結尾 `_` 猜成「？」，因為那時 `title`
+    是檔名去副檔名。`title.py` 上線之後標題來自 PDF 中繼資料或第一頁，
+    猜測退休了。
+
+    **這一段留著是因為它差點被漏掉。** 同一個猜測有兩份拷貝（這裡與
+    `broker-research-digest/index.html` 的 `pretty()`），退休時只改了網站那一份 ——
+    於是 `.md` 產生器與網站對同一批欄位的信任程度會不一樣，
+    而兩邊產出的標題在正常情況下**看起來完全相同**（新標題裡沒有 `_`，
+    猜測是空轉的），差異只在某天有一份標題真的含 `_` 的時候才會現形。
+    一份意義兩個家，遲早會有一天只對了一半。
+
+    `title_source` 不可信時掛記號，理由與網站那一側相同：一個安靜的檔名標題
+    看起來就是一個好標題。
     """
-    t = re.sub(r"_\s+", "：", (r.get("title") or "?")).strip()
-    return re.sub(r"_+$", "？", t)          # 結尾的 `_` 是被替換掉的問號
+    t = (r.get("title") or "?").strip()
+    if r.get("title_source") == "filename":
+        return t + "（檔名，未取到真實標題）"
+    if r.get("title_source") and not r.get("title_confident"):
+        return t + "（標題可能不完整）"
+    return t
 
 
 def render(d, charts_dir="charts"):

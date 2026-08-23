@@ -154,6 +154,7 @@
   "segment_reset_drop_seconds": 300,
   "_segment_reset_note": "判定「時間戳重置＝換了一段轉錄」的門檻：後一行的秒數比前一行低超過這個值。**這不是檢查，是 `podcast_dupmap.py` 的分段依據**，所以誤判的代價只是報告分段錯，不會擋發布。取 300 秒的依據在 MAINTENANCE 第 6 節那份全庫量測：回跳幅度分三團，**60 秒以下是良性排版差異（8 集）**，**約 1,200 秒那一團是 `segment_seconds` 漏做位移（8 集）**，300 秒剛好落在兩團中間的空隙。",
   "_dupmap_note": "**整段複製的位置要能被撰寫 subagent 定位，否則那條派工規則不可執行。** manifest 與 `podcast_verify.py` 給的都是 token 位置（「第 1533 → 第 3791 個字」），而 subagent 手上只有帶時間戳的逐字稿。2026-08-22 那一輪主代理臨時寫了一支腳本做換算，跑完就沒了。固化成 `tools/podcast_dupmap.py`。**同一輪還學到第二件事**：那支臨時腳本把整份逐字稿當成單一時間軸，於是把 macrovoices「29:13 之後全是重貼」推論成「實質內容只到 28:44」，並把這個結論寫進派工單 —— 而該檔在第一段轉錄之後還有數段各自從 00:00 重新計時的獨立轉錄，內容全新。**subagent 逐行核對後推翻了主代理。** 所以定位器一定要先分段再報，而**派工單只給機械事實、不給篇幅結論**。",
+  "block_repeat_blind_to_stutter": "**這組門檻認不得「同一個短句連續重複 N 次」的跳針，而且原因不是門檻**（2026-08-23 實測）。mib 那集 `[37:08]`–`[37:17]` 同一句出現 13 次、合計約 324 token —— **高於 `block_repeat_min_tokens`（150）卻仍被判乾淨**。機制在 `kbcore.transcript.block_repeats()`：合併條件 `a == cur[0] + cur[2]` 要求重複的兩端同步前進，而跳針每遇到下一個副本開頭，`seen[g]` 回傳的仍是第一份的位置、`a` 因此回捲（實測 12 筆的 `first` 全部相同、`second` 每次 +27），於是 324 token 被拆成 12 個區塊（11 個 38 token ＋ 尾段 27），逐一低於下限被濾掉。**所以修法在聚合，不在門檻** —— 把下限調到 38 會讓每一句廣告台詞都觸發。`stutter_token_repeat`（同一 **token** 連續 20 次）也接不到，因為兩次重複之間隔著整句話。**在修好之前這一種只能靠讀稿的人抓**，規則寫在 `preamble.md` 第九節。",
   "block_repeat_source": "2026-08-20 用當天十集實測校準，不是猜的。正規化後（去時間戳、去講者標記、去標點、小寫）切 12-gram，把位置連續的重複 gram 併成區塊，量到的分佈是：**廣告與台呼 40–79 token**（Creative Planning 讀稿、「you're listening to the Bloomberg Surveillance podcast」）、**片頭預告 112 token**（In Good Company 的 cold open，第一次出現在 token 17）、**真實的區塊重播 281 與 970 token**（bloomberg 8/19 的 Yardeni 段、iltb 的記憶體段各重播）。下限取 150 是因為 112 到 281 之間有 2.5 倍的空隙，150 兩側都有餘裕。cold-open 豁免另外用「第一次出現落在前 200 token」判定——**那是片頭預告的定義本身**，不是為了讓數字好看而開的例外。十集裡 allin 也有區塊重複，但它是同義重述不是逐字，機械查重看不到，那條寫在 blind_to。",
   "status_values": [
    "OK",
@@ -315,6 +316,7 @@
    "show_priority",
    "index.html 三條配色（.ep.s-<key>、.b-<key>、深色 .b-<key>）"
   ],
+  "hosts_stale_touches": "**`hosts` 過期是第三種異動，2026-08-23 補進來的。** 前兩種（加入／移出）是有人主動做的，這一種是**自己爛掉的**：名單寫在節目層級、而節目會換人。它有兩層代價——組檔時照抄會把沒參與的人寫成主持人（`preamble.md` 第四節已擋住），**更深的一層是 `hosts` 會餵進轉錄 prompt**（見 `MAINTENANCE.md` 第 5 節），名單越舊、Gemini 越容易把不在場的人標上去，於是它會**製造**第 6 節記的那種「合理人名張冠李戴」。發現路徑已經有了：subagent 依稿判定、不符要在回報中具名。**缺的一直是把回報接回檔案的那一段** —— 08-22 兩集不符、08-23 又兩集不符，其中 bloomberg 連兩天報同一個問題而名單一個字沒動。做法：維護時翻當日回報，具名不符的就改這裡（`scripts/podcast/shows.json`；`~/.podfetch/` 底下那份是 symlink，改一份即可，但**要在 Mac 上改**，沙箱只看得到一份）。**證據不足時寧可加不要減**：名單是候選、不是出席表，多一個名字只是多一個候選，少一個名字會讓真正出席的人永遠標不出來。08-23 就是這樣處理的——latentspace 的 Alessio Fanelli 有官方稿直接證明整集未發言，直接換成 Vibhu；bloomberg 只有兩天觀察，因此把 Isabelle Lee 與 Scarlett Fu 加進去、而沒有動那三位兩天都沒出現的（兩天不足以判一份常設名單）。**Bloomberg 值得考慮拆條目**：Bloomberg Money 與 Surveillance 主節目明顯是兩套常設陣容，一個 `hosts` 欄位服務不了兩個。",
   "css_home": "podcast-knowledge-digest/index.html",
   "source": "**移出時 CSS 一律保留**——舊日檔還在站上，刪了色碼就掉色，而且不會報錯。目前保留的除役色：capitalallocators、bg2、breakdowns、lennys、lex、pivot。**加入時反而是最容易漏的那一邊**：2026-08-20 加 fwdguidance 時三條全漏，是拿 shows.json 跟 index.html 對帳才發現的（21 檔現役 vs 26 組配色）。徽章缺色不會丟出任何錯誤，只會在那檔節目第一次出集數的那天默默沒有顏色。**還有一個陷阱**：publish 只做 `git add data`，改 index.html **不會**被排程順手帶進去，要另外提交——`.kb-data-repo` 就是這樣漏掉整整一天的。"
  }

@@ -55,8 +55,32 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
    沙箱路徑是 `/sessions/<name>/mnt/kb-core/scripts/podcast/healthcheck.py`，腳本會自動偵測掛載點。連不到資料夾就用 `mcp__cowork__request_cowork_directory` 連四個資料夾再重跑。FAIL 與 WARN 全部帶進第 3 步的報告。
 
    > **沙箱裡固定會有三則 WARN**（`shows.json 兩份`／`節目在文件裡`／`podfetch`），成因都是 `~/.podfetch` 沒被掛載，不是故障。**但也因此，那三條在沙箱裡等於沒跑**——要真的驗它們得在 Mac 上跑一次。
-3. 補**成本基線**的人工欄位：使用者若附了當日 token 分析報告，把**四個數字**抄進 `metrics.csv`——加權總量（千位）→ `eff_tokens_k`、子代理數 → `subagents`、子代理總回合數 → `agent_turns`、**子代理加權總量（千位）→ `subagent_tokens_k`**。這四欄機器量不到（排程執行不在本機留 transcript），**缺任何一欄 `healthcheck.py` 都會出聲**；healthcheck 不會洗掉人工值。每集成本那條曲線全靠這一步累積。
-   > **要比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`。** 後者是整場工作階段，混了固定開銷與一次性維護動作，除以集數得到的數字**不可比**——08-15 與 08-17 都踩過這個坑。
+3. **成本基線那四欄要由「在 Mac 上跑的維護者」補，不是由排程自述**（2026-08-23 訂正）。
+   `eff_tokens_k`／`subagents`／`agent_turns`／`subagent_tokens_k` 原本寫「使用者若附了
+   當日 token 分析報告就抄進去」，08-22 改成由 `tools/usage_report.py` 讀逐字稿量。
+   **方向對，但那支在 Cowork 排程那一側跑不動**：沙箱沒有 `~/.claude/projects`（`exit 14`）、
+   `request_cowork_directory` **明文拒絕掛載工作階段儲存區**、
+   `session_info__read_transcript` 不回 usage 欄位。三條路 08-23 全部實測過。
+   > **但不要把它寫成「排程不留 transcript」** —— 那個結論 08-14 寫過一次、08-16 就被推翻
+   > （原因是「五次都是從外面找」），本檔第 6 節與 `healthcheck.py:681` 都記著這件事。
+   > **08-23 用 `Glob` 實地確認逐字稿存在**：
+   > `~/Library/Application Support/Claude/local-agent-mode-sessions/<帳號>/<工作區>/local_<階段>/.claude/projects/<專案>/<uuid>.jsonl`，
+   > 子代理在同層 `<uuid>/subagents/agent-*.jsonl`。
+   > **而 `healthcheck.py:703-704` 那段被 early-return 擋掉的程式，glob 樣式正好對得上**
+   > （`local-agent-mode-sessions/*/*/*/.claude/projects`，08-23 驗過 `fnmatch` 為 True）。
+   > **所以在 Mac 上跑 healthcheck，那四欄是量得到的** —— 要復活它就是把 `:692` 那個
+   > `return "", "", ""` 拿掉再實跑一次，**但要先在 Mac 上驗，沙箱驗不了**。
+   > **所以不要「看到空欄就抄回報裡的數字」。** 那是自述不是量測，而
+   > `scripts/podcast/metrics-columns.md` 開頭就寫著**用另一套定義填進同一欄比留白更糟**。
+   > 實害已經發生：`eff_tokens_k` 08-21＝4913、08-22＝235、08-23＝276，**差 20 倍**。
+   > 08-23 那一列的自述值已在同日抽掉，08-21／08-22 兩列保留不改寫歷史。
+   > 要恢復這條基線得先讓 `usage_report.py` 在 Cowork 側拿得到逐字稿 —— 見 `MAINTENANCE.md` 第 6 節。
+   > **`healthcheck.py` 的那則「每日指標」WARN 已於 08-23 改寫**，不再催人去填、改成說明為什麼留空。
+   > **注意它在沙箱裡整條不會出現**（`metrics()` 寫 `~/.podfetch/`，沒掛載就整個 except 掉，
+   > 輸出裡連「每日指標」四個字都沒有）—— 08-23 就是這樣才發現本節上一版寫的
+   > 「缺欄會出聲」在沙箱裡沒被驗證過。**要驗這一則得在 Mac 上跑。**
+   > **真要比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`** ——
+   > 後者混了固定開銷與一次性維護動作，除以集數不可比（08-15、08-17 都踩過）。
 4. 讀 `~/podcast-knowledge-digest/MAINTENANCE.md`，尤其第 5 節（新增節目步驟表）、第 7 節（事故檔案）、第 12 節（登記簿）。第 4C 節（podfetch 的四個不要改的設計）只有要動 `podfetch.py` 時才需要讀。第 11 節（變更紀錄歸檔）是純歷史，要查「當初為什麼這樣改」時才回來讀。
 5. 讀規格。**現在是四份小的，不是一份大的**：`kb-core/podcast/BRIEF.md`、`kb-core/podcast/anchors.json`、`kb-core/scripts/podcast/DIGEST-PROMPT.md`、`kb-core/scripts/podcast/preamble.md`。要動節目清單、官方稿入口或 podfetch 內部時，另外讀 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 的第 1／2／6 節。
    > **那條「brief 約 24,990 token、餘裕不到 1%」的警告已經不再是每日的硬限制**（2026-08-22）——每日排程不再完整讀 `AGENT_BRIEF.md`，它只在需要 A 類清單時讀第 1 節。**但拆檔之後多了一個新的失效形態**：四份小的各自都很好讀，於是很容易只改其中一份。查漂移時四份要一起看。

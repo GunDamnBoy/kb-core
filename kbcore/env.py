@@ -63,6 +63,20 @@ REQUIRED_BY_LABEL = {
     # **空陣列不是「還沒想」，是「想過了，答案是零」** —— 沒登記才是紅的。
     "com.kenny.kbprefetch.chart":  [],
     "com.kenny.kbdocx.podcast":    [],
+    # 2026-08-23：這一支讓看門狗連續 FAIL，而 FAIL 的看門狗不更新 heartbeat ——
+    # `advisory-rewrite/sentinel/heartbeat.json` 因此停在 08-22 07:20Z、`latest_date`
+    # 停在 08-22，即使 08-23 已經正常發布。**一個永遠紅的看門狗把真訊號埋掉了。**
+    #
+    # 它是唯一一支不跑 `tools/publish.py` 的（跑 ai-bubble-monitor 的
+    # `scripts/auto_publish.py`，plist 正本也在那個 repo）。**我沒有讀到那支程式**
+    # —— 這台機器上的工作階段掛載不到 `~/Projects/ai-bubble-monitor`。
+    # 依 README「發布 → `ai-bubble-monitor`」推定它會 push，故登記 `git`。
+    # 兩個方向的錯不對稱：多登記 git 的代價是零（git 一定在，另外七支都要它），
+    # 漏登記的代價是一個安靜的洞。**下次碰得到那個 repo 時要拿 auto_publish.py 複驗。**
+    "com.kenny.kbpublish.bubble":  ["git"],
+    # 2026-08-23：advisory 的保底層預抓。只用 curl 抓 origin 上的 raw JSON 到
+    # `~/.advisoryfetch/`，**不跑任何 git**（跑 git 會與每 60 秒的 kbpublish 搶 index.lock）。
+    "com.kenny.kbprefetch.advisory": ["curl"],
 }
 
 # **有比較好，沒有也能跑。** 缺席是 WARN 不是 FAIL —— 把降級判成失敗，

@@ -21,6 +21,7 @@
 | 採集眉角、黑名單、發稿日曆 | `scripts/advisory/preamble.md` | 無 |
 | Actions 保底層（兩條 OAS、黃金持倉、台股端點） | `tools/fetch_advisory.py` | 路由表在 `kbcore/fetch_tw.py` 的 `ROUTES` |
 | 每天怎麼跑 | `skills/advisory/SKILL.md`（正本） | 排程 prompt 整份取代，見下 |
+| 排程與 launchd | `launchd/*.plist`＋包裝腳本＋`launchd/README.md` 的表 | 新增 Label 要同時登記進 `kbcore/env.py` 的 `REQUIRED_BY_LABEL`，**否則 `watch.external_binaries` 會 FAIL，而 FAIL 的看門狗不更新 heartbeat** —— 2026-08-23 `kbpublish.bubble` 就是這樣讓哨兵停在前一天。裝到 `~/Library/LaunchAgents/` 是**機器上的手動步驟**，工作階段做不到 |
 | 發布流程 | `tools/publish.py` | **三套系統共用，改它等於同時改三套** |
 | 網站呈現 | `advisory-rewrite/index.html` | 徽章表從檔案實際解析比對。**2026-08-22 起它在 `staged_paths` 裡，改了會自動上線** —— 在那之前不會，而回執照樣 exit 0（見 CHANGELOG 該日第一節）。代價是**沒有任何檢查在看外殼**：改壞了會直接上線。改完至少要抽 script 跑 `node --check`，視覺請人工確認（`file://` 沒有自動路徑） |
 

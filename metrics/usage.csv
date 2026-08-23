@@ -1,2 +1,3 @@
 date,system,eff_tokens_k,main_turns,subagents,agent_turns,subagent_tokens_k,out_tokens_k,cache_read_k,cache_write_k,transcript
 2026-08-22,broker-research,43339,617,25,885,15300,541,212918,2021,f225453c-9e60-5549-9068-6e56ca2af579.jsonl
+2026-08-23,podcast,6611,89,5,60,2481,255,14887,684,9c58ae44-9625-4ad7-8555-079c9564c0cc.jsonl

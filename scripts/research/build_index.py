@@ -51,6 +51,10 @@ def entry(d):
         "product": d.get("product"),
         "date": d.get("date"),
         "title": d.get("title"),
+        # 標題怎麼來的一路帶著。**「這個標題是檔名」不能只活在抽取層** ——
+        # 索引是給人查的，而查的人看不到 extracted/。
+        "title_source": d.get("title_source"),
+        "title_confident": d.get("title_confident"),
         "pages": d.get("pages"),
         "issue": d.get("issue"),
         "sha256": d.get("sha256"),

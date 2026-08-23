@@ -871,3 +871,90 @@ register(Check(
                                   "to": "2026-08-20T11:00:00+08:00"}}},
     suite="advisory",
 ))
+
+
+# ── 18. 豁免卡的數字有沒有更新 ───────────────────────────────────────
+_NUM_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _exempt_numbers(card):
+    """一張卡在 body 與 bullets 裡出現過的所有數字，當成集合看。
+
+    比集合而不是比整段文字，是因為這條盲點的原話就是「**數字**沒更新」——
+    改幾個字但數字一個沒動，正是它要抓的東西；反過來，數字動了而文字沒動
+    不可能發生（數字就寫在文字裡）。
+    """
+    text = (card.get("body") or "") + "".join(card.get("bullets") or [])
+    return frozenset(_NUM_RE.findall(text))
+
+
+def _exempt_card_stale(p):
+    """跨版去重豁免清單放行的是「網址固定」，不是「內容固定」。
+
+    `dedup_exempt` 每長一條，「有標 base 但數字沒更新（跟昨天一樣）」這個盲點就大一分。
+    那條盲區本來就寫在 `base_cards.blind_to` 的第一行，而 anchors 的
+    `_dedup_exempt_cost` 明訂了動手的時機：**「第一次有人發現某張豁免卡連續兩天數字一樣」**。
+
+    2026-08-23 就是第一次。Investing.com Fed Rate Monitor 那張卡的降息／維持機率
+    （61.0%／39.0%）與前一版逐字相同——因為週末 CME 期貨休市，頁面的 `Updated`
+    停在前一天。那一輪的執行者自己發現並在 `about.notes` 具名寫了，
+    **但沒有任何機器在問這件事**，下一次沒發現就會安靜地過去。
+
+    **這條是 WARN 不是 FAIL：機器分不出「真的沒更新」與「忘了更新」。**
+    週末休市、官方序列落後兩個交易日（FRED 落後兩天、SPDR 歸檔落後一天）都會讓數字
+    合法地重複。那時候該做的是在 `about.notes` 具名說明，不是把當期擋下來——
+    而「擋下來」會逼執行者去改數字，那比重複更糟。
+    """
+    prev = p.get("prev")
+    if prev is None:
+        return skipped("沒有前一版，第一天無從比較")
+    exempt = set(_A(p, "dedup_exempt"))
+    if not exempt:
+        return skipped("dedup_exempt 是空的，沒有豁免卡要比")
+
+    old = {c.get("url"): _exempt_numbers(c) for _, c in _cards(prev)
+           if c.get("url") in exempt}
+    if not old:
+        return ok("前一版沒有用到豁免網址，無從比較")
+
+    stale = []
+    for label, c in _cards(p["doc"]):
+        u = c.get("url")
+        if u in old and _exempt_numbers(c) and _exempt_numbers(c) == old[u]:
+            stale.append(f"{label}（{u}）")
+    if stale:
+        return warn(
+            f"{'、'.join(sorted(set(stale)))} 的數字與前一版完全相同 —— "
+            "若是真的沒更新（休市、官方序列落後），請在 about.notes 具名說明；"
+            "若不是，那是漏更新，而豁免清單讓它不會被去重擋下來")
+    return ok(f"{len(old)} 個豁免網址的卡片數字都與前一版不同")
+
+
+register(Check(
+    id="advisory.exempt_card_freshness",
+    covers="跨版去重豁免清單上的網址，其卡片的數字集合與前一版不完全相同（相同只警告）",
+    blind_to=[
+        "數字變了但變錯了（這條只問有沒有動，不問動得對不對）",
+        "數字一樣但那是對的（休市、官方序列落後——所以是 WARN 不是 FAIL）",
+        "只改了一個無關緊要的數字來繞過這條檢查",
+        "非豁免網址的卡片重複（那是 cross_version_dedup 的事）",
+        "與前兩版相同（只比前一版，同 cross_version_dedup）",
+        "豁免網址今天沒出卡（缺席由 base_cards 管，這條只看有出的）",
+    ],
+    run=_exempt_card_stale,
+    fixture={"anchors": {"dedup_exempt": ["https://fred.example/s"]},
+             "prev": {"sections": [{"groups": [{"label": "信用債", "cards": [
+                 {"url": "https://fred.example/s", "body": "OAS 0.82%",
+                  "bullets": ["日變 +1 bp"]}]}]}]},
+             "doc": {"sections": [{"groups": [{"label": "信用債", "cards": [
+                 {"url": "https://fred.example/s", "body": "OAS 0.82%",
+                  "bullets": ["日變 +1 bp"]}]}]}]}},
+    near_miss={"anchors": {"dedup_exempt": ["https://fred.example/s"]},
+               "prev": {"sections": [{"groups": [{"label": "信用債", "cards": [
+                   {"url": "https://fred.example/s", "body": "OAS 0.82%",
+                    "bullets": ["日變 +1 bp"]}]}]}]},
+               "doc": {"sections": [{"groups": [{"label": "信用債", "cards": [
+                   {"url": "https://fred.example/s", "body": "OAS 0.83%",
+                    "bullets": ["日變 +1 bp"]}]}]}]}},
+    suite="advisory",
+))

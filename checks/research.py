@@ -45,6 +45,49 @@ def _name(d):
     return (d.get("slug") or d.get("source_file") or "?")[:44]
 
 
+def _parts(d):
+    """一份報告**全部**的抽取文字：第一頁 ＋ 內文 ＋ 表格列。
+
+    這個函式存在，是因為同一個「報告內容有哪些」的定義原本散在三條檢查裡，
+    而**三條各自答錯了不同的部分**：
+
+    - `chart_grounded` 2026-08-21 首輪就撞上（花旗那張圖的數字全在第 11 頁表格裡，
+      16 條 grounding 全部找不到），當場補了表格。
+    - `stance_grounded` 的 `blind_to` **宣稱**掃了表格，程式沒有 ——
+      文件與程式各說各話，而它會製造**假性 FAIL**：一句只出現在表格裡的原句
+      被判沒憑據，撰寫者只能把那筆立場刪掉或改寫。**看起來像撰寫者偷懶。**
+    - `no_pii` 誠實地在 `blind_to` 記著沒掃表格 —— 誠實，但那是唯一一條
+      不能靠人記得的規則，浮水印蓋在哪裡不由我們決定。
+
+    一個定義三個家，於是每個家各壞一次、而且壞法都不一樣。現在只有一個家。
+
+    **回的是原始片段，不是塌縮過的字串** —— `no_pii` 的信箱與雜湊正則要靠標點，
+    而 `_norm` 會折疊標點。要比對的那兩條自己再 `_norm`。
+    """
+    parts = [d.get("page_one") or ""] + list(d.get("body") or [])
+    for t in (d.get("tables") or []):
+        for row in t.get("rows") or []:
+            parts.append(" ".join(str(c) for c in row))
+    return parts
+
+
+def _all_text(d):
+    """一份抽取結果裡**任何會被存下來的文字**，包含 `page_one_columns`。
+
+    **這跟 `_parts()` 刻意不一樣，而差異不是疏漏。** 兩者回答兩個不同的問題：
+
+    - `_parts()` 問「分析師寫過這句話嗎」（grounding）。`page_one_columns` 是
+      `page_one` 的重排版 —— 同樣的內容換個版面，收進來只會**重複計算同一個乾草堆**。
+    - `_all_text()` 問「這個檔裡還有沒有殘留」（PII）。這時**每一個會被寫進檔案的
+      欄位都算數**，包括重排版，因為浮水印不挑欄位。
+
+    2026-08-23：`page_one_columns` 是第三個繞過浮水印剃除的表示法，
+    而 `no_pii` 當時掃的是 `_parts()`，連看都沒看到它。
+    **兩個函式共用一個定義，就是這個漏洞當初的成因。**
+    """
+    return _parts(d) + [d.get("page_one_columns") or ""]
+
+
 # ── 1. PII 與追蹤碼有沒有殘留 ────────────────────────────────────────
 LEAK = {
     "信箱": re.compile(r"[\w.+-]+@[\w.-]+\.\w{2,}"),
@@ -64,8 +107,7 @@ def _no_pii(p):
     """
     bad = []
     for d in _docs(p):
-        blob = (d.get("page_one") or "") + "\n" + "\n".join(d.get("body") or [])
-        hits = {k: len(rx.findall(blob)) for k, rx in LEAK.items()}
+        hits = {k: len(rx.findall("\n".join(_all_text(d)))) for k, rx in LEAK.items()}
         hits = {k: v for k, v in hits.items() if v}
         if hits:
             bad.append(f"{_name(d)} {hits}")
@@ -78,11 +120,15 @@ def _no_pii(p):
 
 register(Check(
     id="research.no_pii",
-    covers="抽出來的 page_one 與 body 裡沒有信箱、反寫信箱、32 位追蹤雜湊、"
-           "`exclusive use of`、`Prepared for` 的任何殘留",
+    covers="抽出來的 page_one、body、tables 與 page_one_columns 裡沒有信箱、反寫信箱、"
+           "32 位追蹤雜湊、`exclusive use of`、`Prepared for` 的任何殘留",
     blind_to=[
-        "**表格裡的殘留** —— 這條只掃 page_one 與 body，`tables` 沒掃",
+        "**表格的欄位錯位** —— 掃得到表格文字，但抽取器把一格拆成兩格時，"
+        "一個被劈開的信箱這五條正則一條都不會響",
         "**沒見過的浮水印形態** —— 換一家券商、換一種蓋法，這五條規則一條都不會響",
+        "**下一個新增的表示法** —— 這條掃的是 `_all_text()` 列出的欄位。"
+        "2026-08-23 之前它漏掉 `tables` 與 `page_one_columns` 兩個，"
+        "而兩者都是後來才加進抽取結果的。**新增欄位時沒有東西會提醒你回來改這裡**",
         "分析師姓名（電話與信箱剃掉了，人名留著；`anchors.known_limits` 有記）",
         "原始 PDF 本身（它照樣帶著浮水印，那是刻意的：原文不進版控）",
     ],
@@ -255,6 +301,7 @@ def _dupes(p):
     if ds:
         return fail(f"slug 撞號：{ds} —— 同一天同一家同一個產品線，"
                     "**但內容不同**。可能是早晚兩版，需要在 slug 裡加區別")
+    # 註：**真正的撞號這條看不到**，理由寫在下面的 blind_to。守衛在 extract.py。
     return ok(f"{len(by_slug)} 份，slug 與 sha256 都唯一")
 
 
@@ -262,6 +309,7 @@ register(Check(
     id="research.no_duplicates",
     covers="這一批之內 slug 與 sha256 都唯一",
     blind_to=[
+        "**同一輪裡真的撞號的那兩份** —— 這條讀的是 `extracted/`，而覆蓋發生在它執行之前：到它看的時候兩份已經變成一份，`by_slug` 只有一個值。**它量的是撞號之後的狀態，而證據那時已經被刪掉了。**真正的守衛在 `extract.py` 的寫檔前（2026-08-23 加），這條只抓得到「兩份都寫出來了但 slug 一樣」這種不會發生的情況",
         "**跨批重複** —— 上週已經收過的這一批又收一次，這條看不到（它只看眼前這批）",
         "同一份報告的修訂版（內容不同、sha 不同、slug 也可能不同）",
         "檔名正規化之前就已經是兩份的情況",
@@ -314,8 +362,7 @@ def _stance_grounded(p):
     if digest is None:
         return skipped("這一輪沒有第 2 層產出（只跑了入庫）—— "
                        "**跟「比對過、都對」是兩件事**")
-    text = {d.get("slug"): _norm((d.get("page_one") or "") + "\n" + "\n".join(d.get("body") or []))
-            for d in _docs(p)}
+    text = {d.get("slug"): _norm("\n".join(_parts(d))) for d in _docs(p)}
     miss, orphan = [], []
     for r in digest.get("reports") or []:
       for s in r.get("stances") or []:
@@ -344,6 +391,9 @@ register(Check(
         "**原句對得上但斷章取義** —— 前後文翻轉語意，機械比對看不到",
         "`crosscut` 那一段（那裡本來就是我們的話，不受這條約束）",
         "**圖說與座標軸文字** —— 掃 page_one、body 與 tables，圖片裡的文字抽不出來所以掃不到",
+        "**乾草堆變大帶來的巧合命中** —— 2026-08-23 把表格收進來之後，"
+        "一句很短的原句可能剛好等於某個表格欄位的文字。這是刻意收下的代價："
+        "少掉的假性 FAIL（只出現在表格裡的真原句）比多出來的巧合命中值錢",
     ],
     run=_stance_grounded,
     fixture={"anchors": {}, "docs": [{"slug": "a", "page_one": "growth is slowing", "body": []}],
@@ -447,17 +497,10 @@ def _chart_grounded(p):
     if digest is None:
         return skipped("這一輪沒有第 2 層產出")
     lo, hi = _A(p, "charts", "per_report")
-    # **表格也算報告內容。** 這條檢查第一版只掃 page_one 與 body，
-    # 而它自己的 blind_to 就寫著這個缺口 —— 2026-08-21 首輪當場撞上：
-    # 花旗那張央行利率圖的數字全部來自第 11 頁的表格，於是 16 條 grounding 全部找不到。
-    # **一個寫在 blind_to 裡的盲區，第一次執行就變成 FAIL。**
-    def blob(d):
-        parts = [d.get("page_one") or ""] + (d.get("body") or [])
-        for t in (d.get("tables") or []):
-            for row in t.get("rows") or []:
-                parts.append(" ".join(row))
-        return _norm("\n".join(parts))
-    text = {d.get("slug"): blob(d) for d in _docs(p)}
+    # 「報告內容有哪些」的定義在 `_parts()`，三條檢查共用一個家（見那裡的檔頭）。
+    # 這條是最早發現表格不能漏的：2026-08-21 首輪，花旗那張央行利率圖的數字
+    # 全部來自第 11 頁的表格，於是 16 條 grounding 全部找不到。
+    text = {d.get("slug"): _norm("\n".join(_parts(d))) for d in _docs(p)}
     miss, over, nogr, err = [], [], [], []
     for r in digest.get("reports") or []:
         cs = r.get("charts") or []
@@ -855,5 +898,69 @@ register(Check(
     near_miss={"anchors": {},
                "docs": [{"slug": "a", "engine": "pdftotext"},
                         {"slug": "b", "engine": "pdftotext"}]},
+    suite="research",
+))
+
+
+# ── 16. 標題是不是報告的真實標題 ────────────────────────────────────
+def _title_resolved(p):
+    """**這一條擋的是「檔名冒充標題」。**
+
+    2026-08-23 之前，`title` 是檔名去副檔名。它壞成三種樣子，而只有一種看得見：
+
+    - 野村五份的檔名是流水號（`1317180`）—— **會被看見**，而且是被回報的那一種。
+    - GS 的檔名被下載端截在 128 字元 —— 尾巴斷掉，讀起來仍然像個標題。
+    - 花旗的檔名只有系列名（`Oil Monitor`）—— **完全看不出來**，
+      而真正的標題是「Oil Monitor: At visible draw rates, when do we…」。
+
+    第三種是這條存在的理由。前兩種遲早有人回報，第三種**永遠不會有人回報**，
+    因為它看起來就是一個好標題。所以判準不是「標題看起來對不對」，
+    是**「它是從哪裡來的」** —— 那是唯一一個機器分得出來的維度。
+
+    `title_source == "filename"` ＝ `title.py` 的對照表裡沒有這家券商的取法，
+    或者兩個來源對不起來。兩種情況都該在發布前被看到。
+    """
+    docs = _docs(p)
+    if not docs:
+        return skipped("這一輪沒有抽取結果")
+    miss = [d for d in docs if not d.get("title_source")]
+    if miss:
+        return fail(f"**{len(miss)} 份沒有 `title_source`** —— "
+                    f"{[_name(d) for d in miss][:4]}。"
+                    "抽取層比 `title.py` 舊，標題可能是檔名而沒有人知道")
+    fn = [d for d in docs if d["title_source"] == "filename"]
+    if fn:
+        return fail(f"**{len(fn)} 份的標題還是檔名**："
+                    + "；".join(f"{_name(d)}（{d.get('title_note') or '沒說原因'}）"
+                               for d in fn[:4])
+                    + "。新券商要先量過第一頁與 `/Title`，再加進 `title.py` 的對照表")
+    weak = [d for d in docs if not d.get("title_confident")]
+    by = {}
+    for d in docs:
+        by[d["title_source"]] = by.get(d["title_source"], 0) + 1
+    line = "、".join(f"{k} {v} 份" for k, v in sorted(by.items()))
+    if weak:
+        return warn(f"{line}；**{len(weak)} 份取到了但不確定完整**："
+                    + "；".join(f"{_name(d)}（{d.get('title_note')}）" for d in weak[:3]))
+    return ok(f"{len(docs)} 份都取到真實標題（{line}）")
+
+
+register(Check(
+    id="research.title_resolved",
+    covers="每一份的標題都不是檔名，且來源有記錄（`title_source`／`title_confident`）",
+    blind_to=[
+        "**取到的標題對不對** —— 這條只看它從哪裡來。內容要對，"
+        "得跑 `title.py --selftest`（對著人工讀出來的 `title_fixture.json`）",
+        "`pdf_meta` 被截在 139 字元而第一頁補得回來的那種：那會標成 `page_one` 且可信，"
+        "這條看不出補過",
+        "已經發布出去的舊標題 —— 這條只看眼前這一批（舊的由 `backfill_titles.py` 一次性處理）",
+        "同一家券商換了排版：對照表照樣會回一個標題，只是可能是錯的那一段",
+    ],
+    run=_title_resolved,
+    fixture={"anchors": {}, "docs": [
+        {"slug": "a", "title_source": "filename", "title_confident": False,
+         "title_note": "沒有 'Barclays' 的取法"}]},
+    near_miss={"anchors": {}, "docs": [
+        {"slug": "a", "title_source": "pdf_meta", "title_confident": True}]},
     suite="research",
 ))

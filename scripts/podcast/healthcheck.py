@@ -482,7 +482,21 @@ def check_observations():
             age = f"，最舊觀察中 {oldest}（{n} 天）"
         except Exception:
             pass
-    stats = f"觀察中 {len(open_items)}／已判 {len(judged)}／共 {len(items)}{age}"
+    # **把「有幾條根本沒有到期日」印出來（2026-08-23 新增）。**
+    # `podcast.ledger_no_overdue` 只看得到「有到期日而且已經過期」的項目，
+    # 對沒有到期日的完全是瞎的——**它報綠燈只代表「有到期日的那些沒逾期」**。
+    # 那個盲點原本只寫在 `blind_to` 與 anchors 的註解裡，也就是只有讀文件的人看得到，
+    # 而每天在看這份輸出的人看不到。**盲點要讓看的人看得到，才算數。**
+    #
+    # 刻意**不報 WARN**：這個數字短期內不會歸零（08-23 是 52 條，全部是 08-19
+    # 結構化格式之前的敘述段落，補不了到期日、只能逐條研判），
+    # 而「一條永遠會響的檢查會讓人不再讀它，比沒有更糟」（見本檔第 232 行）。
+    # 它跟積壓佔比一樣是**趨勢指標**：分子降下來才代表真的有人在回訪。
+    undated = sum(1 for i in open_items
+                  if not (i.get("due")
+                          or re.search(r"到期\s*(\d{4}-\d{2}-\d{2})", i.get("text", ""))))
+    nd = f"，其中 {undated} 條無到期日（逾期檢查對它們是瞎的）" if undated else ""
+    stats = f"觀察中 {len(open_items)}／已判 {len(judged)}／共 {len(items)}{age}{nd}"
 
     # **不要用 elif 鏈**：2026-08-16 複驗實測，非法 status 會把「落後 15 天」整條蓋掉——
     # 次要的資料衛生檢查排在主要目的（回訪把關）前面，等於用小問題遮住大問題。
@@ -678,17 +692,42 @@ def measure_session_tokens(day):
     留空而沒人發現，正是因為留空是靜默的。**靜默的失敗會被當成還沒有資料。**
     """
     global TOKEN_NOTE
-    # 2026-08-14 起直接短路。**但 2026-08-16 把當初的結論修窄了，措辭跟著改：**
-    # 已確認的只有「從別的工作階段讀不到」——08-16 實測 /sessions/ 下 70 多個其他
-    # 工作階段全部 Permission denied，而排程執行的沙箱隨執行結束銷毀，事後救不回來。
-    # **「排程在它自己的沙箱裡有沒有 transcript」從來沒有人驗證過**（五次嘗試都是
-    # 從外面找）。SKILL.md 第 5.5 步已加入自我探測，答案會出現在每天回報第 16 項。
-    # 在那之前這裡不做任何搜尋——從這支腳本的位置，怎麼找都是找不到的。
-    TOKEN_NOTE = ("這四欄由維護者人工填入：從別場工作階段讀不到排程的 transcript，"
-                  "且排程沙箱隨執行結束銷毀、事後救不回（08-16 的三欄已永久遺失）。"
-                  "**數字改從當日回報第 16 項抄**——SKILL.md 第 5.5 步會讓排程量測自己並"
-                  "印出這四個值（標明為下限）；若回報寫「PROBE=找不到」，才是真正確認"
-                  "排程不留 transcript")
+    # ── 2026-08-23：短路**留著**，而且理由換了一個，比舊的硬。 ────────────────
+    #
+    # 舊註解說「從這支腳本的位置怎麼找都是找不到的」。**那句話現在是錯的**：
+    # 08-23 在 Mac 上實測，底下那段程式的 glob 樣式
+    # （`~/Library/…/local-agent-mode-sessions/*/*/*/.claude/projects`）**完全對得上**，
+    # 逐字稿就在那裡。找得到。
+    #
+    # **但找得到不等於算得對，而這才是它現在不能開的原因。**
+    # 底下的挑選邏輯是「符合條件的裡面挑 main_tot 最大的那一份，然後整份掃完」，
+    # 而 Cowork 的一個工作階段**可以同時裝著排程日報和事後的維護對話**
+    # ——08-23 就是這樣：同一個 `.jsonl` 前段是 03:07 的日報、後段是 08:40 起的維護。
+    #
+    # 08-23 實測這一天的兩個數字：
+    #     整場（沒有時間界線）= 30,744k，子代理 7 個 229 輪
+    #     日報那一輪（切掉維護）= **6,611k，子代理 5 個 60 輪**
+    # **開著它會回報 30,744，是真實成本的 4.6 倍，而且沒有任何徵兆。**
+    # 那正是 08-09 踩過的坑（「互動對話往往比排程執行大得多，挑錯就等於量錯」），
+    # 只是這次不是挑錯檔案，是**挑對了檔案但算了整份**。
+    #
+    # 要開它，先讓它有辦法只算日報那一段。可用的界線已經存在：
+    # `~/outbox/podcast/<date>.receipt.json` 的 `at` 就是那一輪落地的時刻
+    # （本檔 `scheduled_run()` 已經在讀它）。缺的是 `usage_report.py` 沒有 `--until`。
+    # **補上 `--until` 之前不要拿掉這個 return。**
+    #
+    # 在那之前，**這四欄由維護者在 Mac 上手動量**，指令見下面的 TOKEN_NOTE。
+    # 量出來的列寫進 `kb-core/metrics/usage.csv`（欄位較全），
+    # metrics.csv 這四欄依 `scripts/podcast/metrics-columns.md` 保持留空。
+    TOKEN_NOTE = (
+        "　這四欄留空是現在的正解（08-23 訂正）——**不要抄回報裡的數字**，"
+        "08-23 實測自述 276K／實際 6,611K，**低估 24 倍**。\n"
+        "　　要量就在 **Mac 終端機**跑（沙箱看不到逐字稿，Cowork 也拒絕掛載）：\n"
+        "　　  BASE=$(ls -dt \"$HOME/Library/Application Support/Claude/"
+        "local-agent-mode-sessions\"/*/*/local_*/.claude | head -1)\n"
+        "　　  CLAUDE_CONFIG_DIR=\"$BASE\" python3 ~/kb-core/tools/usage_report.py podcast\n"
+        "　　  # 同一場若還做了維護，再跑一次帶 --since <維護起點 ISO8601>，兩者相減才是日報那一輪\n"
+        "　　結果 append 到 kb-core/metrics/usage.csv。**整場的數字不要直接用**")
     return "", "", ""
 
     roots, tried = [], []
@@ -868,8 +907,10 @@ def build_metric_row(day, is_today):
                 for k in ("ok", "degraded", "failed"):
                     row[k] = sum(1 for e in eps if (e.get("status") or "").lower() == k)
                 row["speaker_flags"] = sum(1 for e in eps if e.get("speakerNotes"))
-                row["podfetch_minutes"] = round(
-                    sum(e.get("durationMs", 0) for e in eps) / 60000.0)
+                # `podfetch_minutes` 是**退休欄位**（metrics-columns.md：2026-08-21 起
+                # 一律留空），但這裡一直照填到 08-23 才被發現。**退休的定義寫在一份
+                # 文件裡、而填值的程式在另一份，兩邊沒有人對帳** —— 舊列的值保留
+                # （那是當時量到的東西），新列不再產生。
             except Exception:
                 pass
             kb = sum(os.path.getsize(f) for f in glob.glob(os.path.join(d, "*.md")))
@@ -881,39 +922,45 @@ def build_metric_row(day, is_today):
         p = os.path.join(REPO, "data", day + ".json")
         if os.path.exists(p):
             row["output_json_kb"] = round(os.path.getsize(p) / 1024)
-        if is_today:
-            b = os.path.join(REPO, "AGENT_BRIEF.md")
-            if os.path.exists(b):
-                row["brief_kb"] = round(os.path.getsize(b) / 1024)
-    if is_today:
-        # **這一欄在 Cowork 沙箱裡永遠是空的**（沙箱看不到 `~/Documents/`），
-        # 而維護幾乎都在沙箱裡跑——所以 metrics.csv 的 skill_kb 至今一列都沒有值。
-        # 要它有值就得在 Mac 的終端機直接跑 healthcheck。刻意不改成從別處猜，
-        # 空值至少誠實；填一個猜來的大小會讓這一欄看起來有在追蹤。
-        sk = os.path.expanduser(
-            "~/Documents/Claude/Scheduled/podcast-digest-daily/SKILL.md")
-        if os.path.exists(sk):
-            row["skill_kb"] = round(os.path.getsize(sk) / 1024)
+    # ── `brief_kb` 與 `skill_kb` 兩欄 2026-08-23 起不再填。 ───────────────────
+    # 兩個都是**退休欄位**（metrics-columns.md：2026-08-21 起一律留空），
+    # 而 `brief_kb` 照樣填到了 08-23。**它量的還是 `AGENT_BRIEF.md`**，
+    # 而規格 08-20 就搬到 `kb-core/podcast/BRIEF.md` 了 ——
+    # 同一個欄名在前後兩段時間指的是兩份不同的檔，那條曲線本來就接不起來。
+    #
+    # `skill_kb` 那一段連路徑都是雙重過期的：寫的是
+    # `~/Documents/Claude/Scheduled/podcast-digest-daily/SKILL.md`，
+    # 而目錄 08-21 就從 `~/Documents/Claude` 搬到 `~/Claude`、任務名也改成
+    # `podcast-daily-300`。**旁邊那句「這一欄在 Cowork 沙箱裡永遠是空的（沙箱
+    # 看不到 ~/Documents/）」把成因寫錯了** —— 在 Mac 上跑一樣是空的，因為路徑
+    # 根本不存在。同一個 repo 裡 `snapshot.sh:85` 就同時試兩個任務名，
+    # **一支腳本知道搬過家，另一支不知道。**
 
     # podfetch 當日完成段數（日誌裡每段完成一行）
     lp = os.path.join(PODFETCH, "logs", day + ".log")
     if os.path.exists(lp):
         body = open(lp, encoding="utf-8", errors="replace").read()
-        # 2026-08-10 改名：這個數字是「完成的段數」，不是 API 請求數——重試、探測、
-        # 過載嘗試都不在裡面，快取段也不在。08-05 實測請求數是段數的 2.5 倍。
-        # 舊名 podfetch_requests 會讓人拿它估 RPD 消耗而系統性低估。
-        row["segments_done"] = len(re.findall(r"段完成", body))
+        # `segments_done` 也是**退休欄位**（metrics-columns.md：2026-08-21 起留空），
+        # 2026-08-23 停止填值。舊值保留：那是當時量到的東西，只是定義沒有人
+        # 說得出來了。（原始定義：日誌裡「段完成」的出現次數，**不是 API 請求數**
+        # ——重試、探測、過載嘗試與快取段都不在裡面，08-05 實測請求數是段數的
+        # 2.5 倍；舊名 podfetch_requests 會讓人拿它估 RPD 而系統性低估。）
 
     global TOKEN_NOTE
     keep = TOKEN_NOTE
-    # **這三欄不再自動量測（2026-08-14 定案）。** 2026-08-09 加入時假設排程執行會在
-    # 本機留下 transcript，猜了三次路徑、又改過一次判別法，最後用 grep 掃遍
-    # `~/Library/Application Support/Claude` 才確認：**`local-agent-mode-sessions/`
-    # 底下只有互動式對話，排程執行根本不在本機留紀錄。** 四次修正全都建立在一個
-    # 從沒被驗證的前提上。
+    # **這三欄不再自動量測（2026-08-14 定案，2026-08-23 訂正理由）。**
+    # 舊註解寫的是「`local-agent-mode-sessions/` 底下只有互動式對話，排程執行
+    # 根本不在本機留紀錄」——**那句話是錯的，08-23 在 Mac 上實地推翻**：
+    # 排程執行的逐字稿就在
+    # `~/Library/Application Support/Claude/local-agent-mode-sessions/
+    #  <帳號>/<工作區>/local_<階段>/.claude/projects/<專案>/<uuid>.jsonl`，
+    # 子代理在同層 `<uuid>/subagents/`。當年四次修正的錯不在路徑，
+    # **在於五次都是從別的工作階段往外找**（08-16 已經把結論修窄過一次）。
     #
-    # 但資料一直都在——每天的 token 分析報告有，只是機器讀不到。所以改成
-    # **維護時人工填入**：這裡只負責「不要把既有的值洗掉」。
+    # 真正的阻礙見 `measure_session_tokens()` 開頭：找得到，但一個工作階段
+    # 可能同時裝著日報與事後的維護，整份掃完會高估數倍。
+    # 所以現在是**維護者在 Mac 上手動量**（指令在 TOKEN_NOTE），
+    # 這裡只負責「不要把既有的值洗掉」。
     row["eff_tokens_k"], row["subagents"], row["agent_turns"] = \
         measure_session_tokens(day)
     if not is_today:
@@ -999,9 +1046,14 @@ def collect_metrics():
                 base + "；加權 token %sK（子代理 %sK／%s 個）" %
                 (row["eff_tokens_k"], row["subagent_tokens_k"], row["subagents"]))
         elif row["eff_tokens_k"] != "":
+            # **2026-08-23：這個分支原本叫人「抄進 `subagent_tokens_k`」，
+            # 而 else 分支同一天已改成「不要抄回報裡的數字」——兩則訊息互相打架。**
+            # 走到這裡代表有人只填了一部分，那本身就是不該發生的事。
             log("WARN", "每日指標",
-                base + "；加權 token %sK。**但還缺 %s**——回報第 16 項的探測會印"
-                "「子代理加權 NNNNK」，抄進 `subagent_tokens_k`。"
+                base + "；加權 token %sK。**但只填了一部分，還缺 %s** —— "
+                "而這四欄現在的正解是**一律留空**（`usage_report.py` 在 Cowork 側"
+                "拿不到逐字稿，見 MAINTENANCE 第 6 節）。**不要抄回報裡的數字補齊它**，"
+                "把已填的也清掉才是對的。"
                 "**效率要看 `subagent_tokens_k ÷ transcript_kb`**，"
                 "`eff_tokens_k ÷ 集數` 混了固定開銷與一次性維護動作、不可比。"
                 % (row["eff_tokens_k"], "／".join(miss)))
@@ -1015,12 +1067,25 @@ def collect_metrics():
                     "四個 token 欄刻意留空 —— 那一場工作階段還做了別的事，"
                     "總量填進來會像 2026-08-15 的 31891 一樣不可比。" % why)
             else:
-                # **量測失敗一定要說出來。** 08-09 到 08-10 連兩天留空沒人發現，
-                # 就是因為留空看起來像「還沒有資料」而不是「壞了」。
+                # **2026-08-23：這裡原本催人「從當日 token 分析報告抄進 metrics.csv」，
+                # 而那個動作現在是禁止的。** 抄回報＝自述，不是量測，
+                # 而 `metrics-columns.md` 開頭就寫著「用另一套定義填進同一欄比留白更糟」。
+                # 08-22 換成 `usage_report.py` 讀逐字稿量，方向對 ——
+                # **但那支在 Cowork 排程裡跑不動**（沙箱沒有 ~/.claude/projects；
+                # 逐字稿在 Mac 但 request_cowork_directory 明文拒絕掛載工作階段儲存區；
+                # session_info__read_transcript 不回 usage 欄位。三條路 08-23 全部實測）。
+                # 佐證：metrics/usage.csv 至今只有 broker-research 一列。
+                #
+                # **所以留空是現在的正解，而這則訊息不再催人去填。**
+                # 但它仍然要說話 —— 08-09／08-10 那次的教訓是「留空看起來像還沒有資料
+                # 而不是壞了」，那條仍然成立，只是「壞了」的內容換了：
+                # 壞的不是今天沒填，是這條基線目前沒有生產者。
                 log("WARN", "每日指標",
-                    base + "。**今日的 eff_tokens_k 還沒填**——"
-                    "從當日 token 分析報告抄進 metrics.csv 對應欄位（加權總量千位、"
-                    "子代理數、子代理總回合數、**子代理加權千位**）。"
+                    base + "。**四個 token 欄留空，這是現在的正解、不要抄回報裡的數字**"
+                    "——`usage_report.py` 在 Cowork 排程側拿不到逐字稿"
+                    "（詳見 MAINTENANCE 第 6 節）。抄回報＝自述，而 08-21＝4913／08-22＝235 已經"
+                    "因此不可比（08-23 也抄了 276，已於同日抽掉）。"
+                    "**要恢復這條基線得先讓 usage_report.py 在這一側跑得動。**"
                     + ("（%s）" % why if sched is None else "") + (TOKEN_NOTE or ""))
     except Exception as e:
         log("WARN", "每日指標", "寫不進 metrics.csv：%s" % e)

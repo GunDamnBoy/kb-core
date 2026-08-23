@@ -30,9 +30,15 @@
 
 **1. 清點**　讀 `podcast-transcripts/<今天台北日期>/manifest.json`，然後跑一次
 
+```bash
+cd "$(ls -d /sessions/*/mnt | head -1)" && python3 kb-core/tools/podcast_verify.py podcast-transcripts
 ```
-~/.venvs/kb/bin/python ~/kb-core/tools/podcast_verify.py ~/podcast-transcripts
-```
+
+**這兩支要用 `Bash`（沙箱）跑，路徑就是上面那一行。** 舊版寫的是
+`~/.venvs/kb/bin/python`，那個 venv 只存在於 Mac，**沙箱裡不存在**，
+而錯誤訊息是「No such file or directory」—— 跟「這台機器沒裝」長得一樣。
+2026-08-23 實測，這一輪就是自己改成 `python3` 才跑得動的。
+掛載點名稱每個工作階段都不同，所以不要寫死 `/sessions/<name>/`，用上面那個 `ls -d`。
 
 **它的結果要進派工單**，不是看過就算。`podfetch.no_block_repetition` 指名的集數，
 那幾段的實際內容是缺的 —— 派工時要具名告訴那一集的 subagent。
@@ -42,8 +48,8 @@
 
 **它指名了集數，但沒有指名位置。** 所以接著跑第二支：
 
-```
-~/.venvs/kb/bin/python ~/kb-core/tools/podcast_dupmap.py ~/podcast-transcripts
+```bash
+cd "$(ls -d /sessions/*/mnt | head -1)" && python3 kb-core/tools/podcast_dupmap.py podcast-transcripts
 ```
 
 它把 token 位置換算成**帶分段的時間戳區間**，並給出覆蓋率與嚴重度。
@@ -55,6 +61,17 @@ subagent 在逐字稿裡定位不了，2026-08-22 那一輪主代理是臨時寫
 推論實質內容只到 28:44，**還把這個結論寫進了派工單**——而該檔第 2 段是全新內容，
 是 subagent 逐行核對後推翻主代理的。工具現在會直接印「第 N 段沒有複製」。
 
+**但它印「乾淨」不等於那一集沒有重複。** 它只認得「一大段連續內容被整段放兩次」，
+**認不得同一個短句連續重複 N 次的跳針**。2026-08-23 的 mib 就是這樣：
+`[37:08]`–`[37:17]` 同一句連續出現 13 次、合計約 324 token（**高於 150 那個下限**），
+而它判「乾淨」。**成因不是門檻太高**——是 `block_repeats()` 的合併條件
+（`a == cur[0] + cur[2]`）要求重複的兩端同步前進，而跳針每遇到下一個副本開頭，`seen[g]` 回傳的仍是第一份的位置、`a` 因此回捲，
+於是 324 token 被拆成 12 個區塊（11 個 38 token ＋ 尾段 27），每一個都低於下限而被濾掉。
+（**這個差別是可操作的**：照「門檻太高」去修會把下限調到 38，那會讓每一句廣告台詞
+都觸發；真正的修法在聚合。）`quality.stutter_token_repeat`（同一 **token** 連續 20 次）
+也接不到，因為兩次重複之間隔著整句話。
+**所以讀稿時看到跳針就當缺漏處理並具名回報** —— 這一條目前沒有任何機械檢查涵蓋得到。
+
 **1 之二. A 類要自己去抓官方稿**　`anchors.json` 的 `schedule.official_transcripts`
 **是 null，不是 02:20** —— 那個上游步驟從來沒有被實作出來（2026-08-22 查證：
 repo 只有 `deploy.yml` 與 `sentinel.yml`，launchd 九支裡沒有，全庫沒有任何實作引用）。
@@ -63,6 +80,17 @@ repo 只有 `deploy.yml` 與 `sentinel.yml`，launchd 九支裡沒有，全庫�
 **哪幾檔是 A 類、每一檔的入口，在 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 第 1 節**
 （該檔開頭掛著失效橫幅，但**第 1 節是橫幅明文保留的權威**）。當日集數落在 A 類的，
 照那張表去抓；抓不到才退回第二層。
+
+**唯一的例外：片長超過 `anchors.fetch_limits.official_transcript_skip_over_minutes`
+（120 分鐘）的集數直接用 podfetch 稿，不要去抓官方稿。** 理由是 `web_fetch` 有約
+104,700 字元的上限而且**會靜默截斷不報錯**，長逐字稿抓回來是殘的而你看不出來。
+Acquired 動輒四個半小時，踩得到這一條。（08-23 的 latentspace 是 69.6 分鐘、
+抓回 88,356 字元、末端時間戳 01:09:24 對得上片長，沒踩到 —— **但那是運氣不是規則**，
+所以這一句 08-23 補進流程正本；在此之前它只寫在 `anchors` 與 `AGENT_BRIEF` 裡，
+而這裡是每天唯一一段講「A 類怎麼辦」的文字。）
+
+**取回官方稿之後一定要對一次末端時間戳與片長**，差太多就是被截斷了，
+補不齊就退回第二層並在 `source` 寫明。
 
 **退回時要分辨兩種情況並據實寫進 `source`**：官方稿尚未上架（MacroVoices 通常落後
 一週以上，這是正常的），或入口失效（FT 的 Chrome 路徑未登入 —— **不要嘗試代為登入**，
@@ -103,16 +131,42 @@ repo 只有 `deploy.yml` 與 `sentinel.yml`，launchd 九支裡沒有，全庫�
 一集吃掉當天三分之一的成本，而同樣長的另一集一次寫對只跑 5 輪。
 08-22 補上了段數與字數要分開算：**合併能收段數，一個字都收不了。**
 
-產出要含 **`quotes[].original`** —— 逐字稿裡的原句、一字不改。
+產出要含 **`quotes[].original`** —— 原句、一字不改。
 發布閘門會拿它回頭比對逐字稿，對不上就整輪擋下。
+
+**`original` 一律取自 podfetch 稿，即使這一集走第一層用官方稿撰寫。**
+閘門的比對基準是寫死的：`systems/podcast.py` 的 `quote_misses()` 只認
+`~/podcast-transcripts/<date>/<showKey>-<trackId>.md`，也就是機器轉錄那一份。
+官方稿是人工編修版，同一句話的用字幾乎一定不同。
+
+2026-08-23 latentspace 走第一層，五條 `original` 全取自官方稿，**機械比對 5／5 全 MISS**
+—— 那一輪是主代理在交草稿前自己驗了一次才發現，另外派一個 subagent 從 podfetch 稿
+重挑五條才過閘門，多花 77K token。**A 類每次走第一層都會再撞一次，所以寫成規則。**
+
+做法：正文照官方稿寫（它沒有廣告與贅語，實質內容多三到五成），**但金句要回 podfetch 稿挑**。
+派工單要把這件事講給 subagent 聽，並附上 podfetch 稿的路徑。
+podfetch 稿是**一行一個時間戳**（`[MM:SS] Speaker N: 內容`），所以**一條金句不要跨行**
+—— 跨行的話中間會夾著 `[MM:SS] Speaker N:` 而無法命中。
+
+**組檔完、交草稿前自己跑一次比對**（就是 `quote_misses()` 那幾行的邏輯：
+逐條 `original.strip() in text`）。**閘門會擋，但擋下來是整輪重來，自己先驗只花幾秒。**
+
+**subagent 交件之後不要期待能追問。** `SendMessage` 在排程工作階段不可用，
+所以派工單要一次給足；真的要改就重派一個新的，並在用量回顧裡記下這筆額外成本
+（2026-08-23 為了重挑金句多開一個 subagent，77K token）。
 
 **4. 組檔**　`chars` 用 python 機械覆寫。**每集要帶 `minutes`**（由 `durationMs` 換算）
 —— 層級是由片長決定的，而 `published` 是給人讀的字串，沒有這個欄位篇幅那條判準就判不了。
+
+**每集也要帶 `trackId`**（從 `appleUrl` 的 `?i=` 取），**這個欄位沒有的話金句閘門會安靜失效**
+—— `quote_misses()` 用 `<showKey>-<trackId>.md` 去找逐字稿，找不到就整輪回 `None`、
+判成 SKIPPED，而 SKIPPED 的意思是「這一輪沒有比對過」，不是「比對過沒問題」。
 
 當日集數達 `per_episode.crosscut_min_episodes` 時要寫 `crossCut`。
 `postscript` 帶 2–3 條觀察點，收錄標準只有一條：**這句話三個月後有可能被證明是錯的嗎？**
 
 日期檔的完整形狀照 `BRIEF.md` 第二節，以及 `podcast-knowledge-digest/data/` 裡任何一天的舊檔。
+**`quotes[]` 的三個欄位是 `text`／`by`／`original`**（不是 `speaker`）。
 
 **機械覆寫完發現超界時，「一次收斂」這條也適用於你。**
 `preamble.md` 第一之二節那筆帳（86 輪、吃掉當天三分之一）是寫給 subagent 的，
@@ -169,6 +223,13 @@ publish 每 60 秒跑一次，所以 90 秒之後回執該在了；還沒在就�
   Katie Martin（名單寫 Robert Armstrong，而他只出現在片頭廣告旁白裡）、
   Bloomberg 主集實際是 Tom Keene 與 Isabelle Lee（名單上四位一個都沒出現）。
   **名字合理、格式正確，所以機械檢查看不到它。**
+  **08-23 四集又有兩集不符**：Bloomberg Money 實際是 Tom Keene 與 Scarlett Fu
+  （名單那四位仍是一個都沒出現，而 Scarlett Fu 不在名單上）、Latent Space 實際是
+  Swyx 與 Vibhu（名單寫的 Alessio Fanelli 全集未發言）。
+  **連兩天、同一檔（bloomberg）報同一個問題，而名單一個字都沒動** ——
+  因為回報進了對話，沒有進 `shows.json`。這條缺口記在 `MAINTENANCE.md` 第 6 節，
+  **你這一輪只要照實回報就好，不要自己去改 `shows.json`**（它有兩份，沙箱只看得到一份，
+  在沙箱裡改會安靜製造漂移）。
 - 不代為登入任何服務。
 - **前一晚的美東晚間集數收不到是設計**，不要去追，也不必每天解釋。
 
@@ -185,33 +246,35 @@ publish 每 60 秒跑一次，所以 90 秒之後回執該在了；還沒在就�
 （跳針／整段複製／掉字／截斷 —— 語速基準只決定分母，不是候選答案）、
 下界例外的具名記錄、外部對照的結果、被跳過的集數與理由。
 
-**最後附一份用量回顧**：總有效 token、八個（或當日集數個）子代理各自的用量與來回次數、
-主迴圈的輪數。那四個數字要填進 `kb-core/scripts/podcast/metrics.csv` 的
-`eff_tokens_k`／`subagents`／`agent_turns`／`subagent_tokens_k`
-—— **在此之前那四欄沒有生產者，所以永遠是空的。**
+**最後附一份用量回顧**：總有效 token、各子代理的用量與來回次數、主迴圈的輪數。
+**寫在回報裡給人看就好，不要填進任何 CSV。**
 
-**那是唯一的一份**（2026-08-22 起）：`~/.podfetch/metrics.csv` 是指向它的 symlink，
-`healthcheck.py` 也寫同一個檔。在那之前兩份各由不同寫入者維護、沒有仲裁者，
-實測已有 6 天在特定儲存格上漂移。**基線有兩份，就沒有一份是權威的。**
+## 用量：這一輪量不到，所以不要填
+
+`metrics.csv` 的 `eff_tokens_k`／`subagents`／`agent_turns`／`subagent_tokens_k`
+**四欄一律留空。**
+
+理由不是懶，也**不是「排程不留逐字稿」**（那個結論 08-14 寫過一次、08-16 就被推翻了，
+不要再寫第三次）。**逐字稿是存在的**，在 Mac 的
+`~/Library/Application Support/Claude/local-agent-mode-sessions/<帳號>/<工作區>/local_<階段>/.claude/projects/`，
+子代理在同層的 `<uuid>/subagents/agent-*.jsonl`。2026-08-23 用 `Glob` 實地看到了。
+
+**真正的限制是：你這一側搆不到它。**
+
+1. `usage_report.py` 是**在沙箱裡跑的 python**，而沙箱的 `~` 是 `/sessions/<name>`，
+   底下沒有 `.claude/projects` → `exit 14`
+2. 想把那個目錄掛進來也不行：`request_cowork_directory` **明文拒絕**
+   （「That directory is Cowork's internal session storage… intentionally not accessible」）
+3. `session_info__read_transcript` 只回訊息內容，**不含 usage 欄位**
+
+**所以這一輪填不了，但這條基線沒有死** —— 在 **Mac** 上跑得到，
+`healthcheck.py` 裡那段被 early-return 擋掉的程式（`~/Library/…/*/*/*/.claude/projects`）
+路徑是對的，08-23 驗過 glob 對得上。補量測是維護那一輪在 Mac 上做的事，見 `MAINTENANCE.md` 第 6 節。
+
+**你要做的只有一件事：不要「回報多少就抄多少」。** 那是自述不是量測，而
+`scripts/podcast/metrics-columns.md` 開頭就寫了：**用另一套定義填進同一欄，比留白更糟**
+—— 留白看得出來是缺的，填了看不出來是錯的。實害已經發生：`eff_tokens_k`
+08-21＝4913、08-22＝235，**相差 20 倍、那一欄的曲線已經不可比**
+（08-23 也抄了 276，已於同日抽掉；08-21／08-22 兩列保留原樣不改寫歷史）。
 
 **回報你實際做到的，不是你打算做到的。**
-
-## 用量：量它，不要估它
-
-**回報之前跑這一支。用 `Bash`（雲端容器），不是 `device_bash`** ——
-逐字稿只存在於雲端那一側，在 Mac 上跑一定失敗：
-
-```bash
-cd /tmp && rm -rf kbc && git clone -q --depth 1 https://github.com/GunDamnBoy/kb-core kbc
-python3 kbc/tools/usage_report.py podcast
-```
-
-它印出主線與各子代理的有效 token、以及**一行 CSV**。
-把那一行原封不動 append 到 `~/kb-core/metrics/usage.csv`（device bash）。
-
-**不要自己估、也不要抄你以為的數字。** 代理看不到自己的 usage 欄位 ——
-`podcast/metrics-columns.md` 原本那四欄寫的就是「人工，抄自當輪用量回顧」，
-而**自述與量測在 CSV 裡長得一模一樣，只有一個能拿來做決定**。
-
-它會把挑到的逐字稿檔名與時間範圍印出來。**對一眼**：
-挑錯逐字稿與挑對的，算出來的數字都很合理。
