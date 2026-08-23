@@ -143,8 +143,17 @@ def main(argv):
 
     R["paths"] = {"houseview": a.dir, "kbcore": a.kbcore, "outbox": a.outbox}
     if not os.path.isdir(a.dir):
+        try:
+            got = sorted(os.listdir(SIBLING))[:12]
+        except OSError:
+            got = []
         return die(2, f"houseview 目錄不在：{a.dir}"
-                      f"（本支位於 {KBCORE}，兄弟目錄找的是 {SIBLING}）")
+                      f"（本支位於 {KBCORE}，兄弟層找的是 {SIBLING}，"
+                      f"那裡只有：{'、'.join(got) or '（讀不到）'}）"
+                      "　**最可能的成因是這個排程沒有夾帶它**："
+                      "排程只掛它自己指定的資料夾，不是你連在對話裡的全部。"
+                      "這支要六個：kb-core、houseview、chart-of-the-day、"
+                      "convergence-weekly、broker-research-digest、outbox")
     rc_node, ver, _ = sh(["node", "-v"])
     if rc_node != 0:
         return die(2, "PATH 上沒有 node —— 產生器與邊界測試都跑不了，**這不是通過**。"
