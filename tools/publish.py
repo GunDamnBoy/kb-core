@@ -65,6 +65,27 @@ def git(repo: Path, *args, check=True):
                           capture_output=True, text=True, check=check)
 
 
+def dirty_outside(porcelain: str, paths) -> list:
+    """`git status --porcelain` 的輸出裡，**不在 `paths` 底下**的那些路徑。
+
+    抽成純函式的唯一理由是它驗得動 —— 解析是這一段唯一會寫錯的地方，
+    而跑 git 不是。呼叫端見 publish() 的 4a。
+
+    porcelain 的格式是兩個狀態字元 ＋ 一個空白 ＋ 路徑，所以路徑從第 4 個字元
+    開始。兩個要小心的形態：改名是 `R  舊 -> 新`（取新的那一邊，舊的已經不存在了），
+    含空白或非 ASCII 的路徑會被 git 包成 `"..."`（引號不是路徑的一部分）。
+    """
+    owned = tuple(f"{p.rstrip('/')}/" for p in paths)
+    out = []
+    for line in porcelain.splitlines():
+        if not line.strip():
+            continue
+        p = line[3:].split(" -> ")[-1].strip().strip('"')
+        if p and not p.startswith(owned):
+            out.append(p)
+    return out
+
+
 def write_receipt(outbox: Path, draft_name: str, code: int, stage: str,
                   detail: str = "", commit: str = "") -> None:
     r = {
@@ -170,6 +191,47 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     # 它每天還有 `charts/<date>/*.png|svg` 要推，而那是 House View 的 pptx
     # 直接吃的路徑。2026-08-21 抓到：那些檔從 08-20 重建之後就沒有人推過。
     paths = system.staged_paths(draft, repo)
+
+    # 4a. rebase 之前先確認工作區乾淨 —— **而且要在 add／commit 之前問**。
+    #
+    # `git pull --rebase` 要求工作區沒有未提交的變更，而上面那個 `staged_paths`
+    # 只涵蓋各系統自己那幾條路徑（podcast 是 `data`）。**repo 根目錄那些已被追蹤、
+    # 被改過、沒被提交的檔案，publish 永遠 stage 不到，也永遠 commit 不掉**，
+    # 於是 rebase 每一輪都倒在同一個地方。
+    #
+    # 2026-08-24 實際發生過：08-23 一場維護改了 README.md、AGENT_BRIEF.md、
+    # MAINTENANCE.md 沒有提交，隔天 03:32 起每 60 秒重試一次、連續 188 輪，
+    # **而每一輪都先成功 commit 了一次 data**，三小時累積 188 筆本地 commit
+    # （其中 187 筆只改了 index.json 的一個時間戳），沒有任何一筆推得出去。
+    #
+    # 三個決定，每個都有理由：
+    #
+    #   - **放在 add／commit 之前**，不是之後。放之後照樣會每輪長一筆垃圾 commit ——
+    #     退出碼換了、堆積沒停，因為 launchd 不會因為某個碼就不再排下一輪。
+    #   - **用 CONFLICT(15) 不是 ENVIRONMENT(14)。** result.py 區分這兩個碼的軸線
+    #     是「重跑會不會好」：14 是可能會好，而**這一種重跑永遠不會好**。
+    #     碼寫錯的代價是實的 —— 流程正本照 14 的語意寫著「會自己重試」，
+    #     於是那天沒有人有理由介入。不用 BAD_INPUT(12) 是因為草稿本身沒有問題，
+    #     壞掉的是 repo 的狀態；push_kbcore.py 的 "diverged" 已經是同一個用法。
+    #   - **不嘗試代為 stash 或提交。** 那些是別人做到一半的工作，
+    #     publish 不知道它們完成了沒有。擋下來讓人看，比替人決定安全。
+    #
+    # 這一條**不可能讓事情比現況更糟**：它擋下來的每一種狀態，原本都會在
+    # 三行之後的 rebase 倒下。它只是把一個無限迴圈換成一次具名的停止。
+    dirty = git(repo, "status", "--porcelain", "--untracked-files=no",
+                check=False).stdout.strip()
+    if dirty:
+        outside = dirty_outside(dirty, paths)
+        if outside:
+            n = len(outside)
+            head = "、".join(outside[:3])
+            write_receipt(outbox, name, Exit.CONFLICT, "worktree-dirty",
+                          f"repo 有 {n} 個未提交的變更不在 publish 負責的路徑"
+                          f"（{'、'.join(paths)}）底下：{head}{' …' if n > 3 else ''}"
+                          " —— rebase 會被它們擋住，而 publish stage 不到它們，"
+                          "**重跑不會好**。請人提交或 stash 之後下一輪就會自己過。")
+            return Exit.CONFLICT
+
     git(repo, "add", "--", *paths)
     git(repo, "commit", "-m", f"data: publish {date}", check=False)
 
