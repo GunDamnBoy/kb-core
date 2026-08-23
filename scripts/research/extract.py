@@ -522,9 +522,33 @@ def main(argv=None):
     # 這個判準同時涵蓋第二種情況：某份 PDF 從 inbox 拿掉了，它的輸出也該是孤兒。
     #
     # 預設只報不刪：刪除要明確。`--prune` 才真的動手。
+    #
+    # **例外只有一個：已經封存的。** `file_reports.py` 把抽過的 PDF 移進
+    # `filed/<YYYY-MM>/` 之後，它就不在 inbox 裡了，於是它的輸出這一輪不會被寫 ——
+    # 上面那個判準會把**每一份封存過的報告都判成孤兒**。
+    # 2026-08-23 inbox 改接 Google Drive 之後這條非有不可：不封存的話，
+    # 帶著個人浮水印的原文會在雲端無限累積。
+    #
+    # 認的是 `archived_to`（`file_reports.py` 搬成功之後才寫進去的那一欄），
+    # 而且**要真的去看那個檔在不在**：只信欄位的話，
+    # 「封存好了」與「欄位寫了但檔案不見了」會長得一樣。
+    #
+    # 副作用是**封存過的報告身分就凍結了** —— slug 規則之後再改，
+    # 不會回頭套用到它們身上。那是刻意的：它們已經發布出去了，
+    # 而「改 slug 不是改顯示，是讓已發布的追蹤紀錄失去它追的那份報告」。
+    # 標題要修有 `backfill_titles.py`，那條路不動身分。
     if not a.dry_run:
+        filed_dir = _paths.under("filed")
+
+        def _archived(f):
+            try:
+                rel = json.load(open(f, encoding="utf-8")).get("archived_to")
+            except Exception:
+                return False
+            return bool(rel) and os.path.exists(os.path.join(filed_dir, rel))
+
         orphans = [f for f in sorted(glob.glob(os.path.join(out, "*.json")))
-                   if os.path.abspath(f) not in fresh_files]
+                   if os.path.abspath(f) not in fresh_files and not _archived(f)]
         if orphans:
             print(f"\n**{len(orphans)} 份孤兒**（不是這一輪寫的）："
                   f"{[os.path.basename(x) for x in orphans]}")

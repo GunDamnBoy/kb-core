@@ -20,8 +20,19 @@
 
 ## 第 0 步：連資料夾
 
-需要四個 —— `kb-core`（規格、門檻、程式）、`broker-research`（報告與抽取結果）、
-`outbox`（發布草稿）、`broker-research-digest`（資料 repo，圖要放進去）。
+需要五個 —— `kb-core`（規格、門檻、程式）、`broker-research`（抽取結果與封存）、
+`outbox`（發布草稿）、`broker-research-digest`（資料 repo，圖要放進去），
+以及 **inbox，它在 Google 雲端硬碟裡**：
+
+```
+/Users/macmini/Library/CloudStorage/GoogleDrive-haonung.chiang@gmail.com/我的雲端硬碟/Report Inbox
+```
+
+> **2026-08-23 改的**：使用者在公司讀完報告直接丟進雲端硬碟，不必回家才能入庫。
+> 那個資料夾在 Drive 桌面版設成**可離線存取** —— 串流模式下沒開過的檔在本機是
+> 佔位符，`pdftotext` 讀到 0 位元組，而**它不會噴錯**：你會拿到一批「抽不到東西」
+> 的報告，跟「這批 PDF 有問題」長得一模一樣。路徑照抄上面那一行，
+> 帳號名、空白與中文都是路徑的一部分，`_paths.py` 那篇檔頭講的就是這件事。
 
 **這一套會發布，但發布的是衍生層。** 原文逐頁蓋有可追溯到個人的浮水印，
 所以**原文與抽取文字永不進任何 repo** —— 那條界線是結構性的（檔案住在
@@ -33,10 +44,21 @@
 ## 第 1 步：入庫（純程式，你不要自己讀 PDF）
 
 ```
-~/.venvs/kb/bin/python ~/kb-core/scripts/research/extract.py ~/broker-research/inbox
+~/.venvs/kb/bin/python ~/kb-core/scripts/research/extract.py \
+  "/Users/macmini/Library/CloudStorage/GoogleDrive-haonung.chiang@gmail.com/我的雲端硬碟/Report Inbox"
 ~/.venvs/kb/bin/python ~/kb-core/scripts/research/build_index.py
 ~/.venvs/kb/bin/python ~/kb-core/tools/research_verify.py
 ```
+
+**沒有新報告就回報「本週無新報告」並結束，不要重跑上一期。**
+判準看 `extract.py` 的「新增 0」與 `build_index.py` 的「新增 0　已收錄 N」——
+兩個都是 0 就是沒有新東西。重跑一期已經發布過的，最好的情況是白花十幾個子代理，
+最壞的情況是撞上不可改寫守衛然後每分鐘紅一次。
+
+**inbox 是空的不代表這週沒有報告** —— 也可能是 Drive 還沒同步下來
+（Mac 睡著、檔案太大、或使用者剛丟）。這兩件事在輸出上長得一樣。
+晚到的報告下一輪會自己補進**它自己日期的那一期**，`append_only` 允許，
+回執照樣 exit 0（見下面「這一期可能已經發布過」）。**所以不必為了等它而拖著。**
 
 **整批用同一支抽取器。** `research.one_engine` 會在混軌時出 WARN ——
 兩軌對旋轉文字、欄位與空白的處理不同，混軌的一批**每一份自己都合格，
@@ -62,6 +84,20 @@
 
 `research_verify` 這時第 2 層那幾條會是 **SKIPPED 不是 PASS**（還沒做）。**有 FAIL 就停在這裡**
 —— 抽取層的問題不會因為往下做而變好，只會被寫進盤點裡。
+
+## 封存：**不歸你管，但要知道它在**
+
+抽過的 PDF 會被移到 `~/broker-research/filed/<YYYY-MM>/`（依**報告自己的日期**分月，
+不是檔案 mtime）。做這件事的是 `scripts/research/file_reports.py`，
+由 launchd 的 `com.kenny.kbfile.research` 每天 06:00 跑，**不是你跑**。
+
+**你不要自己搬。** Cowork 階段的沙箱不准刪檔，而跨掛載的 `mv` 是「複製 ＋ 刪來源」：
+2026-08-23 實測的結果是**複製成功、刪來源失敗，目的地有一份、雲端那份也還在**，
+而 log 上「已封存」跟這個長得一模一樣。
+
+封存過的那幾份**不會被判成孤兒** —— `extract.py` 認 `archived_to` 那一欄，
+而且會真的去看檔案在不在。副作用是**它們的身分凍結了**：slug 規則之後再改不會
+回頭套用到它們身上。那是刻意的，它們已經發布出去了。標題要修走 `backfill_titles.py`。
 
 ## 第 2 步：讀規格
 
@@ -203,6 +239,7 @@ log 會印一行「改寫 …，系統的 republish_rule 判定這是允許的�
 
 - **不跑任何 git 指令。**
 - **不把原文或抽取文字複製到任何 repo 底下。**
+- **不自己搬或刪 inbox 裡的原文**（那是 `com.kenny.kbfile.research` 的事，理由見上面那節）。
 - **不憑印象補原句。** 找不到原句就不要那一筆立場。
 - **不做第 3 層（立場轉向）。** 詞表還沒訂，時候未到。
 - 不代為登入任何服務。

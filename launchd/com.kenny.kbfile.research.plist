@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 2026-08-23 新增：把抽過的原文從 inbox 移進 filed/<YYYY-MM>/。
+
+       **為什麼是 launchd 而不是 Cowork 排程輪次的一步。**
+       同一天 inbox 改接了 Google Drive 的 `Report Inbox`，而 Cowork 階段的沙箱
+       不准刪檔。跨掛載的 `mv` 是「複製 ＋ 刪來源」，2026-08-23 實測的結果是：
+       **複製成功、刪來源失敗，於是目的地有一份、來源也還在。**
+       log 上「已封存」與「已封存但原檔還在雲端」長得一模一樣。
+       launchd 以使用者身分跑，沒有那層限制。
+
+       **為什麼非做不可。** 報告逐頁蓋著收件人的公司信箱與逐份追蹤雜湊
+       （`anchors.privacy.watermark_is_pii`）。這一套為了那個浮水印，連私有 repo
+       都不准放原文 —— inbox 接上雲端之後，不封存就等於讓那些原文在個人雲端
+       無限累積，跟那條界線是矛盾的。**這支存在的理由是讓雲端那一格排空。**
+
+       **每天一次就夠，而且它是冪等的。** 只搬「sha256 對得上既有抽取結果、
+       而且抽取結果比 PDF 新」的那幾份；還沒抽的、抽取結果過期的，一律留著。
+       所以早跑晚跑都不會搶在抽取前面把東西搬走。
+
+       週日 23:00 的 Cowork 輪次跑完抽取，這支排在隔天 06:00 —— 中間留六小時，
+       是因為**那一輪失敗時我要的是原文還在 inbox**，不是已經被歸檔到別的地方。 -->
+  <key>Label</key>
+  <string>com.kenny.kbfile.research</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/scripts/research/file_reports.py</string>
+    <!-- inbox 的家在 Google Drive。**明寫，不靠 `~` 展開也不靠 _paths 猜** ——
+         這條路徑帶帳號名、空白與中文，而 `_paths.py` 整篇檔頭就是在講
+         「`~` 在不同執行環境展開成不同的地方，而且是安靜地錯」。 -->
+    <string>/Users/macmini/Library/CloudStorage/GoogleDrive-haonung.chiang@gmail.com/我的雲端硬碟/Report Inbox</string>
+    <!-- 沒有下面那個旗標它只報不搬。危險的那一步要明講，跟 assemble.py 的 publish 旗標同一條。
+         （XML 註解裡不能出現連續兩個減號，所以這裡不把旗標名寫全。） -->
+    <string>--move</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+    <!-- `filed/` 與 `extracted/` 的家。inbox 搬到雲端了，這兩個沒有 ——
+         衍生層與封存留在本機。 -->
+    <key>BROKER_RESEARCH_ROOT</key>
+    <string>/Users/macmini/broker-research</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/research/file.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/research/file.log</string>
+</dict>
+</plist>

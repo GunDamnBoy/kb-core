@@ -126,7 +126,7 @@ def main(argv=None):
             print(f"不認得的旗標 {unknown} —— **這裡刻意不猜**", file=sys.stderr); return 12
         print(__doc__); return 2
 
-    E, I = _paths.extracted(), _paths.inbox()
+    E, I, F = _paths.extracted(), _paths.inbox(), _paths.under("filed")
     files = sorted(glob.glob(os.path.join(E, "*.json")))
     if not files:
         print(f"{E} 沒有抽取結果", file=sys.stderr); return 13
@@ -136,8 +136,13 @@ def main(argv=None):
     for f in files:
         d = json.load(open(f, encoding="utf-8"))
         before = json.loads(json.dumps(d))
-        r = title.resolve(d.get("broker"), d.get("source_file"), d.get("page_one"),
-                          os.path.join(I, d.get("source_file") or ""))
+        # 原檔可能已經封存了（`file_reports.py` 移進 `filed/<YYYY-MM>/`）。
+        # **只找 inbox 的話，`pdf_meta` 那條路會靜靜地退化成 `page_one`** ——
+        # 它照樣回一個標題，只是換了來源，而這支的用途正是修標題。
+        pdf = os.path.join(I, d.get("source_file") or "")
+        if not os.path.exists(pdf) and d.get("archived_to"):
+            pdf = os.path.join(F, d["archived_to"])
+        r = title.resolve(d.get("broker"), d.get("source_file"), d.get("page_one"), pdf)
         resolved[d["slug"]] = r
         if r["title"] != d.get("title"):
             changed.append((d["slug"], d.get("title"), r["title"], r["title_source"]))

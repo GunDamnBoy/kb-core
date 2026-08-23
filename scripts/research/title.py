@@ -357,7 +357,7 @@ def resolve(broker, source_file, page_one, pdf_path=None):
 
 
 # ── 自我檢查 ────────────────────────────────────────────────────────
-def selftest(fixture, extracted_dir, inbox_dir):
+def selftest(fixture, extracted_dir, inbox_dir, filed_dir=None):
     """對著人工讀出來的 27 個標題跑。**這就是 `split_columns` 當時沒有的驗證集。**
 
     沒有驗證集的門檻調整，是在對雜訊調參：判為成功的份數會在兩個數字之間跳，
@@ -371,7 +371,14 @@ def selftest(fixture, extracted_dir, inbox_dir):
         if not os.path.exists(ep):
             bad.append(f"{slug}：沒有抽取結果"); continue
         d = json.load(open(ep, encoding="utf-8"))
+        # **原檔可能已經不在 inbox 了。** `file_reports.py` 會把抽過的 PDF
+        # 移進 `filed/<YYYY-MM>/`（2026-08-23 起，因為 inbox 接到了雲端，
+        # 讓帶浮水印的原文留在那裡累積跟 `anchors.privacy` 是矛盾的）。
+        # 只找 inbox 的話，這個驗證集會隨著封存一份一份地變成「沒有原檔」——
+        # **而它退化的樣子是「通過的份數變少」，不是「檢查壞了」。**
         pdf = os.path.join(inbox_dir, d.get("source_file") or "")
+        if not os.path.exists(pdf) and filed_dir and d.get("archived_to"):
+            pdf = os.path.join(filed_dir, d["archived_to"])
         got = resolve(d.get("broker"), d.get("source_file"), d.get("page_one"), pdf)
         if norm(got["title"]) != norm(want):
             bad.append(f"{slug}\n     期望 {want}\n     得到 {got['title']}"
@@ -405,11 +412,12 @@ def main(argv=None):
     fx = a.fixture or _paths.under("title_fixture.json")
     ex = a.extracted or _paths.extracted()
     ib = a.inbox or _paths.under("inbox")
+    fd = _paths.under("filed")   # 封存過的原檔在這裡，見 selftest() 裡那段
     if not os.path.exists(fx):
         print(f"沒有 {fx} —— **驗證集不在就不要跑**，"
               "一個沒有期望值的自我檢查只會永遠通過", file=sys.stderr)
         return 13
-    return selftest(fx, ex, ib)
+    return selftest(fx, ex, ib, fd)
 
 
 if __name__ == "__main__":
