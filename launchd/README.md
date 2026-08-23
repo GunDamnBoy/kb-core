@@ -246,6 +246,13 @@ pmset -g sched && pmset -g custom | grep -E '^ *(sleep|displaysleep|disksleep|wo
 
 ## 已知的坑
 
+- **草稿沒進 outbox 時，先看是誰該把它放進去，不是先看發布器。**
+  `kbpublish.*` 只負責「outbox 有東西就發」。把草稿放進 outbox 的是**四套 run skill**
+  （`kb-core/skills/README.md`），而它們跑在 Cowork 桌面排程上。
+  **那種排程沒夾資料夾就會被丟到雲端跑，而雲端拿不到 `~/outbox`** ——
+  症狀是發布器每輪誠實回報「空輪次」，看起來完全正常。
+  2026-08-17 泡沫監控那次就是這樣，撐了三個星期。
+
 - **`kbwatch` 一次只看得了一套系統。** 2026-08-20 之前它指的是 `kb-tracer`，
   於是四條檢查裡有兩條（`sentinel_alive`、`sentinel_verdict`）讀的是靶子的
   heartbeat，另外兩條照常正確——**不會全紅，只會缺一半**，所以撐了兩天沒被發現。
