@@ -21,6 +21,7 @@
 """
 
 import glob
+import hashlib
 import json
 import os
 import re
@@ -302,6 +303,88 @@ def check_shows_sync():
             f"鍵值相同但內容有差（wpm／優先序之類）：{diff}")
     else:
         log("PASS", "shows.json 兩份", f"{len(run)} 檔，執行檔與版控完全一致")
+
+
+def _skill_copy_dir():
+    """Cowork 實際載入的那份 `maintain` 技能副本在哪。
+
+    兩種環境的路徑不一樣，而且 Mac 那邊夾著兩段每次都不同的 id，所以只能 glob：
+      沙箱：`/sessions/<name>/mnt/.claude/skills/maintain`
+      Mac ：`$TMPDIR/claude-hostloop-plugins/<hash>/<session>/skills/maintain`
+    找到多個就取最新的 —— 舊工作階段的快取不會被清掉。
+    """
+    pats = [
+        "/sessions/*/mnt/.claude/skills/maintain",
+        os.path.join(tempfile.gettempdir(),
+                     "claude-hostloop-plugins/*/*/skills/maintain"),
+        os.path.expanduser("~/.claude/skills/maintain"),
+    ]
+    hits = [p for pat in pats for p in glob.glob(pat) if os.path.isdir(p)]
+    return max(hits, key=os.path.getmtime) if hits else None
+
+
+def check_skill_copy():
+    """維護技能有**兩份**，這條是唯一在對它們帳的地方。
+
+    正本在 `kb-core/skills/maintain/`（有 git）；agent 每次維護實際讀的是
+    安裝後的**唯讀副本**。**沒有任何機制在維持兩者相同** —— 改正本不會更新副本，
+    而副本唯讀、改它不會保存，只能重新打包成 `.skill` 再安裝覆蓋。
+
+    不同步的樣子是「維護照常進行，只是照著過期的規則做」，**沒有任何徵兆**。
+    2026-08-24 實測到七個檔落後，其中兩處是實害不是落差：
+    `podcast/MAIN.md` 第 1 步第 3 項**方向相反**（副本叫人把回報的四個數字抄進
+    `metrics.csv`，正本 08-23 已明令不要 —— 照副本做會再製造一次 4913／235
+    那種不可比的欄位）；`podcast/SYNC-CHECKLIST.md` 副本只有正本的四成，
+    **而那份正是用來查漂移的清單，它自己漂了**（同一形態的第二次）。
+
+    **為什麼是 WARN 不是 FAIL**：任何一場維護只要改了正本、還沒重新打包，
+    這條就會亮 —— 那是常態而且正是我們要的提醒。把常態印成 FAIL 會訓練人忽略 FAIL，
+    而這是文件漂移、不是執行期故障。**找不到副本一律 SKIP 不是 PASS**：
+    「這條沒得判」與「判過沒問題」是兩件事。
+    """
+    if not KBCORE:
+        log("SKIP", "維護技能兩份", "找不到 kb-core，沒得比 —— 這條沒驗到")
+        return
+    src = os.path.join(KBCORE, "skills", "maintain")
+    if not os.path.isdir(src):
+        log("SKIP", "維護技能兩份", f"正本不在 {src} —— 這條沒驗到")
+        return
+    dst = _skill_copy_dir()
+    if not dst:
+        log("SKIP", "維護技能兩份",
+            "找不到已安裝的技能副本（環境不同時常見）—— **這條沒驗到，不等於同步**")
+        return
+
+    def digests(root):
+        out = {}
+        for dirpath, _, files in os.walk(root):
+            for f in files:
+                if not f.endswith(".md"):
+                    continue
+                p = os.path.join(dirpath, f)
+                rel = os.path.relpath(p, root)
+                with open(p, "rb") as fh:
+                    out[rel] = hashlib.md5(fh.read()).hexdigest()
+        return out
+
+    a, b = digests(src), digests(dst)
+    only_src = sorted(set(a) - set(b))
+    only_dst = sorted(set(b) - set(a))
+    diff = sorted(k for k in a if k in b and a[k] != b[k])
+    if not (only_src or only_dst or diff):
+        log("PASS", "維護技能兩份", f"{len(a)} 個檔，正本與已安裝副本完全一致")
+        return
+    bits = []
+    if diff:
+        bits.append(f"內容不同 {len(diff)} 個：" + "、".join(diff[:4])
+                    + (" …" if len(diff) > 4 else ""))
+    if only_src:
+        bits.append(f"副本缺 {len(only_src)} 個：" + "、".join(only_src[:3]))
+    if only_dst:
+        bits.append(f"副本多 {len(only_dst)} 個：" + "、".join(only_dst[:3]))
+    log("WARN", "維護技能兩份",
+        "；".join(bits) + f"（副本在 {dst}）"
+        " —— 重新打包 `kb-core/skills/maintain` 成 .skill 安裝覆蓋才會同步")
 
 
 # ---------------------------------------------------------------- 3. podfetch
@@ -1092,6 +1175,7 @@ def collect_metrics():
 
 def main():
     for fn in (check_data, check_showkeys, check_shows_sync,
+               check_skill_copy,
                check_show_names_in_docs, check_podfetch,
                check_transcripts, check_pending, check_observations,
                check_push, check_live, check_brief, collect_metrics):
