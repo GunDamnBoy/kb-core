@@ -45,12 +45,17 @@ W = {"inp": 1.0, "out": 5.0, "cw": 2.0, "cr": 0.1}
 STALE_MIN = 90          # 最新逐字稿超過這麼久沒動，就不是「這一輪」
 # **值域擋在這裡。** 打錯一個字（`podcasts`、`research`）不會有任何徵兆，
 # 而那一列會變成一套從此只有一列的「系統」，永遠不會被拿來比較。
-SYSTEMS = ("advisory", "chart", "podcast", "broker-research")
+# 2026-08-23 由四套擴到七套。**沒有登記的系統跑不了這支**，而那正是
+# `metrics/usage.csv` 到那天只有三列的原因之一：bubble／convergence／houseview
+# 的 run skill 根本沒有這一步，就算有也會被這個值域擋下來。
+SYSTEMS = ("advisory", "chart", "podcast", "broker-research",
+           "bubble", "convergence", "houseview")
 # **系統 id 不等於 outbox 目錄名。** `--until-receipt` 要去 `~/outbox/<目錄>/` 找回執，
 # 而 broker-research 在 outbox 底下叫 `research`，advisory 根本沒有 outbox 目錄。
 # 2026-08-23 實測：不做這層對照，`broker-research --until-receipt` 一律 exit 12，
 # **而它正是四套裡最需要切界線的那一套**（08-22 那一輪 43,339k／617 輪）。
-OUTBOX_DIR = {"podcast": "podcast", "chart": "chart", "broker-research": "research"}
+OUTBOX_DIR = {"podcast": "podcast", "chart": "chart", "broker-research": "research",
+              "bubble": "bubble", "convergence": "convergence", "houseview": "houseview"}
 
 
 def eff(u):
@@ -244,12 +249,22 @@ def main():
     print(f"**合計有效 {grand:,.0f}**"
           f"（產出 {out:,} ×5、重讀 {cr:,} ×0.1、寫入 {cw:,} ×2）")
 
+    # **CSV 要帶「這個數字能不能信」，不只帶數字。**
+    # 沒切界線的一輪，數字本身完全合理（型別對、量級也像），只是它量的可能是
+    # 一整場維護對話 —— 2026-08-22 的 broker-research 就是這樣進去的：
+    # 43,339k／617 輪，而那份逐字稿同時裝著整場維護。
+    # 有了這一欄，下一個拿 CSV 做決定的人不必去比對 transcript 才知道該不該用。
+    bounded = "yes" if (a.since or a.until or a.until_receipt) else "no"
+    if bounded == "no":
+        print("\n⚠︎ **這一輪沒有切界線**（沒給 --since／--until／--until-receipt）——"
+              "若這份逐字稿同時裝了維護對話，算出來的是兩者之和。"
+              "CSV 的 `bounded` 欄會記成 no。")
     row = ",".join(str(x) for x in [
         (last or "")[:10], a.system, round(grand / 1000), turns, len(subs),
         sum(x[2] for x in subs), round(sub_tot / 1000), round(out / 1000),
-        round(cr / 1000), round(cw / 1000), os.path.basename(tp)])
+        round(cr / 1000), round(cw / 1000), bounded, os.path.basename(tp)])
     hdr = ("date,system,eff_tokens_k,main_turns,subagents,agent_turns,"
-           "subagent_tokens_k,out_tokens_k,cache_read_k,cache_write_k,transcript")
+           "subagent_tokens_k,out_tokens_k,cache_read_k,cache_write_k,bounded,transcript")
     print("\n把下面這一行 append 到 kb-core/metrics/usage.csv：")
     print(row)
 

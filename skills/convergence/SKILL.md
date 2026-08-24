@@ -215,6 +215,15 @@ python3 /Users/macmini/kb-core/tools/convergence_rulings_apply.py \
 
 ---
 
+## 用量：量它，不要估它
+
+**收尾必做。** 規則在 `metrics/MEASURE.md`，**那是正本，這裡不抄**。
+
+這一套的系統 id 是 `convergence`。
+
+（2026-08-23 之前這一套完全沒有這一步，`usage_report.py` 的值域也擋著它 ——
+所以 `metrics/usage.csv` 上一列都沒有。**沒有量測的系統，成本永遠是猜的。**）
+
 ## 這一輪不做的事
 
 - **不要重述新聞。** 每一條都要有「因為幾個庫都／只有一庫講，所以⋯⋯」這層推論。

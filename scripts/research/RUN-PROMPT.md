@@ -256,22 +256,8 @@ log 會印一行「改寫 …，系統的 republish_rule 判定這是允許的�
 
 ## 用量：量它，不要估它
 
-**回報之前跑這一支。用 `Bash`（雲端容器），不是 `device_bash`** ——
-逐字稿只存在於雲端那一側，在 Mac 上跑一定失敗：
+**收尾必做。** 規則在 `metrics/MEASURE.md`，**那是正本，這裡不抄** ——
+這一段曾經被抄成三份，然後工具加了 `--until-receipt` 而三份都沒跟上。
 
-```bash
-cd /tmp && rm -rf kbc && git clone -q --depth 1 https://github.com/GunDamnBoy/kb-core kbc
-python3 kbc/tools/usage_report.py broker-research
-```
+這一套的系統 id 是 `broker-research`。
 
-它印出主線與各子代理的有效 token、以及**一行 CSV**。
-把那一行原封不動 append 到 `~/kb-core/metrics/usage.csv`（device bash）。
-
-**不要自己估、也不要抄你以為的數字。** 代理看不到自己的 usage 欄位 ——
-`podcast/metrics-columns.md` 原本那四欄寫的就是「人工，抄自當輪用量回顧」，
-而**自述與量測在 CSV 裡長得一模一樣，只有一個能拿來做決定**。
-
-它會把挑到的逐字稿檔名與時間範圍印出來。**對一眼**：
-挑錯逐字稿與挑對的，算出來的數字都很合理。
-
-**回報你實際做到的，不是你打算做到的。**

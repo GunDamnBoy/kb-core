@@ -283,22 +283,10 @@ publish 每 60 秒跑一次，所以 90 秒之後回執該在了；還沒在就�
 `~/Library/Application Support/Claude/local-agent-mode-sessions/<帳號>/<工作區>/local_<階段>/.claude/projects/`，
 子代理在同層的 `<uuid>/subagents/agent-*.jsonl`。2026-08-23 用 `Glob` 實地看到了。
 
-**真正的限制是：你這一側搆不到它。**
+**2026-08-23 更新：搆得到了，這一段的結論已經過期。**
+`metrics/usage.csv` 上有一列量出來的 podcast（6,611k），
+是在**排程那個 session 自己的雲端容器裡**跑出來的 —— 先前搆不到，
+是因為當時從別的地方跑。
 
-1. `usage_report.py` 是**在沙箱裡跑的 python**，而沙箱的 `~` 是 `/sessions/<name>`，
-   底下沒有 `.claude/projects` → `exit 14`
-2. 想把那個目錄掛進來也不行：`request_cowork_directory` **明文拒絕**
-   （「That directory is Cowork's internal session storage… intentionally not accessible」）
-3. `session_info__read_transcript` 只回訊息內容，**不含 usage 欄位**
+規則在 `metrics/MEASURE.md`，**那是正本**。這一套的系統 id 是 `podcast`。
 
-**所以這一輪填不了，但這條基線沒有死** —— 在 **Mac** 上跑得到，
-`healthcheck.py` 裡那段被 early-return 擋掉的程式（`~/Library/…/*/*/*/.claude/projects`）
-路徑是對的，08-23 驗過 glob 對得上。補量測是維護那一輪在 Mac 上做的事，見 `MAINTENANCE.md` 第 6 節。
-
-**你要做的只有一件事：不要「回報多少就抄多少」。** 那是自述不是量測，而
-`scripts/podcast/metrics-columns.md` 開頭就寫了：**用另一套定義填進同一欄，比留白更糟**
-—— 留白看得出來是缺的，填了看不出來是錯的。實害已經發生：`eff_tokens_k`
-08-21＝4913、08-22＝235，**相差 20 倍、那一欄的曲線已經不可比**
-（08-23 也抄了 276，已於同日抽掉；08-21／08-22 兩列保留原樣不改寫歷史）。
-
-**回報你實際做到的，不是你打算做到的。**

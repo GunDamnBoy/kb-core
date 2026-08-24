@@ -36,4 +36,9 @@
 | `subagents`／`agent_turns` | 子代理個數與來回總和 |
 | `subagent_tokens_k` | 子代理加權合計 ÷ 1000 |
 | `out_tokens_k`／`cache_read_k`／`cache_write_k` | 未加權的原始數，用來看結構往哪偏 |
+| `bounded` | **這個數字能不能拿來做決定。** `yes` ＝ 跑的時候有切界線
+（`--since`／`--until`／`--until-receipt`）；`no` ＝ 沒切，那份逐字稿若同時裝了
+維護對話，算出來的是兩者之和。**目前三列全部是 `no`** —— 尤其
+2026-08-22 的 broker-research（43,339k／617 輪）用的是一場維護對話的逐字稿，
+**不要拿它當週報成本** |
 | `transcript` | 量的是哪一份 —— **挑錯逐字稿與挑對的，數字都很合理** |

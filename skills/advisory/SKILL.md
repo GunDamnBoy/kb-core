@@ -349,24 +349,8 @@ OGJ 的兩個日期、注入字串已擴散到 WSJ。
 
 ## 用量：量它，不要估它
 
-**回報之前跑這一支。用 `Bash`（雲端容器），不是 `device_bash`** ——
-逐字稿只存在於雲端那一側，在 Mac 上跑一定失敗：
+**收尾必做。** 規則在 `metrics/MEASURE.md`，**那是正本，這裡不抄** ——
+這一段曾經被抄成三份，然後工具加了 `--until-receipt` 而三份都沒跟上。
 
-```bash
-cd /tmp && rm -rf kbc && git clone -q --depth 1 https://github.com/GunDamnBoy/kb-core kbc
-python3 kbc/tools/usage_report.py advisory
-```
+這一套的系統 id 是 `advisory`。
 
-它印出主線與各子代理的有效 token、以及**一行 CSV**。
-把那一行原封不動 append 到 `~/kb-core/metrics/usage.csv`（device bash）。
-
-**不要自己估、也不要抄你以為的數字。** 代理看不到自己的 usage 欄位 ——
-`podcast/metrics-columns.md` 原本那四欄寫的就是「人工，抄自當輪用量回顧」，
-而**自述與量測在 CSV 裡長得一模一樣，只有一個能拿來做決定**。
-
-它會把挑到的逐字稿檔名與時間範圍印出來。**對一眼**：
-挑錯逐字稿與挑對的，算出來的數字都很合理。
-
-**這一節在 2026-08-23 之前不在排程副本裡**（正本有、副本沒有），
-所以 `metrics/usage.csv` 到那天為止**一列 advisory 都沒有**，只有一列 broker-research。
-那正是本檔開頭警告的形狀：改了正本卻沒重推 prompt，而它安靜地成功。
