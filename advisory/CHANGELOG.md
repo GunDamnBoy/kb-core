@@ -1149,3 +1149,67 @@ git 共 12 個呼叫點（auto_publish 10、gate 2），**整個 repo 沒有任�
 沒答的是**拿真資料實跑**：chart／podcast／research 的資料 repo 沒有掛載進這個工作階段，
 那三組只驗到 import 與自檢，沒有驗到「對著今天的產出跑起來會怎樣」。
 `groups` 一個字都沒改，所以 `chart.theme_unique` 不受影響（MODIFY 只在動 `groups` 時要求回跑五圖）。
+
+---
+
+## 2026-08-24｜publish 把自己剛寫的檔判成外人：一個 `.strip()` 擋掉四套系統的發布
+
+**動到哪些檔**　`tools/publish.py`（第 241 行 `.stdout.strip()` → `.stdout.rstrip("\n")`，
+加 20 行註解寫它藏住的方式）、`kbcore/env.py`（`REQUIRED_BY_LABEL` 補
+`com.kenny.kbpublish.convergence`）、`metrics/MEASURE.md`（「怎麼跑」整節重寫、
+advisory 那一列由「沒有回執」改成「回執在 outbox 根目錄」）、
+`tools/usage_report.py`（`OUTBOX_DIR` 加 `"advisory": ""`，呼叫端由 `if not sub` 改 `if sub is None`）、
+`scripts/advisory/preamble.md`（第六節：CNBC／IBD／Mint／Korea Herald 四列改寫、
+新增 The Hill 與 The Economist 兩列、新增「`[BLOCKED]` 是工具層攔截」與
+「電子報彙整頁不是文章」兩節）、`skills/advisory/SKILL.md`（時間軌跡、步驟 1 的層①、
+步驟 3 的前一版網址清單、步驟 5 的補位額度、步驟 8 的 exit 15 列、步驟 9、用量那節）、
+排程 prompt（整份重推）。
+
+**量測**　`worktree-dirty` 在整份 `publish.log` 裡**只出現 4 次、全部在 2026-08-24**；
+`tools/publish.py` 的 mtime 是 08-24 07:30:13，落在 08-23 最後一次成功發布（09:31）與今天之間。
+回執從 09:44 起每 60 秒一次 `exit 15`，`detail` 說「repo 有 1 個未提交的變更……：`ata/index.json`」。
+`.git/index` 裡沒有任何 `ata/` 開頭的項目（36 個 entry 全部列出來對過），
+唯一的候選是 `data/index.json` —— **而它就在 `staged_paths`（`["data", "index.html"]`）底下**。
+修好之後同一份草稿在 10:04 發布成功（`commit 8a498ec`），本機與 `origin/main` 對齊。
+`metrics/usage.csv` 到 08-24 為止只有 3 列（broker-research 08-22、chart 08-23、podcast 08-23），
+**advisory 一列都沒有**。launchd 對帳：kb-core 有 plist 但機器上沒裝的有
+`kbfile.research`、`kbwatch.research` 兩支；機器上裝了但 kb-core 沒有的是 `kbpublish.bubble`
+（plist 正本在 ai-bubble-monitor repo，已知）；**裝了但沒登記進 `REQUIRED_BY_LABEL` 的是
+`kbpublish.convergence`**。
+
+**怎麼驗的**　依 MODIFY 的硬規矩在 `/tmp` 另建 bare origin ＋ 工作 repo，沒有碰真 repo。
+先用真的 `dirty_outside()` 分岔驗解析：`" M data/index.json"`（未 strip）回 `[]`、
+`"M data/index.json"`（被 strip 後）回 `["ata/index.json"]` —— **函式是對的，壞的是呼叫端**。
+再把測試 repo 種成 advisory-rewrite 的形狀、餵今天真正的草稿跑完整條 publish，
+回執 `exit 0 @ pushed`、`git ls-tree` 在 bare origin 裡確認 `data/2026-08-24.json` 與
+`data/index.json` 都真的進去了、`index.json` 第一筆是 `2026-08-24`（90 張）。
+收尾跑完 MODIFY 的驗證清單：`py_compile` 四個目錄 exit 0、`selftest()` 失敗數 0、
+`advisory_verify` 對已發布的 `data/2026-08-24.json` **18 PASS · 0 WARN · 0 FAIL**、
+`anchors.json` 與 25 個日檔全部 `json.load` 通過、`index.html` 抽 script 後 `node --check` exit 0、
+資料 repo 內 symlink 0 個。排程副本與正本用六個新字串比對過，**兩邊都在、舊的兩句都不在**。
+
+**怎麼倒回去**　`publish.py` 那一行改回 `.stdout.strip()` 即可回到今天早上的行為
+（但那會讓四套系統再度卡在 exit 15）。`env.py` 刪掉 `kbpublish.convergence` 那一行、
+`usage_report.py` 把 `"advisory": ""` 拿掉並把 `if sub is None` 改回 `if not sub`，
+兩者都是單點。文件類（`MEASURE.md`／`preamble`／`SKILL.md`／CHANGELOG）全部只增不刪語意，
+倒回去是把新增段落拿掉。排程 prompt 要倒回去得整份重推。
+
+**當時已知的風險**
+①**`kbfile.research` 與 `kbwatch.research` 兩支 plist 仍然沒裝在機器上** ——
+工作階段做不到 `launchctl`，這是 Mac 上的手動步驟，指令在 `launchd/README.md`。
+在裝上去之前，broker-research 那一套沒有看門狗。
+②`kbpublish.convergence` 的 `["git"]` 是**從 plist 的 ProgramArguments 推定**的
+（它跑 venv python ＋ `tools/publish.py`，與其他 `kbpublish.*` 同一條路徑），
+不是像 bubble 那樣掃過原始碼。要複驗就掃 `tools/publish.py` 的 `subprocess` 呼叫點。
+③**這一輪沒有量到用量。** `usage_report.py` 在 Cowork 的沙箱那一側跑不了
+（逐字稿在 Mac 上、掛載會被明文拒絕），而修好的 `MEASURE.md` 要求在 Mac 的終端機跑 ——
+所以 `usage.csv` 今天**還是沒有 advisory 那一列**。文件已經對了，但那一步仍然是人要做的。
+④`~/.advisoryfetch/` 在 Cowork 取不到這件事**只寫進了文件，沒有修**。
+步驟 1 的層①目前是一條每天固定要繞過去的死路（約 5 分鐘、7 次工具呼叫）。
+兩個解法（加進連接資料夾／改寫到 `~/outbox`）都需要人決定，這一輪沒有動。
+⑤`publish.py` 的呼叫端**至今沒有測試**。今天的 bug 出在
+「純函式有 fixture、呼叫它的那三行沒有」，而修法只是改對那三行 ——
+**同一個形狀還會再來**。真正的防線是把 `git status` 的輸出當成一種輸入形狀來測，
+那件事今天沒做。
+⑥今天的退件（跨版去重擋掉兩張卡）已經寫進 `SKILL.md` 步驟 3，
+但**沒有任何機器在派工時強制帶上前一版的網址清單** —— 它仍然靠執行者記得。

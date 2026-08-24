@@ -237,8 +237,28 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     # **同一場的驗證只測了目錄型的多路徑系統，漏掉唯一含檔案的那一套。**
     # 修正見 dirty_outside() 的 docstring。教訓不是「要多測幾個案例」，是
     # **宣稱「不可能更糟」之前，先去數有幾種輸入形狀，而不是數自己測了幾個**。
+    #
+    # **`rstrip("\n")` 不是 `strip()`，而這個差別擋掉一整天的發布。**
+    # porcelain 的每一行是「兩個狀態字元 ＋ 一個空白 ＋ 路徑」，
+    # 而**只在工作區改動、沒 add** 的那一種第一個字元就是空白（`" M path"`）。
+    # `.strip()` 會把整份輸出最前面那個空白吃掉，於是**第一行**變成 `"M path"`，
+    # `dirty_outside()` 的 `line[3:]` 跟著位移一格 —— `data/index.json` 被讀成
+    # `ata/index.json`，對不上 `paths` 裡的 `data`，於是 publish 把**自己剛寫的檔**
+    # 判成外人，回 CONFLICT(15)。2026-08-24 實測：09:44 起每 60 秒一次，
+    # 回執寫著「repo 有 1 個未提交的變更……：ata/index.json」。
+    #
+    # **它藏住的方式有三層。**
+    #   ① 只有第一行會壞 —— 第二行以後的空白還在，所以 `index.html` 那種
+    #      同時髒掉的檔照樣通過，錯誤看起來像「只有一個檔有問題」而不是解析壞了。
+    #   ② `dirty_outside()` 是純函式、fixture 餵的是**沒被 strip 過**的字串，
+    #      所以它自己的測試永遠是綠的 —— 壞的是呼叫端，而呼叫端沒有測試。
+    #   ③ 這道護欄的錯誤訊息長得像真的：它說的路徑「確實不在 paths 底下」，
+    #      因為那個路徑是它自己切壞的。**訊息可信，內容是假的。**
+    #
+    # 空行由 `dirty_outside()` 自己的 `if not line.strip(): continue` 處理，
+    # 這裡只需要把尾端換行去掉；輸出全空時 `rstrip` 回空字串，`if dirty` 照樣是假。
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no",
-                check=False).stdout.strip()
+                check=False).stdout.rstrip("\n")
     if dirty:
         outside = dirty_outside(dirty, paths)
         if outside:

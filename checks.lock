@@ -26,6 +26,7 @@ chart.option_matches_spec
 chart.png_present
 chart.prefetch_fresh
 chart.provenance
+chart.qa_disposed
 chart.release_day
 chart.series_cap
 chart.series_freshness

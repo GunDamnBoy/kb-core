@@ -51,11 +51,18 @@ STALE_MIN = 90          # 最新逐字稿超過這麼久沒動，就不是「這
 SYSTEMS = ("advisory", "chart", "podcast", "broker-research",
            "bubble", "convergence", "houseview")
 # **系統 id 不等於 outbox 目錄名。** `--until-receipt` 要去 `~/outbox/<目錄>/` 找回執，
-# 而 broker-research 在 outbox 底下叫 `research`，advisory 根本沒有 outbox 目錄。
+# 而 broker-research 在 outbox 底下叫 `research`。
 # 2026-08-23 實測：不做這層對照，`broker-research --until-receipt` 一律 exit 12，
 # **而它正是四套裡最需要切界線的那一套**（08-22 那一輪 43,339k／617 輪）。
-OUTBOX_DIR = {"podcast": "podcast", "chart": "chart", "broker-research": "research",
-              "bubble": "bubble", "convergence": "convergence", "houseview": "houseview"}
+#
+# **`""` 與「不在表裡」是兩件事，不要用真假值判。** 2026-08-24 之前這裡沒有
+# advisory，於是它被歸進「沒有回執可用」而只能 `--since`——但 advisory 的回執
+# 一直都在，只是在 **outbox 根目錄**（`~/outbox/<DATE>.receipt.json`），
+# 不像其他六套有自己的子目錄。`""` 表示「有回執、在根目錄」，
+# 鍵不存在才表示「這一套沒有回執」。呼叫端因此要用 `is None` 判，不能用 `if not sub`。
+OUTBOX_DIR = {"advisory": "", "podcast": "podcast", "chart": "chart",
+              "broker-research": "research", "bubble": "bubble",
+              "convergence": "convergence", "houseview": "houseview"}
 
 
 def pick_transcript(explicit=None):
@@ -193,6 +200,25 @@ def main():
         print(err, file=sys.stderr)
         return code
 
+    # **`--since` 與 `--until` 走同一段正規化，這是 2026-08-24 補的。**
+    # 在那之前只有 `--until` 有，而 `--since` 原樣進了字串比較 ——
+    # 於是 `--since 2026-08-24T07:35:00+08:00`（台北位移）拿去跟逐字稿的
+    # `2026-08-24T01:44:00.000Z` 比，字串序上前者比較大，**整場被切光**。
+    # 那一段註解就寫在下面幾行，說的是同一件事，只是當時只套用在一個旗標上 ——
+    # **同一個坑修一半，比沒修更難發現**，因為文件會說「界線已經處理過了」。
+    # 這一條在自動化之後更要緊：`kbusage.sh` 帶進來的 `since` 由輪次寫在 sidecar 裡，
+    # 而輪次寫的是台北時刻。
+    since = a.since
+    if since:
+        try:
+            since = _norm_iso(since)
+        except ValueError as e:
+            print(f"--since 解析不了：{e}\n"
+                  "  要 ISO8601，例如 2026-08-23T04:00:00Z 或 2026-08-23T12:00:00+08:00。"
+                  "\n  **純日期（2026-08-23）不接受** —— 它沒有時間，切出來的界線是任意的。",
+                  file=sys.stderr)
+            return 12
+
     until = a.until
     if until:
         # **界線是字串比較，所以格式不對不會報錯、只會安靜不切。**
@@ -214,11 +240,13 @@ def main():
                   f"（忽略 --until {a.until}）", file=sys.stderr)
         # **界線用回執，不用猜。** publish 寫回執的時刻就是那一輪真正落地的時刻。
         sub = OUTBOX_DIR.get(a.system)
-        if not sub:
-            print(f"{a.system} 沒有 outbox 目錄，用不了 --until-receipt；"
+        if sub is None:
+            print(f"{a.system} 沒有回執，用不了 --until-receipt；"
                   "改用 --until 明講界線", file=sys.stderr)
             return 12
-        rp = os.path.expanduser(f"~/outbox/{sub}/{a.until_receipt}.receipt.json")
+        # `sub` 是 `""` 時回執在 outbox 根目錄（advisory 就是這一種）。
+        rp = os.path.expanduser(
+            os.path.join("~/outbox", sub, f"{a.until_receipt}.receipt.json"))
         if not os.path.exists(rp):
             print(f"找不到回執 {rp} —— 沒有界線就不要硬切，"
                   f"寧可印整場並在報告裡講明", file=sys.stderr)
@@ -231,9 +259,9 @@ def main():
             return 12
         print(f"界線　　--until {until}（取自 {os.path.basename(rp)} 的 at={at}）")
 
-    tot, turns, out, cr, cw, first, last = usage_of(tp, a.since, until)
+    tot, turns, out, cr, cw, first, last = usage_of(tp, since, until)
     if not turns:
-        bounds = "／".join(x for x in (f"--since {a.since}" if a.since else "",
+        bounds = "／".join(x for x in (f"--since {since}" if since else "",
                                        f"--until {until}" if until else "") if x)
         why = f"界線把它切光了（{bounds}）" if bounds else "挑錯檔了"
         print(f"這份逐字稿裡沒有帶用量的輪次 —— {why}", file=sys.stderr)
@@ -243,7 +271,7 @@ def main():
                            os.path.basename(tp)[:-6], "subagents")
     subs = []
     for f in sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl"))):
-        st, sturns, *_ , sfirst, _ = usage_of(f, a.since, until)
+        st, sturns, *_ , sfirst, _ = usage_of(f, since, until)
         if sturns:
             subs.append((os.path.basename(f)[6:23], st, sturns))
 
@@ -266,7 +294,7 @@ def main():
     # 一整場維護對話 —— 2026-08-22 的 broker-research 就是這樣進去的：
     # 43,339k／617 輪，而那份逐字稿同時裝著整場維護。
     # 有了這一欄，下一個拿 CSV 做決定的人不必去比對 transcript 才知道該不該用。
-    bounded = "yes" if (a.since or a.until or a.until_receipt) else "no"
+    bounded = "yes" if (since or a.until or a.until_receipt) else "no"
     if bounded == "no":
         print("\n⚠︎ **這一輪沒有切界線**（沒給 --since／--until／--until-receipt）——"
               "若這份逐字稿同時裝了維護對話，算出來的是兩者之和。"

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 七套系統 · 用量量測。安裝位置 ~/Library/LaunchAgents/。
+
+       為什麼有這一支：到 2026-08-24 為止，「把那一輪的 token 用量寫進
+       metrics/usage.csv」是七套收尾裡**唯一沒有自動化執行者**的一步。
+       結果是 usage.csv 只有三列，而每天都在跑的 advisory 一列都沒有。
+       另外六件事（抓、發布、看門狗、轉檔、預抓、推 kb-core）都有 launchd，
+       只有量測靠人記得 —— **那不是紀律問題，是缺一個執行者。**
+
+       為什麼是 600 秒而不是 60 秒：它等的是「輪次寫完 sidecar 且回執已落地」，
+       而回執最慢也就一兩分鐘。10 分鐘的延遲對一份每天一列的 CSV 毫無差別，
+       但把空轉次數從一天 1,440 次降到 144 次。**沒有 sidecar 時它不寫日誌**，
+       所以空輪次的成本接近零。
+
+       為什麼不跑 git：usage.csv 在 ~/kb-core 裡，com.kenny.kbcorepush 每 300 秒
+       會帶著閘門推它。這支只 append 一行 —— 與 kbprefetch.* 同一個紀律：
+       產生變動的不碰 git，變動由專責那條線帶走。任何 git 指令留下的
+       index.lock 都可能擋住每 60 秒跑一次的 kbpublish.*。
+
+       它讀不讀得到逐字稿，不靠猜：**輪次自己把逐字稿的絕對路徑寫進 sidecar**，
+       腳本用 transcript 參數明講（XML 註解不能寫連續兩個半形連字號，所以這裡
+       不把旗標原樣寫出來）。`pick_transcript()` 拿到 explicit 就直接回傳，
+       不挑、也不做 90 分鐘的 staleness 判斷 —— 於是 Mac 睡著、launchd 延後、
+       或那一場對話後來又有人講話，都不影響結果。
+
+       RunAtLoad 為 true —— 載入時先跑一次是安全的：沒有 sidecar 就是空輪次，
+       有 sidecar 就是本來就該補的那一列。與 kbprefetch.* 不同，
+       這支沒有「跑早了會拿到半成品」的問題。 -->
+  <key>Label</key>
+  <string>com.kenny.kbusage</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/macmini/kb-core/launchd/kbusage.sh</string>
+  </array>
+
+  <!-- PATH 與 HOME 明寫在這裡，即使包裝腳本自己也 export 一次。
+       **watch.external_binaries 讀的是 plist，不是腳本** —— 而 launchd 的預設
+       環境只有 /usr/bin:/bin:/usr/sbin:/sbin，兩者不一致時安靜的那一邊會贏。
+       這一支需要的外部指令登記在 kbcore/env.py 的 REQUIRED_BY_LABEL。 -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartInterval</key>
+  <integer>600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/kbusage.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/kbusage.err</string>
+</dict>
+</plist>

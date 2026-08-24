@@ -165,26 +165,61 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 |---|---|---|
 | MarketWatch | 正文 `p[class*="StyledNewsKitParagraph"]`；舊的 `#js-article__body p` 回 **0 段**。**區段頁（`/investing`、`/markets`、`/economy-politics`…）用 fetch 取回的 HTML 裡沒有時間戳**（前端渲染），預篩只能靠 `/latest-news` 的 `.article__timestamp[data-est]`（ET）或文章頁的 `article:published_time` | 08-23 |
 | Bloomberg | 正文 `article p`（＝`main p`）；`p[class*="paragraph"]` 回 **0 段**。**列表頁 HTML 內嵌 `"publishedAt"`（真 UTC）＋`"slug"`，可整版預篩、完全不必逐篇開頁** —— 配對法是「`publishedAt` 之後 4,000 字元內的第一個 `slug`」，08-23 拿 90 篇的時間戳、事後對 8 篇開頁複驗 `datePublished` **8/8 吻合**。這正是 2026-08-09 風控事故要防的行為模式的解法。**`/latest`、`/markets/stocks`、`/markets/currencies`、`/markets/commodities`、`/businessweek` 五個路徑回 0 篇**，改用 `/markets`、`/economics`、`/technology`、`/markets/fixed-income`、`/industries`、`/wealth`、`/opinion`、`/deals` | 08-23 |
-| CNBC | 正文 `div[class*="ArticleBody"] p`。RSS 在 `cnbc.com/id/<sectionId>/device/rss/rss.html`，可同網域 fetch。**⚠️ RSS 的 `pubDate` 是更新時間、不是發布時間，而且差得夠遠會跨過窗口** —— 08-23 實測一篇 RSS 給 07:12（窗口內）、`article:published_time` 卻是 02:03 台北（窗口起點前 4 小時），另一篇 pub 與 mod 差 6 小時 21 分。**預篩一律以文章頁 `datePublished` 為準。** `/pro/` 與 Investing Club 是獨立付費層，屬訂閱範圍外 | 08-23 |
+| CNBC | 正文**先試 `div[class*="ArticleBody"] p`；回 0 段時改取 `.ArticleBody-articleBody` 的子節點 `innerText`**。08-24 實測：一般新聞稿四篇都命中第一組（13–36 段），但 **Cramer 那種專欄型文章 `div[class*="ArticleBody"] p`／`main p`／`article p` 全回 0 段**，正文是裸 `<span>` 掛在 `.ArticleBody-articleBody` 底下，改取容器子節點得 10,106 字元。**這是「回 0 段與被擋長得一樣」的又一例。** RSS 在 `cnbc.com/id/<sectionId>/device/rss/rss.html`，可同網域 fetch。**⚠️ RSS 的 `pubDate` 是更新時間、不是發布時間，而且差得夠遠會跨過窗口** —— 08-23 實測一篇 RSS 給 07:12（窗口內）、`article:published_time` 卻是 02:03 台北（窗口起點前 4 小時），另一篇 pub 與 mod 差 6 小時 21 分。**預篩一律以文章頁 `datePublished` 為準。** `/pro/` 與 Investing Club 是獨立付費層，屬訂閱範圍外 | 08-23 |
 | ECB（官方站） | **首屏 `document.body.innerText` 只有約 780 字元（空殼），要輪詢約 5 秒後 `dl > dt/dd` 才有內容。**這個狀態很容易被誤判成「今天沒新聞」 | 08-23 |
 | 美國財政部（home.treasury.gov） | 新聞稿清單用 `a[href*="/news/press-releases/"]`；`.views-row`／`.press-release-teaser` 回 **0 段** | 08-23 |
-| IBD | 正文**三組都要試、取段數最多的**：`article p`／`main p`／`.post-content p`。同一天實測到兩種相反的排序——有篇 `article p` 20 段／2,748 字勝過 `.single-post-content p` 14 段／2,135 字，另一篇 `article p` 只回 **7 段／1,023 字**（結尾還帶刪節號、像付費牆前導段）而 `main p` 回 **52 段／8,606 字**。**只試一組就下結論會把好文記成被擋。** 另注意 `/news/<主題>/` 底下有一批**常青 hub 頁**（`stock-market-today-...`、`ai-stocks-...`、`cpi-inflation-...`），`ld+json` 的 `datePublished` 停在遠期日期，那不是單篇文章 | 08-23 |
+| IBD | 正文**三組都要試、取段數最多的**：`article p`／`main p`／`.post-content p`。同一天實測到兩種相反的排序——有篇 `article p` 20 段／2,748 字勝過 `.single-post-content p` 14 段／2,135 字，另一篇 `article p` 只回 **7 段／1,023 字**（結尾還帶刪節號、像付費牆前導段）而 `main p` 回 **52 段／8,606 字**。**只試一組就下結論會把好文記成被擋。** 另注意 `/news/<主題>/` 底下有一批**常青 hub 頁**（`stock-market-today-...`、`ai-stocks-...`、`cpi-inflation-...`），`ld+json` 的 `datePublished` 停在遠期日期，那不是單篇文章。**⚠️ 入口：`investors.com/news/economy/` 已經不是列表頁**（08-24 實測，兩次都一樣）——它會 302 到一篇 **2018-01-05** 的舊稿，從該頁撈到的連結也全是 2018 年份。**改從 `investors.com/` 首頁或 `/news/` 進**（08-24 首頁掃到 19 條有效連結、`datePublished` 全部是 2026 年 8 月）。這種失敗**不會觸發任何門檻告警**：它安靜地回舊稿、內文完整、選擇器正常，比被擋更危險 —— **每一篇都要驗 `ld+json` 的 `datePublished`** | 08-24 |
 | Nikkei Asia | 正文 `.ezrichtext-field p`；**發布時間只能從 `ld+json` 的 `datePublished` 取**，列表頁的 `<time>` 是渲染時間。**區段路徑已改小寫**（`asia.nikkei.com/economy`、`/politics/<slug>`、`/business/<slug>`），舊的 `/Economy` 大寫會被導向；列表頁多數連結不是文章，用 `h1 a, h2 a, h3 a, article a` 取再濾掉 `/location/`、`/topic/`、`/tag/` | 08-22 |
 | TrendForce 中文站 | 新聞稿在 `/presscenter/news`；舊的 `/news/` 是空殼 | 08-20 |
 | Politico | `politico.com/news` 與 `politico.eu/section/economy` 都是 **404**，從首頁進。正文用 **`main p`**；`.story-text p` 與 `div[class*="story"] p` 都回 **0 段** | 08-22 |
 | WSJ | 正文**先試 `main p`**；`article p`／`section p` 在部分文章只回 4 段／722 字，`.article-content p` 與 `#article-body p` 回 **0 段**。**兩組都要試、取段數多的那一組**（同一天測到反例：有些文章 `article p` 反而多）。**輪詢不要一達標就跳出、達標判定前至少等 3 秒**：08-23 有一篇第一次輪詢在 10 段／1,529 字（剛好壓線）跳出，再等 3 秒後同一頁 `main p` 回 **42 段／9,517 字**——早跳會把完整文章記成勉強及格甚至誤判要換選擇器。列表頁的文章連結延遲渲染，navigate 後要輪詢等待，取連結的特徵是**網址最後一段長度 > 25**（slug 結尾帶 8 碼 hash）。**預篩用 `__NEXT_DATA__`**：任何**頂層**版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`、`/health`、`/science`、`/opinion`、`/news/latest-headlines`）的 `__NEXT_DATA__` 帶 50–86 筆 `{url, timestamp}`，`timestamp` 是真 UTC，零額外請求；**但子版面頁（`/world/europe`、`/finance/banking`…）沒有這個東西**，只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。最省的整日清單是 `wsj.com/news/archive/YYYY/MM/DD`（`__NEXT_DATA__` 給當日全部含 UTC 時間戳，**日界是美東**）。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文** | 08-23 |
 | Oil & Gas Journal | 正文 **`div[class*="body"] p`**；`article p`／`.article-body p`／`main p` **全回 0 段**。**發布時間不要信 `ld+json` 的 `datePublished`**（只有日期、無時分，且以 UTC 日界呈現）——要從列表頁的 Nuxt payload 抓 13 位 epoch：unescape `/` 之後用 `/(\b17\d{11})\b[\s\S]{0,900}?"(\/[a-z\-\/]+\/news\/\d+\/[a-z0-9\-]+)"/g`，epoch 就在 slug 前約 350–380 字元處。**同一篇會同時顯示兩個日期**：列表頁的 `.date` 用瀏覽器本地時區（台北）渲染、文章頁的日期用 UTC 渲染，只看其中一個都會錯 | 08-23 |
 | Tom's Hardware | RSS 在 **`/feeds.xml`**（`/feeds/all` 與 `/rss.xml` 都 `Failed to fetch`），`pubDate` 是真 UTC。正文 `#article-body p, .text-copy p, article p`；發布時間取 `meta[property="article:published_time"]`（真 UTC，+8 得台北） | 08-23 |
-| Mint（livemint.com） | 正文 **`div[class*="storyContent"] p`**；**`article p` 與 `main p` 一律回 0 段，不要當備援**（`#article-body p`／`.storyPage p`／`[itemprop="articleBody"] p` 同樣 0 段）。**永久連結末尾那 13 位數是 epoch ms，但那是「建立時間」不是發布時間** —— 實測同一篇 URL epoch 解出台北 08-22 21:45、`ld+json` 的 `datePublished` 是 `2026-08-22T22:55:02+05:30` ＝ 台北 08-23 01:25，差 3 小時 40 分。URL epoch 只能粗篩，**落窗判定一律用 `datePublished`（帶 `+05:30`，＋2:30 得台北）** | 08-23 |
+| Mint（livemint.com） | 正文**分兩種模板**：`/market/…` 與 `/market/ipo/…` 用 **`div[class*="storyContent"] p`**；**`/news/…` 底下 `storyContent` 回 0 段，要改用 `div[class*="storyParagraph"] p`**（或同一組節點的 `div[class*="mainArea"] p`）——08-24 實測同一天兩種模板並存，storyContent 0 段／storyParagraph 12 段／5,499 字。**`article p` 與 `main p` 一律回 0 段，不要當備援**（`#article-body p`／`.storyPage p`／`[itemprop="articleBody"] p` 同樣 0 段）。**永久連結末尾那 13 位數是 epoch ms，但那是「建立時間」不是發布時間** —— 實測同一篇 URL epoch 解出台北 08-22 21:45、`ld+json` 的 `datePublished` 是 `2026-08-22T22:55:02+05:30` ＝ 台北 08-23 01:25，差 3 小時 40 分。URL epoch 只能粗篩，**落窗判定一律用 `datePublished`（帶 `+05:30`，＋2:30 得台北）** | 08-23 |
 | Fierce Biotech | 正文 **`.article-body p`**；`.body-text p`／`.field--name-body p`／`#main-content p` 回 0 段。RSS 在 `/rss/xml`。**`ld+json` 的 `datePublished` 沒有時區後綴，但它是 UTC** —— 實測 `2026-08-20T13:25:04` 對上頁面 `.date` 顯示的 `Aug 20, 2026 9:25am`（EDT），**台北 ＝ meta ＋ 8 ＝ 顯示值 ＋ 12**。這一列與華爾街見聞那一列同一類風險 | 08-23 |
 | 鉅亨網 Anue | `api.cnyes.com/media/api/v1/newslist/category/{cat}` 可從同網域 fetch，帶 `publishAt` epoch，**適合窗口預篩**（常用 cat：`tw_stock`、`tw_macro`、`headline`、`wd_macro`） | 08-22 |
 | MoneyDJ | 永久連結的本體在 query string 裡，**不要 `.split('?')[0]`** —— 只留路徑會把整站文章去重成一條。**沒有同網域 JSON 列表 API**，預篩只能從首頁時間軸區塊掃 | 08-22 |
 | 華爾街見聞 | **`article:published_time` 是真 UTC，要 +8 小時才是台北時間。** SPA 渲染需輪詢等待約 2–3 秒，navigate 後立刻取值會拿到空殼 | 08-22 |
-| Korea Herald | 列表頁用 `a[href*="/article/"]` 掃 `/Business`、`/Business/Economy`、`/Business/Market`；直接抓首屏會**只回「Most Read」側欄**。發布時間在 `.date`（`Published : Aug. XX, 2026 - HH:MM:SS`，KST，**減 1 小時**才是台北）。**要把首頁 `koreaherald.com/` 加進掃描路徑**：08-23 三個區段頁最新都只到 8/21、會讓人誤判「今天沒新聞」，而首頁掃到 57 條、最高 ID 比區段頁高 400 多號。**先濾掉 `biz.heraldcorp.com`** —— 首頁混了韓文姊妹站的連結、格式同樣是 `/article/<id>`，對它發同網域 `fetch` 會連續 `Failed to fetch`，看起來很像風控但其實是跨網域 CORS | 08-23 |
+| Korea Herald | 正文用 **`#articleText p`（＝`.news_content p`）**，那才是乾淨的內文容器；**`main p` 會多吃約 20 段的「相關新聞」清單、`article p` 更多，用它們量字數會高估兩到三倍**（08-24 實測同一篇：`main p` 25 段／2,950 字 vs `#articleText p` 7 段／1,622 字——**用錯的那一組會把未達門檻的短稿誤判成完整取得**）。`.article-content p` 與 `.article_txt p` 在這一家回 0 段。列表頁用 `a[href*="/article/"]` 掃 `/Business`、`/Business/Economy`、`/Business/Market`；直接抓首屏會**只回「Most Read」側欄**。發布時間在 `.date`（`Published : Aug. XX, 2026 - HH:MM:SS`，KST，**減 1 小時**才是台北）。**要把首頁 `koreaherald.com/` 加進掃描路徑**：08-23 三個區段頁最新都只到 8/21、會讓人誤判「今天沒新聞」，而首頁掃到 57 條、最高 ID 比區段頁高 400 多號。**先濾掉 `biz.heraldcorp.com`** —— 首頁混了韓文姊妹站的連結、格式同樣是 `/article/<id>`，對它發同網域 `fetch` 會連續 `Failed to fetch`，看起來很像風控但其實是跨網域 CORS | 08-23 |
 | STAT News | 正文 `.article-content p`；`document.querySelector('article')` 只回 **97 字元**。標「STAT Plus」的是訂閱牆，屬**訂閱範圍外**不是被擋。預篩用自家 `news-sitemap.xml`（帶 `news:publication_date`）或 `/feed/` | 08-23 |
+| The Hill | 正文**先試 `.article__text p`，再試 `article p`，取段數多的那一組**；**`main p` 回 0 段，不要當備援**（08-24 三篇實測都是 0）。這一家的稿子普遍偏短、常常剛好壓在門檻上（08-24 實測 9–12 段／1,921–2,448 字），**壓線不等於被擋** | 08-24 |
+| The Economist | 正文 `article p`；**備援用 `main p`（兩者完全等值），`[data-test-id="Article Body"] p` 已死、回 0 段**。`article:published_time` 與 `ld+json` 的 `datePublished` 一致到毫秒，可直接當落窗依據。**週刊節奏，窗口內沒有新文是正常的**；另外 `/the-world-in-brief/<uuid>` 與 `/…/checks-and-balance-newsletter-…` 都是**電子報彙整頁不是文章**，後者的路徑與一般文章一模一樣，只有 slug 裡的 `-newsletter-` 認得出來 | 08-24 |
 
 **「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
 而實際上是選擇器沒對上或路徑搬家了。**擋源三分的第一步永遠是換一組選擇器重試。**
+
+### `[BLOCKED: Cookie/query string data]` 是工具層攔截，不是來源出問題
+
+`javascript_tool` 的回傳值裡只要**含有網址或 query string**，整個回傳會被工具層吃掉、
+換成 `[BLOCKED: Cookie/query string data]`。**請求已經送出去了、頁面也正常**，
+被擋的只有結果 —— 代價是那一次請求白打，而它長得像來源故障。
+
+**這不是道瓊系專屬。** 2026-08-24 一輪之內在 **MarketWatch、MoneyDJ、Bloomberg、
+Korea Herald、Fierce Biotech** 五家都撞到，全部是「把時間戳／段數跟網址或標題放在
+同一次回傳」造成的。先前只記在 WSJ 那一列，於是每一家都要自己再撞一次。
+
+規避法固定三條：
+
+- **回傳值不要含 URL**（含 `href`、`canonical`、RSS 的 `link`，**即使已經
+  `.split('?')[0]` 也一樣會中**）、不要含從 `<title>` 取出的字串、不要用長分隔線。
+- **拆成分次呼叫**：先只回 `datePublished` 這種純字串，再只回正文切片，
+  網址自己另外組回來。
+- 真的需要網址時，**只回 slug 或 id**，由呼叫端拼回永久連結。
+
+### 電子報彙整頁不是文章，而它的網址跟文章一模一樣
+
+2026-08-23 有人把 WSJ 的「The 10-Point」當文章交出去（8 段／1,261 字）。
+08-24 又在三家撞到同一件事，**三家的路徑都與一般文章無法區分**：
+
+| 來源 | 例 | 唯一認得出來的地方 |
+|---|---|---|
+| NYT | `/2026/08/23/world/wheat-price-iran-war-canada.html` | 頁首的 `NEWSLETTER / The World` 標籤 |
+| WSJ | `/tech/ai/data-center-disenchantment-<hash>` | 內文開頭「This is an edition of the WSJ Technology newsletter…」 |
+| The Economist | `/…/checks-and-balance-newsletter-…`、`/the-world-in-brief/<uuid>` | slug 裡的 `-newsletter-`／整段是 UUID |
+
+**段數與字元數都會過門檻，只看數字一定會誤收。** 判準是「它有沒有單一主題與單一作者」，
+不是它有多長；彙整頁多半會夾雜 Sports、Recipe、Wordle 或多則不相干的導讀。
+碰到就回去找它引用的**單篇原稿**（08-24 那次找回來的原稿反而更完整）。
 
 **華爾街見聞那一列在 2026-08-22 之前寫的是相反的規則**（「標成 `Z` 但實為北京時間，
 當 UTC 讀會整整偏 8 小時」）。該日採集員在 5 篇文章上獨立驗到相反結果並自行修正，

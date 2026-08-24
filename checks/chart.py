@@ -1065,3 +1065,129 @@ register(Check(
                        "charts": [{"slot": "當日主圖", "slug": "cpi-release", "theme": "央行、利率與匯率"}]}},
     suite="chart",
 ))
+
+
+# ── 19. QA 旗標的處置 ────────────────────────────────────────────────
+def _qa_disposed(p):
+    since = _A(p, "known_exceptions", "qa_disposed_from")
+    if not since:
+        return skipped("anchors.known_exceptions.qa_disposed_from 是 null —— "
+                       "欄位加了但開關還沒翻。SKILL 第 4 步改成會寫 "
+                       "`about.qa_dispositions` 之後再填生效日")
+    doc = p["doc"]
+    if doc.get("date", "") < since:
+        return skipped(f"{doc.get('date')} 早於這個欄位生效的 {since}")
+    about = doc.get("about") or {}
+    if "qa_flags" not in about:
+        # **「沒有經過 render_day」與「檢查過而且沒有旗標」不是同一件事**，
+        # 而空 list 與缺欄位在下游長得一樣——所以缺欄位回 SKIPPED 不回 PASS。
+        return skipped("about.qa_flags 不在 —— 這一期沒有經過 render_day，"
+                       "**那不是「沒有旗標」**")
+    flags = about.get("qa_flags") or []
+    disp = about.get("qa_dispositions")
+    cats = _A(p, "quality", "disposition_categories")
+    roll = _A(p, "quality", "disposition_rollover")
+    rare = _A(p, "quality", "rollover_spread_rare_pct")
+
+    def key(f, star=False):
+        d = "*" if star else f.get("date", "?")
+        return f"{f.get('chart', '?')}|{f.get('series', '?')}|{d}"
+
+    if not flags:
+        if disp:
+            return fail(f"本期 0 筆旗標，卻有 {len(disp)} 筆處置 —— "
+                        "**處置指不到旗標**，多半是序列在出圖之後又改過")
+        return ok("本期 0 筆旗標，沒有要處置的")
+    if not isinstance(disp, list) or not disp:
+        return fail(f"{len(flags)} 筆旗標，而 about.qa_dispositions 是空的 —— "
+                    "第 4 步的完成條件是「每個旗標都有具名的處置」")
+
+    bad, got = [], {}
+    for i, d in enumerate(disp, 1):
+        if not isinstance(d, dict):
+            bad.append(f"第 {i} 筆處置不是物件")
+            continue
+        k = d.get("key")
+        if not k:
+            bad.append(f"第 {i} 筆處置沒有 key")
+            continue
+        got[k] = d
+        if d.get("category") not in cats:
+            bad.append(f"`{k}` 的分類是「{d.get('category')}」，不在 {cats} 裡")
+        note = (d.get("note") or "").strip()
+        if not note:
+            bad.append(f"`{k}` 沒有 note —— 分類只是標籤，"
+                       "「具名的處置」要說得出是哪一次")
+        elif "不確定" in note:
+            bad.append(f"`{k}` 的 note 寫「不確定」—— **那不是處置**（SKILL 第 4 步）")
+
+    uncovered, wrong_roll, used = [], [], set()
+    for f in flags:
+        k, ks = key(f), key(f, star=True)
+        used.add(k)
+        if f.get("derived"):
+            used.add(ks)
+        d = got.get(k) or (got.get(ks) if f.get("derived") else None)
+        if d is None:
+            uncovered.append(k + (f"（衍生序列可用 `{ks}` 整條涵蓋）"
+                                  if f.get("derived") else ""))
+            continue
+        # **先看幅度再看故事。** 轉倉價差極少超過 rare，所以超過的旗標
+        # 在數量級上就不可能是轉倉。`abs_chg` 不受這條約束——它的 pct
+        # 是絕對變動不是百分比，拿去比是兩把不同的尺。
+        if d.get("category") == roll and not f.get("abs_chg") \
+                and abs(f.get("pct") or 0) > rare:
+            wrong_roll.append(f"`{k}` 幅度 {f.get('pct')}% 超過 {rare}%，"
+                              f"分類卻是「{roll}」")
+
+    orphan = [k for k in got if k not in used]
+    if uncovered:
+        bad.append("沒有處置的旗標：" + "、".join(uncovered))
+    if wrong_roll:
+        bad.append("；".join(wrong_roll) + " —— **先看幅度再看故事**")
+    if orphan:
+        bad.append("指不到任何旗標的處置：" + "、".join(orphan)
+                   + " —— 多半是序列在出圖之後又改過，或鍵打錯了")
+    if bad:
+        return fail("；".join(bad))
+    return ok(f"{len(flags)} 筆旗標、{len(disp)} 筆處置，分類都在值域內")
+
+
+register(Check(
+    id="chart.qa_disposed",
+    covers="每一筆 about.qa_flags 都有對得上的 about.qa_dispositions（衍生序列可用 "
+           "`<slug>|<series>|*` 整條涵蓋）、分類落在 anchors.quality.disposition_categories、"
+           "note 非空且不是「不確定」、被分類成轉倉的旗標幅度不超過 "
+           "anchors.quality.rollover_spread_rare_pct",
+    blind_to=[
+        "**分類對不對**——除了轉倉那條幅度約束，其餘四類之間互換這條看不出來",
+        "note 寫得對不對（只看非空、且沒有寫「不確定」）",
+        "衍生序列用 `|*` 整條涵蓋時，那一段說明有沒有真的講到每一筆",
+        "**qa_flags 本身算得對不對**——那是 chartkit.qa_series 的事，這條只讀它的產物",
+        "第 4 步當場看到的旗標與這裡比對的是不是同一份——序列若在中間改過，"
+        "這條只看得到「處置指不到旗標」那一半",
+        "qa_disposed_from 還沒填生效日時整條跳過（SKIPPED），不會變成 FAIL",
+    ],
+    run=_qa_disposed,
+    fixture={"anchors": {"quality": {"disposition_categories": ["真實事件", "轉倉", "錯價", "窗口效應"],
+                                     "disposition_rollover": "轉倉",
+                                     "rollover_spread_rare_pct": 2},
+                         "known_exceptions": {"qa_disposed_from": "2026-08-25"}},
+             "doc": {"date": "2026-08-26",
+                     "about": {"qa_flags": [{"chart": "gold", "series": "黃金",
+                                             "date": "2026-01-30", "pct": -11.37, "z": -5.6}],
+                               "qa_dispositions": [{"key": "gold|黃金|2026-01-30",
+                                                    "category": "轉倉", "note": "換月價差"}]}}},
+    near_miss={"anchors": {"quality": {"disposition_categories": ["真實事件", "轉倉", "錯價", "窗口效應"],
+                                       "disposition_rollover": "轉倉",
+                                       "rollover_spread_rare_pct": 2},
+                           "known_exceptions": {"qa_disposed_from": "2026-08-25"}},
+               "doc": {"date": "2026-08-26",
+                       "about": {"qa_flags": [{"chart": "gold", "series": "黃金",
+                                               "date": "2026-01-30", "pct": -11.37, "z": -5.6}],
+                                 "qa_dispositions": [{"key": "gold|黃金|2026-01-30",
+                                                      "category": "真實事件",
+                                                      "note": "2026-01-30 金價單日重挫，"
+                                                              "幅度上不可能是轉倉"}]}}},
+    suite="chart",
+))

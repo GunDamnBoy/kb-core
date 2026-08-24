@@ -17,15 +17,32 @@
 
 ## 怎麼跑
 
-**用 `Bash`（雲端容器），不是 `device_bash`。**
-逐字稿只存在於雲端那一側，在 Mac 上跑一定失敗。
+**在哪一台機器上跑，取決於逐字稿在哪一台機器上 —— 而那不是一個固定答案。**
+
+| 執行環境 | 逐字稿在哪 | 怎麼跑 |
+|---|---|---|
+| Claude Code／雲端容器 | 容器裡的 `~/.claude/projects` | 直接跑，預設的 `CLAUDE_CONFIG_DIR` 就對 |
+| **Cowork** | **Mac 上**的 `~/Library/Application Support/Claude/local-agent-mode-sessions/*/*/local_*/.claude` | **要在 Mac 的終端機跑**，並指定 `CLAUDE_CONFIG_DIR` |
+
+Cowork 的版本：
 
 ```bash
-cd /tmp && rm -rf kbc && git clone -q --depth 1 https://github.com/GunDamnBoy/kb-core kbc
-python3 kbc/tools/usage_report.py <系統id> --until-receipt <本輪日期>
+BASE=$(ls -dt "$HOME/Library/Application Support/Claude/local-agent-mode-sessions"/*/*/local_*/.claude | head -1)
+CLAUDE_CONFIG_DIR="$BASE" python3 ~/kb-core/tools/usage_report.py <系統id> --until-receipt <本輪日期>
 ```
 
 `<系統id>` 是下表第一欄，`<本輪日期>` 是 `YYYY-MM-DD`。
+
+**這一段在 2026-08-24 之前寫的是相反的**（「用 Bash（雲端容器）不是 device_bash，
+逐字稿只存在於雲端那一側，在 Mac 上跑一定失敗」），而工具本身早在 08-23
+就把訊息訂正過來了 —— **正本與工具講反，照正本做就一定量不到**。
+2026-08-24 的 advisory 輪次就是這樣：照這份跑，工具直接回「找不到逐字稿」，
+於是 `usage.csv` 到那一天為止**一列 advisory 都沒有**。
+
+**Cowork 的沙箱那一側看不到 Mac 的逐字稿，也掛不上**（掛載會被明文拒絕），
+所以在 Cowork 裡「跑不出來」是預期行為，不是這一輪沒花 token。
+同理，那一段 `git clone kb-core` 也不需要：在 Mac 上跑就直接用 `~/kb-core`，
+在雲端容器裡才需要先取一份。
 
 ## 切界線不是選配
 
@@ -37,7 +54,7 @@ python3 kbc/tools/usage_report.py <系統id> --until-receipt <本輪日期>
 
 | 系統 id | outbox 目錄 | 怎麼切上界 |
 |---|---|---|
-| `advisory` | （沒有） | `--since <本輪開始的 ISO8601>`，因為沒有回執可用 |
+| `advisory` | （根目錄，沒有子目錄） | `--until-receipt <日期>`，回執在 `~/outbox/<日期>.receipt.json` |
 | `chart` | `chart` | `--until-receipt <日期>` |
 | `podcast` | `podcast` | `--until-receipt <日期>` |
 | `broker-research` | `research` | `--until-receipt <日期>`（**id 與目錄名不同**） |
@@ -48,7 +65,8 @@ python3 kbc/tools/usage_report.py <系統id> --until-receipt <本輪日期>
 ## 產出怎麼處理
 
 它印出主線與各子代理的有效 token，以及**一行 CSV**。
-把那一行原封不動 append 到 `~/kb-core/metrics/usage.csv`（這一步用 device bash）。
+把那一行原封不動 append 到 `~/kb-core/metrics/usage.csv`
+（在哪跑就在哪 append —— Cowork 是 Mac 的終端機，雲端容器是容器裡）。
 
 **不要自己估，也不要抄你以為的數字。**
 

@@ -56,6 +56,18 @@ REQUIRED_BY_LABEL = {
     "com.kenny.kbwatch.chart":     ["git"],
     "com.kenny.kbwatch.research":  ["git"],
     "com.kenny.kbpublish.research": ["git"],
+    # 2026-08-24：**第三次同一形狀。** 這一支已經裝在機器上（`~/Library/LaunchAgents/`
+    # 有 `com.kenny.kbpublish.convergence.plist`），但沒登記進來 ——
+    # `watch.external_binaries` 對「不在 REQUIRED_BY_LABEL 裡」是 FAIL，
+    # 而 FAIL 的看門狗不更新 heartbeat，於是**整個哨兵會被一支沒登記的 plist 靜音**。
+    # 08-21 那次是四支裡三支沒登記、08-23 那次是 kbpublish.bubble，這次是 convergence。
+    # 它跑的是 venv python ＋ `tools/publish.py`（outbox `~/outbox/convergence`、
+    # repo `~/convergence-weekly`、系統 id `convergence-weekly`），與其他 kbpublish.*
+    # 同一條路徑，所以需要的外部指令一樣是 git。
+    #
+    # **裝一支新 plist 有兩個動作，不是一個**：載進 launchctl、登記進這張表。
+    # 只做第一個，系統會跑得好好的，而看門狗會安靜地紅到有人來看。
+    "com.kenny.kbpublish.convergence": ["git"],
     # 2026-08-21：下面四支裡有三支是 08-20／08-21 裝上去的，而**沒有一支被登記進來**。
     # 這個機制是對的（沒登記就 FAIL），漏的是有人去登記 —— 兩件事。
     "com.kenny.kbcorepush":        ["git"],   # push_kbcore.py 自動 commit kb-core
@@ -63,6 +75,12 @@ REQUIRED_BY_LABEL = {
     # **空陣列不是「還沒想」，是「想過了，答案是零」** —— 沒登記才是紅的。
     "com.kenny.kbprefetch.chart":  [],
     "com.kenny.kbdocx.podcast":    [],
+    # 2026-08-24 新增。`kbusage.sh` 呼叫的外部東西只有兩個 python，兩個都是
+    # **絕對路徑**（`~/.venvs/kb/bin/python` 跑報表、`/usr/bin/python3` 解 sidecar），
+    # 其餘是 date／wc／tail／mv／rm／grep／stat／mkdir —— 與 /bin/bash 同一類，
+    # 是 macOS 基礎系統的一部分，缺了的話這台機器已經不能開機了，
+    # **不是 PATH 會不會解析得到的問題**。所以答案是零，不是還沒想。
+    "com.kenny.kbusage":           [],
     # 2026-08-23：這一支讓看門狗連續 FAIL，而 FAIL 的看門狗不更新 heartbeat ——
     # `advisory-rewrite/sentinel/heartbeat.json` 因此停在 08-22 07:20Z、`latest_date`
     # 停在 08-22，即使 08-23 已經正常發布。**一個永遠紅的看門狗把真訊號埋掉了。**
