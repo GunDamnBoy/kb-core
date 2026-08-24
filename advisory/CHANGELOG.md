@@ -1213,3 +1213,58 @@ advisory 那一列由「沒有回執」改成「回執在 outbox 根目錄」）
 那件事今天沒做。
 ⑥今天的退件（跨版去重擋掉兩張卡）已經寫進 `SKILL.md` 步驟 3，
 但**沒有任何機器在派工時強制帶上前一版的網址清單** —— 它仍然靠執行者記得。
+
+---
+
+## 2026-08-24 續｜用量量測終於有了執行者，而它自己先示範了一次「只在生產跑得動的分支」
+
+**動到哪些檔**　新增 `launchd/kbusage.sh` 與 `launchd/com.kenny.kbusage.plist`；
+`kbcore/env.py`（`REQUIRED_BY_LABEL` 補 `com.kenny.kbusage`，空陣列）；
+`tools/usage_report.py`（`--since` 補上 `_norm_iso` 正規化）；
+`metrics/MEASURE.md`（新增〈怎麼跑：自動〉與 sidecar 格式，原本的手動流程降為備援）；
+`skills/advisory/SKILL.md` 與排程 prompt（用量那節改成「寫 sidecar」）；
+`launchd/README.md`（表格加一列）。
+
+**量測**　`metrics/usage.csv` 到今天為止只有 3 列，**advisory 一列都沒有** ——
+它每天都跑，而收尾那一步是七套裡唯一沒有自動化執行者的（抓、發布、看門狗、轉檔、
+預抓、推 kb-core 都有 launchd，只有量測靠人記得）。實測 Cowork 的邊界：
+逐字稿在 Mac 的 `local_<uuid>/.claude/projects/…`，**沙箱掛不到**（`Bash` 看不到）、
+`Glob` 看得到 143 個 jsonl、`Read` 讀得動但主逐字稿是整場累積（`session_cost.py`
+量過一場維護對話 567 輪／187M），**讀進上下文就炸掉**。
+所以量測只能由「能在 Mac 上跑 python 的東西」做，而這台機器上那種東西只有 launchd。
+
+**怎麼驗的**　`kbusage.sh` 開三個環境變數的縫（`KBUSAGE_HOME`／`KBUSAGE_KB`／`KBUSAGE_PY`，
+預設值就是生產路徑），在沙箱裡用合成逐字稿跑完整條：
+成功（寫入一列、刪 sidecar）、冪等（同日再放一次 sidecar → 偵測到已有該列、不重複寫、
+CSV 維持 2 行）、壞 sidecar（缺欄位 → 搬 `.bad`、exit 12）、逐字稿不存在（保留 sidecar、exit 12）、
+回執未到（保留、exit 12）、陳舊（08-01 的 sidecar 距今 23 天 → 搬 `.failed`）、
+空輪次（exit 0 且**日誌行數不變**）。界線也驗到了：合成的四筆裡，
+`--since`（台北 07:35）切掉前一筆、`--until-receipt` 切掉後一筆，`main_turns` 正好是 2。
+另跑 `bash -n`、`plistlib.load`、`py_compile`、`selftest()`（0 失敗）、
+`advisory_verify`（18 PASS · 0 FAIL）。正本與排程副本用六個標記字串比對，兩邊都是 8。
+
+**怎麼倒回去**　刪掉那兩個新檔、把 `env.py` 的 `kbusage` 那一行拿掉，其餘不受影響
+（`kbusage` 不存在時 sidecar 只是沒人撿，不會壞任何事）。
+`usage_report.py` 的 `--since` 正規化要倒回去就把那一段拿掉並把四處 `since` 改回 `a.since`。
+文件類只增不刪語意。排程 prompt 要倒回去得整份重推。
+
+**當時已知的風險**
+①**`launchctl load` 還沒做，這一支現在還沒在跑。** 連同欠裝的
+`kbfile.research`、`kbwatch.research`，機器上有三支待裝。**在裝上去之前，
+sidecar 會一直堆在 outbox 裡沒人撿** —— 那不會壞任何東西，但也不會有新的一列。
+②**這一支自己就示範了「只在生產跑得動的分支等於沒驗過」。** 初版用
+`stat -f %m`（macOS 方言）算 sidecar 年紀，在 Linux 上 `$(A || B)` 把 A 的
+檔案系統輸出也吃進變數、數值比較安靜失敗；更糟的是**那一行排在 `rc_all="$rc"` 前面**，
+於是整個失敗分支被跳過、腳本回報 exit 0 —— **量測失敗而 launchd 看不到**。
+改成先記失敗、再用 sidecar 自己帶的 `date` 算年紀（不依賴 `stat` 方言，
+也不受複製與備份重設 mtime 影響）。**這個缺陷是負向測試抓到的，不是讀程式讀出來的。**
+③`--since` 從來沒有被正規化，而 `--until` 有 —— 同一個檔案裡已經寫著
+「界線是字串比較，格式不對不會報錯、只會安靜不切」，卻只套用在一個旗標上。
+**同一個坑修一半比沒修更難發現**，因為文件會說「界線已經處理過了」。
+今天補上，但也要記住：**它從加進去到被發現，中間沒有任何一輪會報錯。**
+④sidecar 的格式現在只有一個家（`MEASURE.md`）。**中途一度有兩份** ——
+`SKILL.md` 裡抄了一份 JSON 範例，當場認出來是同一種副本並撤成指路。
+`kbusage.sh` 的檔頭註解裡仍有一份說明性的範例，那是**給讀腳本的人看的**、
+不是給執行者照抄的；若之後格式要改，這裡是第二個要一起改的地方。
+⑤這一套只解決「量測誰來跑」。**「這一輪值不值得」仍然沒有人在問** ——
+`usage.csv` 累積起來之後要有人去看，而那件事沒有排程。

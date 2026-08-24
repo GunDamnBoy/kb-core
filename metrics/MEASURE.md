@@ -15,7 +15,66 @@
 
 > **自述與量測在 CSV 裡長得一模一樣，而只有一個能拿來做決定。**
 
-## 怎麼跑
+## 怎麼跑：自動（2026-08-24 起的預設）
+
+**輪次不跑量測，只寫一個 sidecar。** `com.kenny.kbusage` 每 600 秒掃一次 outbox，
+撿到 sidecar 就跑這一支、把那一列 append 進 `metrics/usage.csv`、然後刪掉 sidecar。
+腳本在 `launchd/kbusage.sh`。
+
+### sidecar 的格式（**這是它唯一的家，run skill 不要抄**）
+
+位置與那一套的**回執同一個目錄**：
+
+```
+~/outbox/<日期>.usage.json                  # advisory（回執在根目錄）
+~/outbox/<系統 outbox 目錄>/<日期>.usage.json   # 其餘六套
+```
+
+四個欄位全部必填，缺一個 `kbusage` 會把它搬成 `.bad` 並記在日誌裡：
+
+```json
+{"system": "advisory",
+ "date": "2026-08-24",
+ "since": "2026-08-24T07:35:00+08:00",
+ "transcript": "/Users/macmini/Library/Application Support/Claude/local-agent-mode-sessions/<a>/<b>/local_<c>/.claude/projects/<mangled>/<uuid>.jsonl"}
+```
+
+- `system`：下表第一欄的值域，打錯會被 `SYSTEMS` 擋下。
+- `date`：`YYYY-MM-DD`，就是那一期的日期。它同時是**陳舊判定**的依據
+  （超過 2 天還沒成功就搬成 `.failed`）—— 用它而不是檔案 mtime，
+  因為 mtime 會被複製與備份重設，而「這是哪一天那一輪的」不會變。
+- `since`：那一輪**開始**的時刻，ISO8601 帶位移。輪次自己記的第一個時刻就是它。
+- `transcript`：**那一場自己的主逐字稿絕對路徑**，不是最新的那一份。
+
+### 為什麼路徑由輪次寫，而不是腳本去找
+
+`pick_transcript()` 預設挑 `CLAUDE_CONFIG_DIR/projects/*/*.jsonl` 裡**最新**的那一份。
+在 Cowork 這個假設會錯，而且錯得很安靜：
+
+- 每一場 Cowork 對話有**自己的** `local_<uuid>/.claude`，不是共用一個。
+  「最新」是最近有人講話的那一場，不是那一輪排程跑的那一場。
+- 排程輪次與事後的維護對話**會共用同一份逐字稿**（2026-08-24 實測：
+  07:35 的 advisory 輪次與 09:47 起的維護對話在同一個 session）。
+- **挑錯與挑對，算出來的數字都很合理** —— 只有檔名那一行看得出來。
+
+輪次知道自己在哪一場（outputs 目錄的兄弟就是 `.claude`），所以由它寫。
+`--transcript` 一旦給了，`pick_transcript()` 直接回傳它，
+**既不挑也不做 90 分鐘的 staleness 判斷** —— Mac 睡著、launchd 延後、
+那一場後來又有人講話，都不影響結果。
+
+找法：`Glob` 樣式 `…/local_<uuid>/.claude/projects/*/*.jsonl`，
+**取不在 `subagents/` 底下的那一個**（只有一個，其餘全是子代理；
+`kbusage` 會自己從主逐字稿的路徑推出子代理目錄）。
+
+### 上界不用 sidecar 給
+
+`kbusage` 會自己用 `--until-receipt <date>` 去讀那一套的回執 `at`。
+sidecar 可以選填 `until` 覆寫它，但**正常情況不要填** —— 回執的時刻是量測過的，
+自己填的是自述。
+
+---
+
+## 怎麼跑：手動（自動那條沒動時的備援）
 
 **在哪一台機器上跑，取決於逐字稿在哪一台機器上 —— 而那不是一個固定答案。**
 
