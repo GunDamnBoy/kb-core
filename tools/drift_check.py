@@ -86,8 +86,11 @@ def find_skill(name: str):
 
 def age_of(path: str) -> str:
     m = dt.datetime.fromtimestamp(os.path.getmtime(path), TPE)
-    hours = (dt.datetime.now(TPE) - m).total_seconds() / 3600
-    if hours < 48:
+    # 掛載層的寫入時間可能比本機時鐘快一點點，`max` 是為了不要印出「-0 小時前」。
+    hours = max(0.0, (dt.datetime.now(TPE) - m).total_seconds() / 3600)
+    if hours < 1:
+        s = "剛剛"
+    elif hours < 48:
         s = f"{hours:.0f} 小時前"
     else:
         s = f"{hours/24:.0f} 天前"

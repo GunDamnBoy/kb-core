@@ -81,9 +81,19 @@ def state(outbox: str, system: str, date: str, row_exists: bool):
     if not os.path.exists(receipt):
         return None, None                      # 那天沒跑，不是缺口
     try:
-        code = json.load(open(receipt, encoding="utf-8")).get("exit")
+        doc = json.load(open(receipt, encoding="utf-8"))
+        code = doc.get("exit")
     except Exception as e:
-        code = f"讀不開（{type(e).__name__}）"
+        doc, code = {}, f"讀不開（{type(e).__name__}）"
+
+    # **不是每一份回執都代表「那天跑了一輪」。**
+    # `tools/publish.py` 的回執帶 `draft`（它是為某一份草稿寫的）；
+    # 而 `tools/houseview_weekly.py` 寫的是**整合檢查**回執，帶的是 `system`／`stamp`。
+    # 2026-08-24 實測：houseview 因此被判成缺口，而它那天根本沒有產出過一期 ——
+    # **哨兵誤報一次之後就沒有人看了**，所以這裡用資料本身分辨，不是把 houseview 寫死。
+    if doc and "draft" not in doc:
+        return "⚠︎", ("這一份不是發布回執（沒有 `draft` 欄，看起來是整合檢查回執）"
+                      " —— 判不了那天有沒有跑一輪")
     if row_exists:
         return "✅", f"有列（回執 exit={code}）"
     if isinstance(code, int) and code != 0:
