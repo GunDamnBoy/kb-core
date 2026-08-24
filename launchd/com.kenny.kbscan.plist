@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 七套系統 · 掃描式用量量測。安裝位置 ~/Library/LaunchAgents/。
+
+       它與 com.kenny.kbusage 的分工：kbusage 撿輪次自己寫的 sidecar（最精準，
+       輪次知道自己什麼時候交草稿）；這一支處理**沒有 sidecar 的那些**，
+       從外面把三個界線量出來，不需要任何一份執行副本跟上。
+
+       為什麼需要它：2026-08-24 查證，七套每天真的在跑的那一份文件，
+       沒有一份是 kb-core 裡的正本 —— 帳號 skill advisory-daily 停在 08-19、
+       138 行，而正本 389 行、當天才寫進用量那一節。**正本接上了，副本沒跟上。**
+       要求七套的執行副本各自帶一步，等於要求七份副本永遠不漂，而它們已經漂了。
+
+       為什麼是 12:00：它查的是**昨天**，所以幾點跑都查得到同一件事；
+       排在 kbgaps（12:10）前面十分鐘，讓哨兵報的是「掃過之後還缺的」。
+
+       CSV 上已經有那一天那一套就跳過 —— sidecar 那條路量得更準，有就讓它贏。
+
+       它會跑 git，而這一套系統的紀律是「產出的那一輪不跑 git」。
+       **這一支不是產出的那一輪，而且只跑 `git log`** —— 唯讀、不碰索引、
+       不會留下 .git/index.lock，所以不會擋住每 60 秒一次的 kbpublish.*。 -->
+  <key>Label</key>
+  <string>com.kenny.kbscan</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/usage_scan.py</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>12</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <!-- RunAtLoad 為 false —— 這一支會**寫** usage.csv。裝的時候先在終端機用
+       乾跑旗標（`dry-run`）看過一次要寫什麼，再讓它自己跑。
+
+       XML 註解裡不能寫連續兩個半形連字號，所以旗標不原樣寫出來。 -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/kbscan.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/kbscan.err</string>
+</dict>
+</plist>

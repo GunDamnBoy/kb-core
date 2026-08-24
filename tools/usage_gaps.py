@@ -46,20 +46,45 @@ from usage_report import SYSTEMS, OUTBOX_DIR       # noqa: E402
 TPE = dt.timezone(dt.timedelta(hours=8))
 
 
-def state(outbox: str, system: str, date: str, has_row: bool):
-    """回 `(記號, 說明)`。記號只有四種：✅ 有列、⏳ 排隊中、⚠︎ 不算缺口、❌ 缺口。"""
+def receipt_path(outbox: str, system: str, date: str):
+    """那一套那一天的回執路徑；這一套沒有回執（不在 `OUTBOX_DIR` 裡）就回 None。
+
+    **`""` 與「不在表裡」是兩件事**：advisory 的回執在 outbox 根目錄，
+    所以它的值是 `""`；鍵不存在才表示這一套沒有回執。呼叫端要用 `is None` 判。
+    """
     sub = OUTBOX_DIR.get(system)
     if sub is None:
+        return None
+    return os.path.join(outbox, sub, f"{date}.receipt.json")
+
+
+def has_row(csv: str, system: str, date: str) -> bool:
+    """CSV 上有沒有那一天那一套。**前後各補一個換行再比**，
+    否則 `chart` 會被 `broker-research,` 之類的字串前綴誤傷（同理日期）。
+
+    抽成函式是因為 `usage_scan.py` 也要問同一個問題 ——
+    **同一個判斷散在兩支工具裡，就是兩個會各自漂的判斷。**
+    """
+    try:
+        body = open(csv, encoding="utf-8").read()
+    except OSError:
+        return False
+    return f"\n{date},{system}," in "\n" + body
+
+
+def state(outbox: str, system: str, date: str, row_exists: bool):
+    """回 `(記號, 說明)`。記號只有四種：✅ 有列、⏳ 排隊中、⚠︎ 不算缺口、❌ 缺口。"""
+    receipt = receipt_path(outbox, system, date)
+    if receipt is None:
         return "⚠︎", "這一套沒有回執，哨兵判不了"
-    d = os.path.join(outbox, sub)
-    receipt = os.path.join(d, f"{date}.receipt.json")
+    d = os.path.dirname(receipt)
     if not os.path.exists(receipt):
         return None, None                      # 那天沒跑，不是缺口
     try:
         code = json.load(open(receipt, encoding="utf-8")).get("exit")
     except Exception as e:
         code = f"讀不開（{type(e).__name__}）"
-    if has_row:
+    if row_exists:
         return "✅", f"有列（回執 exit={code}）"
     if isinstance(code, int) and code != 0:
         # **失敗的那一輪沒有列是合理的。** 它沒交出草稿，也就沒有可切的上界。
@@ -74,7 +99,15 @@ def state(outbox: str, system: str, date: str, has_row: bool):
         if os.path.exists(os.path.join(d, date + suffix)):
             return "❌", why + "（這一列要人來補）"
     # 沒有 sidecar、也沒有壞掉的 sidecar —— **那一輪根本沒寫**。
-    return "❌", "那一輪沒寫 sidecar —— 這一套的 run skill 還沒接上這一步"
+    #
+    # **原因有兩種，而它們在 outbox 上長得一模一樣**，所以這裡不要只講其中一種：
+    # 2026-08-24 實測，advisory 的正本（`kb-core/skills/advisory/SKILL.md`，389 行）
+    # 有這一步，而每天 07:30 真的在跑的那一份 —— 帳號 skill `advisory-daily`，
+    # 138 行、`updatedAt` 停在 08-19 —— 整份 grep 不到「用量」兩個字。
+    # **正本接上了不等於部署的那份接上了。**
+    return "❌", ("那一輪沒寫 sidecar。**正本沒接上這一步**，"
+                  "或**正本接上了但部署的那份副本沒跟上**（帳號 skill 與排程 prompt "
+                  "都是 kb-core 的副本，要手動重新部署）")
 
 
 def main():
@@ -99,8 +132,6 @@ def main():
     if not os.path.exists(csv):
         print(f"讀不到 {csv} —— 這是環境問題，不是「沒有缺口」", file=sys.stderr)
         return 14
-    body = open(csv, encoding="utf-8").read()
-
     # **⏳ 是不是缺口，取決於查的是哪一天。** 剛寫出來的 sidecar 本來就還沒被撿；
     # 但**昨天**的 sidecar 還在，代表它已經被每 10 分鐘重試了一整天還是沒成功 ——
     # 那不是排隊，是卡住。`kbusage.sh` 要拖到 STALE_DAYS=2 才會搬成 `.failed`，
@@ -110,7 +141,7 @@ def main():
 
     lines, gaps, ran = [], 0, 0
     for s in SYSTEMS:
-        mark, why = state(outbox, s, date, f"\n{date},{s}," in "\n" + body)
+        mark, why = state(outbox, s, date, has_row(csv, s, date))
         if mark is None:
             continue
         ran += 1

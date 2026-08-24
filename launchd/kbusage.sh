@@ -137,18 +137,28 @@ PY
   fi
 
   # 上界：sidecar 明講的優先；沒講就讓 usage_report.py 自己去讀那一套的回執。
-  # **兩種都是界線，不是「沒有界線」** —— `bounded` 欄位會是 yes。
+  # **兩種都是界線，不是「沒有界線」**，但它們不一樣可信，而 `bounded` 欄記的
+  # 就是這件事：sidecar 給了 until 記 `sidecar`；退回讀回執記 `manual`
+  # （有界線，但那是「那個日期最後一次 publish 的時刻」，說不清楚是哪一輪的）。
   if [ "$UNTIL" != "-" ]; then
-    BOUND=(--until "$UNTIL")
+    # **出處記成 sidecar** —— 那個值是輪次自己寫的交草稿時刻，
+    # 與 usage_scan.py 從日檔讀到的 window.to 是同一個東西的兩條路。
+    BOUND=(--until "$UNTIL" --bound-src sidecar)
   else
+    # 回執那條路**不標 sidecar** —— 它是「那個日期最後一次 publish 的時刻」。
+    # 記成 commit 也不對（那是 publish 成功的時刻但至少取的是最早那顆），
+    # 所以留給 usage_report.py 記成 `manual`：有界線，但出處說不清楚。
     BOUND=(--until-receipt "$DATE")
     log "$SYS $DATE 的 sidecar 沒給 until，退回回執當上界 —— **那是那個日期最後一次 publish 的時刻，不是那一輪落地的時刻**，同一天重發過就會偏高"
   fi
 
   log "量 $SYS $DATE（since=$SINCE ${BOUND[*]}）"
+  # **`--date` 明講**：sidecar 帶的 `date` 是那一輪自己的日期，而
+  # `usage_report.py` 沒收到就會用逐字稿最後一筆的 **UTC** 日期 ——
+  # 台北 08:00 前收工的輪次會被記成前一天。
   OUT="$("$PY" "$KB/tools/usage_report.py" "$SYS" \
           --transcript "$TRANSCRIPT" --since "$SINCE" "${BOUND[@]}" \
-          --append "$CSV" 2>&1)"
+          --date "$DATE" --append "$CSV" 2>&1)"
   rc=$?
   if [ "$rc" -eq 0 ]; then
     log "$SYS $DATE 完成：$(printf '%s\n' "$OUT" | tail -2 | tr '\n' ' ')"

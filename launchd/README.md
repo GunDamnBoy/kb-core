@@ -26,6 +26,7 @@
 | `com.kenny.kbpublish.bubble` | 每 60 秒 | 發布 **AI 泡沫監控**的每週質化覆核：`~/outbox/bubble/` → `ai-bubble-monitor` |
 | `com.kenny.kbpublish.convergence` | 每 60 秒 | 發布**主題匯流訊號報**：`~/outbox/convergence/` → `convergence-weekly` |
 | `com.kenny.kbusage` | 每 600 秒 | **七套通用的用量量測**（`kbusage.sh`）：撿 `~/outbox/**/<日期>.usage.json` sidecar，跑 `usage_report.py --transcript … --since … --until-receipt …`，把那一列 append 進 `kb-core/metrics/usage.csv`，成功就刪 sidecar。**不跑 git** —— usage.csv 由 `kbcorepush` 帶走。沒有 sidecar 時是空輪次、不寫日誌。日誌在 `~/.kbusage/kbusage.log` |
+| `com.kenny.kbscan` | 每天 12:00 | **掃描式用量量測**（`tools/usage_scan.py`）：沒有 sidecar 的那幾套，從外面把三個界線量出來 —— 下界＝逐字稿第一筆（排程是全新對話）、上界＝資料 repo 裡 `data/<日期>.json` 的**首次** commit（重發不影響）、認系統＝逐字稿裡的 `<日期>.draft.json` 路徑（**不唯一就不寫**）。CSV 上已有那一列就跳過 —— sidecar 量得更準，有就讓它贏。**只跑 `git log`**，唯讀不留 index.lock |
 | `com.kenny.kbgaps` | 每天 12:10 | **用量缺列哨兵**（`tools/usage_gaps.py`）：查**前一天**有回執的系統，`usage.csv` 上是不是都有那一列。缺的印出來、寫進 `~/.kbusage/gaps.md`，有缺口才附一行到 `kbusage.log`。**只報不補**，退出碼 12 代表有缺口。它補的是 `kbusage` 看不到的那一種失敗：**沒有 sidecar 的那一輪，`kbusage` 的迴圈是空的、退出 0，少一列沒有任何徵兆** |
 
 **`kbpublish.bubble` 是唯一一支不跑 `tools/publish.py` 的。** 它跑的是

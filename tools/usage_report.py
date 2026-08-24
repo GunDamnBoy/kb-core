@@ -39,6 +39,7 @@ import datetime as dt
 import glob
 import json
 import os
+import re
 import sys
 
 W = {"inp": 1.0, "out": 5.0, "cw": 2.0, "cr": 0.1}
@@ -216,12 +217,30 @@ def main():
     ap.add_argument("--until", default=None,
                     help="只算這個時間點之前的輪次（ISO8601）。與 --since 成對，"
                          "把一個工作階段裡的某一段切出來。")
+    ap.add_argument("--date", default=None, metavar="YYYY-MM-DD",
+                    help="這一列的日期。**沒給就用逐字稿最後一筆的日期，而那是 UTC** ——"
+                         "整輪在台北 08:00 前收工的話（podcast 03:00、broker-research "
+                         "有時凌晨），最後一筆仍在前一天的 UTC，那一列會記成前一天。"
+                         "呼叫端知道是哪一天就明講。")
+    ap.add_argument("--bound-src", default=None,
+                    choices=("sidecar", "window", "commit", "manual"),
+                    help="上界是哪來的，寫進 `bounded` 欄。**這一欄不是 yes／no，"
+                         "是出處** —— 2026-08-24 實測，同一輪用 window.to 與用 "
+                         "commit 切，差 22%%（29,431k vs 36,030k），因為 commit 是 "
+                         "publish 成功的時刻、那天被卡了 23 分鐘。"
+                         "沒給而有切界線時記 `manual`。")
     ap.add_argument("--until-receipt", metavar="DATE", default=None,
                     help="用 ~/outbox/<系統>/<DATE>.receipt.json 的 `at` 當 --until。"
                          "那是那一輪真正落地的時刻，比任何自述都可靠。")
     a, unknown = ap.parse_known_args()
     if unknown:
         print(f"不認得的旗標：{' '.join(unknown)}", file=sys.stderr)
+        return 12
+    # **格式擋在最前面。** 放在後面的話，這一支會先印完整份報告與那段
+    # 「沒有切界線」的警告，錯誤訊息才從 stderr 冒出來 —— 而 stderr 不走
+    # stdout 的緩衝，兩股在畫面上會交錯，**看起來像是警告才是結論**。
+    if a.date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", a.date):
+        print(f"--date 要 YYYY-MM-DD，收到 {a.date!r}", file=sys.stderr)
         return 12
 
     tp, err, code = pick_transcript(a.transcript)
@@ -323,14 +342,21 @@ def main():
     # 一整場維護對話 —— 2026-08-22 的 broker-research 就是這樣進去的：
     # 43,339k／617 輪，而那份逐字稿同時裝著整場維護。
     # 有了這一欄，下一個拿 CSV 做決定的人不必去比對 transcript 才知道該不該用。
-    bounded = "yes" if (since or a.until or a.until_receipt) else "no"
+    # **這一欄記的是上界的出處，不是「有沒有切」。**
+    # 有切但不知道出處（有人手動跑）記 `manual` —— 那仍然比 `no` 可信，
+    # 但比 `window` 少一件事：沒有人能事後說出那個時刻是哪裡來的。
+    bounded = (a.bound_src or "manual") if (since or a.until or a.until_receipt) else "no"
     if bounded == "no":
         print("\n⚠︎ **這一輪沒有切界線**（沒給 --since／--until／--until-receipt）——"
               "若這份逐字稿同時裝了維護對話，算出來的是兩者之和。"
               "CSV 的 `bounded` 欄會記成 no。")
     started_at, ended_at, minutes = span(first, last)
+    # **日期用呼叫端給的，沒給才退回逐字稿。** 退回的那條是 UTC 日期 ——
+    # 2026-08-24 回歸測試就踩到：一輪台北 07:35 起跑、07:31 前收工，
+    # `last` 還在前一天的 UTC，那一列會記成前一天，
+    # 而**它會跟前一天那一套真正的列撞在一起**（冪等檢查用的是真日期）。
     row = ",".join(str(x) for x in [
-        (last or "")[:10], a.system, started_at, ended_at, minutes,
+        a.date or (last or "")[:10], a.system, started_at, ended_at, minutes,
         round(grand / 1000), turns, len(subs),
         sum(x[2] for x in subs), round(sub_tot / 1000), round(out / 1000),
         round(cr / 1000), round(cw / 1000), bounded, os.path.basename(tp)])

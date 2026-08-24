@@ -85,6 +85,12 @@ REQUIRED_BY_LABEL = {
     # python（絕對路徑），程式裡**沒有任何 subprocess** —— 它只讀七個回執、
     # 一個 CSV，寫一份 markdown。**空陣列是想過的答案，不是還沒想。**
     "com.kenny.kbgaps":            [],
+    # 2026-08-24 新增。掃描式量測 `tools/usage_scan.py` **會跑 git**：
+    # 上界取自資料 repo 裡 `data/<日期>.json` 的首次 commit
+    # （`git log --diff-filter=A`）—— 唯讀、不碰索引、不留 index.lock，
+    # 所以不會擋住每 60 秒一次的 kbpublish.*。
+    # 它另外會 spawn venv 的 python 跑 usage_report.py，那是絕對路徑。
+    "com.kenny.kbscan":            ["git"],
     # 2026-08-23：這一支讓看門狗連續 FAIL，而 FAIL 的看門狗不更新 heartbeat ——
     # `advisory-rewrite/sentinel/heartbeat.json` 因此停在 08-22 07:20Z、`latest_date`
     # 停在 08-22，即使 08-23 已經正常發布。**一個永遠紅的看門狗把真訊號埋掉了。**
