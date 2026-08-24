@@ -34,6 +34,15 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
   （**2026-08-21 更正**：上一版寫的是 `com.kenny.dashpush` 每 180 秒 ——
   那支在 2026-08-20 重建時退場，殘骸在 `chart-of-the-day/tools/_to_delete/dashpush-auto-push.sh`。
   九個 launchd 工作裡沒有它。）
+  （**2026-08-24 新增：真的非跑不可時，先確認你刪得掉檔案。** 這條規矩原本只講「會留下
+  `.git/index.lock`」，聽起來像「小心一點就好」——不是。**Cowork 掛載點的寫入權限是不對稱的：
+  可以建檔，不能刪檔。** 08-24 實測，`git reset --soft` 建了 `.git/HEAD.lock`、
+  寫完 HEAD 之後**清不掉自己的鎖**（`unlink: Operation not permitted`），
+  於是後面每一個 git 指令都撞 `cannot lock ref 'HEAD': File exists`，
+  連 `--no-optional-locks` 也救不了——**你製造了一個自己解不開的死鎖**。
+  解法是 `mcp__cowork__allow_cowork_file_delete` 取得該資料夾的刪除權限，再 `rm -f .git/*.lock`。
+  **所以順序是：先取得刪除權限，再跑第一個 git 指令**，不要等撞牆才求救。
+  唯讀查詢一律加 `--no-optional-locks`，它明確不取機會性的鎖。）
 - **不再需要快照（2026-08-22 退役）。** `snapshot.sh` 抄的八個目標裡有七個現在住在 kb-core、有 git，且 `com.kenny.kbcorepush` 每 300 秒自動 commit＋push；唯一在 git 之外的 `~/.podfetch/metrics.csv` 已合併進 kb-core 並改成 symlink。**所以現在沒有任何東西需要快照。** 腳本留著但只會出聲、不建立任何東西——因為**一個照舊印「快照完成」的退役腳本會讓人以為還原點存在**。要還原或看歷史：`cd ~/kb-core && git log -- scripts/podcast/`。
 - **Word 報告與 `~/podcast-transcripts` 留在 repo 外**（repo 是 Public）。
 - **每個意義各有單一來源**：什麼算對的產出在 `kb-core/podcast/BRIEF.md`、每一個數字在 `kb-core/podcast/anchors.json`、每天怎麼跑在 `kb-core/scripts/podcast/DIGEST-PROMPT.md`、撰寫規則在 `kb-core/scripts/podcast/preamble.md`、節目清單與官方稿入口在 `AGENT_BRIEF.md` 第 1 節、事故與來歷在 `MAINTENANCE.md`。寫東西前先決定放哪一份；完整分工見 [`FILES.md`](FILES.md)。
