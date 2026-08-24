@@ -64,7 +64,14 @@ def text_of(content) -> str:
     return "".join(out)
 
 
+LABEL_LEN = 40      # 由 --label-len 覆寫
+
+
 def label_of(name: str, inp: dict) -> str:
+    """工具呼叫的標籤。**指令要看得到全文才知道那一筆是什麼東西** ——
+    2026-08-24 chart 的第一名是一筆 78.5k 的 `mcp__workspace__bash`，
+    而截在 40 字元只看得到 `ls -la /sessions/…/mn`，看不出它列的是哪個目錄。
+    """
     if not isinstance(inp, dict):
         return name
     for k in ("file_path", "path", "url", "notebook_path"):
@@ -72,13 +79,13 @@ def label_of(name: str, inp: dict) -> str:
             v = str(inp[k])
             return f"{name} {os.path.basename(v) if '/' in v else v}"
     if inp.get("command"):
-        return f"{name} {' '.join(str(inp['command']).split())[:40]}"
+        return f"{name} {' '.join(str(inp['command']).split())[:LABEL_LEN]}"
     if inp.get("pattern"):
         return f"{name} {inp['pattern']}"
     return name
 
 
-def profile(path: str, until):
+def profile(path: str, until, warmup: int = 5):
     """回 `(項目, 總輪數, 量到的重讀總量)`。項目 = (重讀成本, token, 第幾輪, 標籤)。
 
     **不估 token，用量到的。** 每一則 assistant 訊息都帶 `cache_read_input_tokens`
@@ -143,10 +150,15 @@ def profile(path: str, until):
     live, cost, order, prev, drops = {}, {}, [], 0, 0
     for (i, c), (_, batch) in zip(turns, items):
         d = c - prev
-        if i == 1:
-            k = (1, "（基線：系統提示＋工具定義＋派工單）")
-            live[k] = c
-            order.append(k)
+        if i <= warmup:
+            # **開場那幾輪不逐筆歸因。** 這一段的增量是快取暖機 ——
+            # 系統提示、工具定義、派工單本來就在 context 裡，只是還沒被算成重讀。
+            # 掛到「那一輪剛好跑的工具」上會產生看起來精確、實際上錯的標籤。
+            k = (1, f"（開場第 1–{warmup} 輪：系統提示＋工具定義＋派工單＋環境探測"
+                    f" —— 這一段分不出誰是誰）")
+            live[k] = live.get(k, 0) + max(0, d if i > 1 else c)
+            if k not in order:
+                order.append(k)
         elif d > 0:
             chars = sum(x[1] for x in batch)
             if chars:
@@ -182,7 +194,21 @@ def main():
     ap.add_argument("--date", default=None)
     ap.add_argument("--transcript", default=None)
     ap.add_argument("--top", type=int, default=1, help="剖析最貴的前幾個子代理")
+    ap.add_argument("--main", action="store_true",
+                    help="改成剖析**主線**而不是子代理。**零子代理的系統只能用這個** —— "
+                         "chart 沒有任何子代理，它的成本 59% 是主線的重讀"
+                         "（08-24：eff 4,874k、cache_read 28,666k），而那在子代理清單裡"
+                         "一列都不會出現。")
     ap.add_argument("--rows", type=int, default=12, help="每個子代理列出前幾項")
+    ap.add_argument("--warmup", type=int, default=5, metavar="N",
+                    help="把前 N 輪併成一個「開場」項目，**不逐筆歸因**。"
+                         "開場那幾輪的 cache_read 成長是快取暖機（系統提示與工具定義"
+                         "本來就在 context 裡，只是還沒被算成重讀），"
+                         "逐筆歸因會把它掛到那一輪剛好跑的工具上 —— "
+                         "2026-08-24 實測：convergence 一個 `date; ls` 被算成 5.6M。"
+                         "設 0 關掉這個合併（想看原始歸因時用）。")
+    ap.add_argument("--label-len", type=int, default=40,
+                    help="指令標籤截斷長度。查大回傳值是什麼時開大一點（例如 160）。")
     ap.add_argument("--outbox", default="~/outbox")
     ap.add_argument("--sessions",
                     default="~/Library/Application Support/Claude/local-agent-mode-sessions")
@@ -192,6 +218,8 @@ def main():
         print(f"不認得的旗標：{' '.join(unknown)}", file=sys.stderr)
         return 12
 
+    global LABEL_LEN
+    LABEL_LEN = a.label_len
     date = a.date or (dt.datetime.now(TPE).date() - dt.timedelta(days=1)).isoformat()
     sub = OUTBOX_DIR.get(a.system) or ""
     if a.transcript:
@@ -213,19 +241,28 @@ def main():
         if at:
             until = _norm_iso(window_to(repo, rel, h) or at)
 
-    sub_dir = os.path.join(os.path.dirname(tp), os.path.basename(tp)[:-6], "subagents")
-    agents = []
-    for f in sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl"))):
-        tot, turns, _o, cr, *_ = usage_of(f, None, until)
-        if turns:
-            agents.append((tot, cr, f))
-    agents.sort(key=lambda x: -x[0])
+    if a.main:
+        tot, turns, _o, cr, *_ = usage_of(tp, None, until)
+        agents = [(tot, cr, tp)] if turns else []
+    else:
+        sub_dir = os.path.join(os.path.dirname(tp),
+                               os.path.basename(tp)[:-6], "subagents")
+        agents = []
+        for f in sorted(glob.glob(os.path.join(sub_dir, "agent-*.jsonl"))):
+            tot, turns, _o, cr, *_ = usage_of(f, None, until)
+            if turns:
+                agents.append((tot, cr, f))
+        agents.sort(key=lambda x: -x[0])
+    if not agents:
+        print("沒有帶用量的輪次 —— 界線把它切光了，或挑錯檔了", file=sys.stderr)
+        return 12
 
     print(f"{a.system} {date}　上界 {until or '（沒切）'}")
     for tot, cr, f in agents[:a.top]:
-        items, total, measured = profile(f, until)
+        items, total, measured = profile(f, until, a.warmup)
         model = sum(x[0] for x in items)
-        print(f"\n子代理 {os.path.basename(f)[6:23]}　{total} 輪　有效 {tot/1000:,.0f}k")
+        who = "主線" if a.main else f"子代理 {os.path.basename(f)[6:23]}"
+        print(f"\n{who}　{total} 輪　有效 {tot/1000:,.0f}k")
         print(f"{'重讀成本':>10}{'進來時':>9}{'第幾輪':>7}  來源")
         print("─" * 66)
         for cost, size, turn, lbl in items[:a.rows]:
@@ -239,7 +276,9 @@ def main():
         # 加起來卻可能跟 preamble 同一個量級 —— 只看逐項會漏掉這種形狀。
         cat = {}
         for cost, size, _t, lbl in items:
-            k = lbl.split()[0] if lbl.split() else lbl
+            # 括號開頭的是我們自己的分類標籤（開場、模型自己的輸出），整串當一類；
+            # 其餘取第一個詞＝工具名。**取第一個詞會把「（開場第 1–5 輪…）」切成「（開場第」。**
+            k = lbl if lbl.startswith("（") else (lbl.split()[0] if lbl.split() else lbl)
             c = cat.setdefault(k, [0, 0, 0])
             c[0] += cost; c[1] += size; c[2] += 1
         print(f"\n{'重讀成本':>10}{'進來時':>9}{'筆數':>7}  分類")
