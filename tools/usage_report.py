@@ -184,6 +184,18 @@ def usage_of(path, since=None, until=None):
     """
     tot = turns = out = cr = cw = 0
     first = last = None
+    # **平行工具呼叫會讓同一則 assistant 訊息在逐字稿裡出現好幾筆，每一筆都帶
+    # 完整的 usage。** 逐筆累加等於把同一份用量算 N 次，N 是那一輪平行呼叫的數量。
+    #
+    # 2026-08-24 實測（advisory 08-24 主線第 30–33 輪）：
+    #   msg=BpwvRbfp  cache_read 72,173  cache_write 87,623  out 1,246   ×4 筆
+    # 那一則訊息的加權有效 token 是 188,693，被算成 754,772。
+    #
+    # **這不是小數點的問題** —— 它同時灌水 `eff_tokens_k` 與 `main_turns`／`agent_turns`，
+    # 而且各系統灌得不一樣多（advisory 大量並行派工，chart 幾乎全是循序 bash），
+    # 所以**跨系統比較會被扭曲**。用 `message.id` 去重，一則訊息只算一次。
+    # 沒有 id 的紀錄照舊計入 —— 寧可少去重，不要漏算。
+    seen = set()
     for d in rows(path):
         ts = d.get("timestamp") or ""
         if since and ts and ts < since:
@@ -195,9 +207,15 @@ def usage_of(path, since=None, until=None):
             last = ts
         if d.get("type") != "assistant":
             continue
-        u = (d.get("message") or {}).get("usage") or {}
+        m = d.get("message") or {}
+        u = m.get("usage") or {}
         if not u:
             continue
+        mid = m.get("id")
+        if mid:
+            if mid in seen:
+                continue
+            seen.add(mid)
         tot += eff(u)
         turns += 1
         out += u.get("output_tokens", 0)

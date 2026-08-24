@@ -107,7 +107,11 @@ def profile(path: str, until, warmup: int = 5):
     seq = [d for d in rows(path)
            if not (until and (d.get("timestamp") or "") >= until)]
 
-    turns = []          # [(輪號, cache_read)]
+    turns = []          # [(輪號, cache_read, output_tokens)]
+    # **同一則訊息的平行工具呼叫在逐字稿裡是好幾筆。** 它們的 usage 完全相同，
+    # 逐筆當成一輪會讓「輪數」與每一輪的權重（總輪數 − i + 1）全部失真。
+    # 用 `message.id` 去重：工具呼叫照收（它們屬於同一輪），但輪次只算一次。
+    seen = set()
     pending, since_last, items, drops = {}, [], [], 0
     for d in seq:
         msg = d.get("message") or {}
@@ -116,7 +120,10 @@ def profile(path: str, until, warmup: int = 5):
                 if isinstance(b, dict) and b.get("type") == "tool_use":
                     pending[b.get("id")] = label_of(b.get("name", "?"), b.get("input"))
             u = msg.get("usage")
-            if u:
+            mid = msg.get("id")
+            if u and not (mid and mid in seen):
+                if mid:
+                    seen.add(mid)
                 turns.append((len(turns) + 1, u.get("cache_read_input_tokens", 0),
                               u.get("output_tokens", 0)))
                 items.append((len(turns), list(since_last)))
