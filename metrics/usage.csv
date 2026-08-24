@@ -1,6 +1,6 @@
-date,system,eff_tokens_k,main_turns,subagents,agent_turns,subagent_tokens_k,out_tokens_k,cache_read_k,cache_write_k,bounded,transcript
-2026-08-22,broker-research,43339,617,25,885,15300,541,212918,2021,no,f225453c-9e60-5549-9068-6e56ca2af579.jsonl
-2026-08-23,podcast,6611,89,5,60,2481,255,14887,684,no,9c58ae44-9625-4ad7-8555-079c9564c0cc.jsonl
-2026-08-23,chart,5591,179,0,0,0,162,36736,554,no,e8ea3e9c-90dc-492f-8722-376874044133.jsonl
-2026-08-24,advisory,46079,287,12,1164,21058,827,110720,4908,yes,debf116f-38a2-4391-9172-75933d7caa58.jsonl
-2026-08-24,chart,4874,142,0,0,0,185,28666,542,yes,5857daa2-ea72-4ae7-a17d-869c7f638e73.jsonl
+date,system,started_at,ended_at,minutes,eff_tokens_k,main_turns,subagents,agent_turns,subagent_tokens_k,out_tokens_k,cache_read_k,cache_write_k,bounded,transcript
+2026-08-22,broker-research,,,,43339,617,25,885,15300,541,212918,2021,no,f225453c-9e60-5549-9068-6e56ca2af579.jsonl
+2026-08-23,podcast,,,,6611,89,5,60,2481,255,14887,684,no,9c58ae44-9625-4ad7-8555-079c9564c0cc.jsonl
+2026-08-23,chart,,,,5591,179,0,0,0,162,36736,554,no,e8ea3e9c-90dc-492f-8722-376874044133.jsonl
+2026-08-24,advisory,2026-08-23T23:35:04Z,2026-08-24T01:36:35Z,121.5,29431,99,12,1164,21058,538,18354,1923,yes,debf116f-38a2-4391-9172-75933d7caa58.jsonl
+2026-08-24,chart,2026-08-24T03:30:40Z,2026-08-24T03:54:11Z,23.5,4874,142,0,0,0,185,28666,542,yes,5857daa2-ea72-4ae7-a17d-869c7f638e73.jsonl

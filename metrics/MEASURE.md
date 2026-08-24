@@ -21,6 +21,11 @@
 撿到 sidecar 就跑這一支、把那一列 append 進 `metrics/usage.csv`、然後刪掉 sidecar。
 腳本在 `launchd/kbusage.sh`。
 
+**但沒有寫 sidecar 的那一輪，`kbusage` 什麼都不會說** —— 它的迴圈是空的、
+不寫日誌、退出 0，而 CSV 少一列沒有任何徵兆。看這個缺口的是另一支：
+`com.kenny.kbgaps`（每天 12:10 查前一天**有回執卻沒有列**的系統，
+報告寫進 `~/.kbusage/gaps.md`）。**它只報不補。**
+
 ### sidecar 的格式（**這是它唯一的家，run skill 不要抄**）
 
 位置與那一套的**回執同一個目錄**：

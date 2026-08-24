@@ -144,6 +144,35 @@ def _norm_iso(s):
     return d.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
+def span(first, last):
+    """把主線的第一筆與最後一筆換成 `(started_at, ended_at, minutes)`。
+
+    **這一欄問的是「這一輪實際在動多久」，不是「界線給了多久」。**
+    界線是輪次宣告的（sidecar 的 `since`／`until`），跨距是逐字稿量到的 ——
+    兩者差多少本身就是資訊：輪次早收工，或界線切得太鬆。
+
+    格式是 UTC 的 `Z`，與逐字稿同一種 —— **CSV 裡不混時區**。
+    `date` 欄是台北那一天，這兩欄是 UTC 的時刻，看起來會對不上八小時，
+    那是預期的：2026-08-24 的 advisory 從台北 07:35 起跑，UTC 是前一天 23:35。
+
+    只用主線。子代理跑在主線等待的那段裡面，**它們的時間戳不會把跨距撐大**，
+    而多讀十幾個檔只為了求一個幾乎相同的 min/max 不划算。
+
+    拿不到時間戳就回三個空字串 —— **空的比 0 誠實**，`0.0` 分鐘看起來像量到了。
+    """
+    if not first or not last:
+        return "", "", ""
+    try:
+        f = dt.datetime.fromisoformat(str(first).replace("Z", "+00:00"))
+        l = dt.datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+    except ValueError:
+        return "", "", ""
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    return (f.astimezone(dt.timezone.utc).strftime(fmt),
+            l.astimezone(dt.timezone.utc).strftime(fmt),
+            round((l - f).total_seconds() / 60, 1))
+
+
 def usage_of(path, since=None, until=None):
     """回傳 (有效 token, 輪次, 產出, 重讀, 寫入, 最早, 最晚)。
 
@@ -299,11 +328,14 @@ def main():
         print("\n⚠︎ **這一輪沒有切界線**（沒給 --since／--until／--until-receipt）——"
               "若這份逐字稿同時裝了維護對話，算出來的是兩者之和。"
               "CSV 的 `bounded` 欄會記成 no。")
+    started_at, ended_at, minutes = span(first, last)
     row = ",".join(str(x) for x in [
-        (last or "")[:10], a.system, round(grand / 1000), turns, len(subs),
+        (last or "")[:10], a.system, started_at, ended_at, minutes,
+        round(grand / 1000), turns, len(subs),
         sum(x[2] for x in subs), round(sub_tot / 1000), round(out / 1000),
         round(cr / 1000), round(cw / 1000), bounded, os.path.basename(tp)])
-    hdr = ("date,system,eff_tokens_k,main_turns,subagents,agent_turns,"
+    hdr = ("date,system,started_at,ended_at,minutes,"
+           "eff_tokens_k,main_turns,subagents,agent_turns,"
            "subagent_tokens_k,out_tokens_k,cache_read_k,cache_write_k,bounded,transcript")
     print("\n把下面這一行 append 到 kb-core/metrics/usage.csv：")
     print(row)

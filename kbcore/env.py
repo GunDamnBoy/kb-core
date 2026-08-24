@@ -81,6 +81,10 @@ REQUIRED_BY_LABEL = {
     # 是 macOS 基礎系統的一部分，缺了的話這台機器已經不能開機了，
     # **不是 PATH 會不會解析得到的問題**。所以答案是零，不是還沒想。
     "com.kenny.kbusage":           [],
+    # 2026-08-24 新增。缺列哨兵 `tools/usage_gaps.py`：plist 直接跑 venv 的
+    # python（絕對路徑），程式裡**沒有任何 subprocess** —— 它只讀七個回執、
+    # 一個 CSV，寫一份 markdown。**空陣列是想過的答案，不是還沒想。**
+    "com.kenny.kbgaps":            [],
     # 2026-08-23：這一支讓看門狗連續 FAIL，而 FAIL 的看門狗不更新 heartbeat ——
     # `advisory-rewrite/sentinel/heartbeat.json` 因此停在 08-22 07:20Z、`latest_date`
     # 停在 08-22，即使 08-23 已經正常發布。**一個永遠紅的看門狗把真訊號埋掉了。**

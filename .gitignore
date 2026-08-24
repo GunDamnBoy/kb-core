@@ -232,3 +232,7 @@ __marimo__/
 # 沒擋的話它會把每一個搬進來的 git lock 都 commit 進 repo，而且是自動 push 的。
 # 2026-08-23 就是這樣進去 21 個 lock 檔，兩個 chore(auto) commit 已經上遠端。
 _to_delete/
+
+# 用量帳的手動備份。**留在原地但不進版控** —— device_bash 刪不掉檔案，
+# 而 kbcorepush 是 add -A，不擋就會被一起推上去。
+metrics/*.bak-*

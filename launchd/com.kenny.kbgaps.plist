@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 七套系統 · 用量缺列哨兵。安裝位置 ~/Library/LaunchAgents/。
+
+       為什麼有這一支，而 com.kenny.kbusage 不夠：那一支解的是「沒人記得跑量測」，
+       它撿 sidecar、量、寫進 CSV。但**沒有 sidecar 的那一輪，它的迴圈是空的** ——
+       不寫日誌、退出 0，而 usage.csv 少一列沒有任何徵兆。
+       到 2026-08-24 為止七套裡只有 advisory 的 run skill 寫 sidecar，
+       所以「量測自動化了」與「七套都有列」是兩件事，中間那道缺口沒有人在看。
+
+       **這一支不量，它只問「有沒有」**：前一天有回執的系統，CSV 上是不是都有那一列。
+       回執在不在是量到的（publish 寫的），不是用節奏推的 ——
+       convergence 是週報、houseview 手動啟動，用「每天都該有一列」判會天天誤報，
+       而**誤報一次之後就沒有人看了**。
+
+       為什麼是 12:10：查的是**昨天**，所以幾點跑都查得到同一件事；
+       挑中午是因為報告要有人看得到。跑一次的成本是讀七個回執加一個 CSV。
+
+       RunAtLoad 為 true —— 它只讀檔並寫一份報告到 ~/.kbusage/gaps.md，
+       載入時先跑一次沒有半成品問題，而且正好驗證它裝對了。
+
+       它不跑 git，也不寫 usage.csv。**哨兵只報，不補** ——
+       估一個數字填進去，CSV 就再也分不出哪幾列可以信。
+
+       退出碼 12 代表有缺口。launchd 不會因此做任何事（沒設 KeepAlive），
+       真正給人看的是 ~/.kbusage/gaps.md，以及有缺口時附在
+       ~/.kbusage/kbusage.log 的那一行。 -->
+  <key>Label</key>
+  <string>com.kenny.kbgaps</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/usage_gaps.py</string>
+  </array>
+
+  <!-- watch.external_binaries 讀的是 plist，不是腳本。這一支需要的外部指令
+       登記在 kbcore/env.py 的 REQUIRED_BY_LABEL，答案是零：它只跑 venv 的
+       python（絕對路徑），沒有任何 subprocess。 -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>12</integer>
+    <key>Minute</key><integer>10</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/kbgaps.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/kbgaps.err</string>
+</dict>
+</plist>
