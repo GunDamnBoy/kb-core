@@ -117,7 +117,8 @@ def profile(path: str, until, warmup: int = 5):
                     pending[b.get("id")] = label_of(b.get("name", "?"), b.get("input"))
             u = msg.get("usage")
             if u:
-                turns.append((len(turns) + 1, u.get("cache_read_input_tokens", 0)))
+                turns.append((len(turns) + 1, u.get("cache_read_input_tokens", 0),
+                              u.get("output_tokens", 0)))
                 items.append((len(turns), list(since_last)))
                 since_last = []
         elif d.get("type") == "user":
@@ -136,7 +137,7 @@ def profile(path: str, until, warmup: int = 5):
     total = len(turns)
     if not total:
         return [], 0, 0
-    measured = sum(c for _, c in turns)
+    measured = sum(c for _, c, _o in turns)
 
     # **每一輪的重讀 = 那一輪還活在 context 裡的每一項的當下大小之和。**
     # 所以逐輪把「還活著的項目」加總，加總值恆等於量到的 `Σ c_i` ——
@@ -147,8 +148,15 @@ def profile(path: str, until, warmup: int = 5):
     # 跳過減少只會讓帳變大，而且大得很一致，看起來就像「模型差一點點」。
     # 現在改成按比例縮小所有還活著的項目：**哪一項離開是猜的，但總量是準的**，
     # 而我們要的排序靠的是總量。
-    live, cost, order, prev, drops = {}, {}, [], 0, 0
-    for (i, c), (_, batch) in zip(turns, items):
+    # **增量不只來自工具結果，也來自模型自己剛寫的東西。**
+    # 2026-08-24 實測：advisory 主線第 34 輪有一筆 87.6k 掛在 `TaskCreate` 上，
+    # 而 TaskCreate 的回傳值是一句話 —— 那 87.6k 其實是主線在寫七個採集員的任務卡。
+    # 模型的輸出一樣留在 context 裡被重讀到收工，**而它的修法（把任務卡寫短）
+    # 與工具回傳值的修法（少拿一點回來）完全不同**，所以不能混在一起。
+    # 每一則 assistant 訊息都帶 `output_tokens`，所以這一項是量得到的，不用估。
+    MINE = "（模型自己的輸出：任務卡、回報、思考）"
+    live, cost, order, prev, prev_out, drops = {}, {}, [], 0, 0, 0
+    for (i, c, out), (_, batch) in zip(turns, items):
         d = c - prev
         # **縮小的判斷要在最前面，不管是不是開場。**
         # 2026-08-24 第一版把它排在 warmup 分支後面，於是前五輪裡的負增量被
@@ -169,6 +177,15 @@ def profile(path: str, until, warmup: int = 5):
             if k not in order:
                 order.append(k)
         elif d > 0:
+            # 上一輪模型自己寫的那些字，這一輪起也要被重讀。先把它切出來。
+            mine = min(d, prev_out)
+            if mine > 0:
+                k = (1, MINE)
+                live[k] = live.get(k, 0) + mine
+                if k not in order:
+                    order.append(k)
+                d -= mine
+        if d > 0 and i > warmup:
             chars = sum(x[1] for x in batch)
             if chars:
                 for n, (lbl, sz) in enumerate(batch):
@@ -181,7 +198,7 @@ def profile(path: str, until, warmup: int = 5):
                 live[k] = live.get(k, 0) + d
                 if k not in order:
                     order.append(k)
-        prev = c
+        prev, prev_out = c, out
         for k, v in live.items():
             cost[k] = cost.get(k, 0) + v
 
