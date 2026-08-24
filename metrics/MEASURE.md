@@ -15,16 +15,26 @@
 
 > **自述與量測在 CSV 裡長得一模一樣，而只有一個能拿來做決定。**
 
-## 怎麼跑：自動（2026-08-24 起的預設）
+## 怎麼跑：自動（2026-08-24 晚間起的預設）
 
-**輪次不跑量測，只寫一個 sidecar。** `com.kenny.kbusage` 每 600 秒掃一次 outbox，
-撿到 sidecar 就跑這一支、把那一列 append 進 `metrics/usage.csv`、然後刪掉 sidecar。
-腳本在 `launchd/kbusage.sh`。
+**輪次什麼都不用做。** 三個執行者接力，而主線是**掃描**不是 sidecar：
 
-**但沒有寫 sidecar 的那一輪，`kbusage` 什麼都不會說** —— 它的迴圈是空的、
-不寫日誌、退出 0，而 CSV 少一列沒有任何徵兆。看這個缺口的是另一支：
-`com.kenny.kbgaps`（每天 12:10 查前一天**有回執卻沒有列**的系統，
-報告寫進 `~/.kbusage/gaps.md`）。**它只報不補。**
+| 執行者 | 何時 | 做什麼 |
+|---|---|---|
+| `com.kenny.kbscan` | 每天 12:00 | **主線**。`tools/usage_scan.py` 掃前一天，三個界線全部從外面量出來 |
+| `com.kenny.kbusage` | 每 600 秒 | 輪次若寫了 sidecar 就撿走（最準的一條，但目前只有 advisory 的正本有這一步） |
+| `com.kenny.kbgaps` | 每天 12:10 | 缺列哨兵：查前一天**有回執卻沒有列**的系統，寫進 `~/.kbusage/gaps.md`。**只報不補** |
+
+**為什麼主線不是 sidecar**：sidecar 要求七套的執行指示各自帶一步，而 2026-08-24 查證
+發現**每天真的在跑的那一份，沒有一份是 kb-core 裡的正本** —— 帳號 skill `advisory-daily`
+停在 08-19、比正本少 251 行，整份 grep 不到「用量」兩個字。要求七份副本永遠不漂，
+而它們已經漂了。掃描不需要任何副本跟上。
+
+掃描的三個界線：**下界**＝逐字稿第一筆（排程開的是全新對話）；**上界**見下一節；
+**是哪一套**＝逐字稿內容裡的 `<日期>.draft.json` 路徑，**命中不唯一就不寫**。
+
+`bubble` 與 `houseview` 不走 `tools/publish.py`，沒有 `data/<日期>.json` 可切上界，
+**掃描判不了它們** —— 那兩套要量只能靠 sidecar。
 
 ### sidecar 的格式（**這是它唯一的家，run skill 不要抄**）
 
@@ -112,14 +122,28 @@
 | Claude Code／雲端容器 | 容器裡的 `~/.claude/projects` | 直接跑，預設的 `CLAUDE_CONFIG_DIR` 就對 |
 | **Cowork** | **Mac 上**的 `~/Library/Application Support/Claude/local-agent-mode-sessions/*/*/local_*/.claude` | **要在 Mac 的終端機跑**，並指定 `CLAUDE_CONFIG_DIR` |
 
-Cowork 的版本：
+**手動補一列，最省事的是叫掃描去跑**（它自己找逐字稿、自己切界線、自己去重）：
 
 ```bash
-BASE=$(ls -dt "$HOME/Library/Application Support/Claude/local-agent-mode-sessions"/*/*/local_*/.claude | head -1)
-CLAUDE_CONFIG_DIR="$BASE" python3 ~/kb-core/tools/usage_report.py <系統id> --until-receipt <本輪日期>
+~/.venvs/kb/bin/python ~/kb-core/tools/usage_scan.py --date <日期>
 ```
 
-`<系統id>` 是下表第一欄，`<本輪日期>` 是 `YYYY-MM-DD`。
+往回補多天加天數旗標（`--days N`）；**第一次跑先加乾跑旗標**（`--dry-run`），
+它會印出要挑哪一份逐字稿、上界是多少、出處是哪一種，但不寫 CSV。
+
+只有掃描判不了的時候（`bubble`／`houseview`，或逐字稿不唯一）才直接跑報表，
+而那時候三件事都要自己給 —— **少給任何一個都會安靜地算錯**：
+
+```bash
+~/.venvs/kb/bin/python ~/kb-core/tools/usage_report.py <系統id> \
+  --transcript <那一場的主逐字稿絕對路徑> \
+  --until <ISO8601 帶位移> --bound-src <sidecar|window|commit|manual> \
+  --date <YYYY-MM-DD> --append ~/kb-core/metrics/usage.csv
+```
+
+- `--date` 不給就用逐字稿最後一筆的 **UTC** 日期 —— 台北 08:00 前收工的輪次
+  （podcast 03:00）會被記成前一天，**而且跟前一天那一列撞號**。
+- `--bound-src` 不給就記成 `manual`，之後沒有人說得出那個上界是哪來的。
 
 **這一段在 2026-08-24 之前寫的是相反的**（「用 Bash（雲端容器）不是 device_bash，
 逐字稿只存在於雲端那一側，在 Mac 上跑一定失敗」），而工具本身早在 08-23
@@ -137,18 +161,26 @@ CLAUDE_CONFIG_DIR="$BASE" python3 ~/kb-core/tools/usage_report.py <系統id> --u
 **一個工作階段可能不只裝一件事。** 排程執行與事後的維護對話會共用同一份逐字稿：
 2026-08-23 實測，整份掃完 30,744k，而日報那一輪其實是 6,611k —— **高估 4.6 倍**。
 
-`--until-receipt` 拿 `~/outbox/<目錄>/<日期>.receipt.json` 的 `at` 當上界，
-那是**那一輪真正落地的時刻**，比任何自述都可靠。
+### 上界有優先序，而 `bounded` 欄記的就是它用了哪一種
 
-| 系統 id | outbox 目錄 | 怎麼切上界 |
+**`bounded` 不是 yes／no，是上界的出處。** 可信度由高到低：
+
+| 值 | 出處 | 已知弱點 |
 |---|---|---|
-| `advisory` | （根目錄，沒有子目錄） | `--until-receipt <日期>`，回執在 `~/outbox/<日期>.receipt.json` |
-| `chart` | `chart` | `--until-receipt <日期>` |
-| `podcast` | `podcast` | `--until-receipt <日期>` |
-| `broker-research` | `research` | `--until-receipt <日期>`（**id 與目錄名不同**） |
-| `bubble` | `bubble` | `--until-receipt <日期>` |
-| `convergence` | `convergence` | `--until-receipt <日期>` |
-| `houseview` | `houseview` | `--until-receipt <日期>` |
+| `sidecar` | 輪次自己寫的交草稿時刻 | 要求執行副本帶著那一步 |
+| `window` | 已發布日檔裡的 `window.to` | **七套裡只有 advisory 的日檔帶它** |
+| `commit` | 日檔當天最早的那顆 commit | 那是 **publish 成功**的時刻，不是交草稿的時刻 —— 發布卡住的那天會偏晚 |
+| `manual` | 有切，但說不出哪來的 | |
+| `no` | 沒切 | 混著維護對話，**不能拿來做決定** |
+
+**同一輪 advisory 用 `window` 切與用 `commit` 切差 22%**（2026-08-24 實測，那天 publish
+被一個沒提交的工作區擋到 10:04）。**不是同一種出處的列不要直接相比。**
+
+回執（`~/outbox/<目錄>/<日期>.receipt.json` 的 `at`）**已經降到備援** —— 見上一節：
+它每一次 publish 都覆寫同一個檔。
+
+outbox 目錄與系統 id 的對照表在 `tools/usage_report.py` 的 `OUTBOX_DIR`，
+**那是唯一的家**（`broker-research` 在 outbox 底下叫 `research`）。
 
 ## 產出怎麼處理
 
@@ -168,3 +200,66 @@ CLAUDE_CONFIG_DIR="$BASE" python3 ~/kb-core/tools/usage_report.py <系統id> --u
 
 回報「這一輪沒有量到用量」以及工具印的那一行原因，**不要填一個估的數字**。
 少一列的 CSV 還是可信的；多一列估的就不是了。
+
+---
+
+## 量測工具自己也要被量測
+
+2026-08-24 這一天，「看起來對、其實是錯的」在量測工具上出現了**九次**。
+最後一次把前面所有數字改寫了一遍 —— 整本帳十五列各降 **44–66%**。
+
+**它比被量的東西更容易安靜地錯，因為沒有人會去對它的答案。**
+
+| # | 錯在哪 | 症狀 |
+|---|---|---|
+| 1 | 界線沒正規化成 UTC 就丟進字串比較 | 主線算成 33,068k，真值 8,373k |
+| 2 | `cache_read` 的負增量被跳過，而不是算回去 | 歸因高估 18% |
+| 3 | 以為比值 1.00 也保證歸因 | 開場那幾輪的標籤整段錯 |
+| 4 | 縮小的判斷排在開場分支後面 | 高估 17%，**連「有幾輪掉下來」的註腳都不印** |
+| 5 | 沒把模型自己的輸出算成一項 | 它被掛到旁邊那個看得見的工具頭上 |
+| 6 | **平行工具呼叫被當成多輪** | 同一份用量算 N 次，**整本帳高一倍** |
+| 7 | 猜 `prep_chart` 擋掉的 11 萬字元是大頭 | 帳上看不到；真正的第一名是別的東西 |
+| 8 | 猜 `preamble.md`（34k）是元凶 | 量出來只佔 5–6% |
+| 9 | 猜某筆 87.6k 是模型的輸出 | 是快取從寫側轉到讀側，根本不是新內容 |
+
+**九次的形狀完全一樣：都有一個綠色的東西撐著**（退出碼 0、恆等式 1.00、量級也合理），
+**而每一次都是下一層檢查才掀開的**。
+
+### 從這九次長出來的規矩
+
+- **恆等式只保證總量，不保證歸因 —— 而所有的決定都是看歸因下的。**
+  `Σ 歸因 = Σ 量測` 在設計上就會是恆等式（那只是把同一個數字換一個維度切開），
+  所以比值 1.00 什麼都沒證明，只證明加法沒錯。
+
+- **分不出來就寫「分不出來」。** 開場那幾輪的增量是快取暖機與新內容混在一起的，
+  硬要逐筆歸因會產生**看起來精確、實際上錯**的標籤 —— 那比一行
+  「這一段分不出誰是誰」有害得多，因為前者會被拿去做決定。
+
+- **大小不是成本，「大小 × 之後還有幾輪」才是。** 第 7、8 次都栽在這裡：
+  **看起來最可疑的那一份，通常不是最貴的那一份。** 一份 34k 在第 3 輪進來、
+  後面還有 185 輪，跟同樣 34k 在第 180 輪才進來，成本差 23 倍。
+
+- **有些錯不在資料裡，也不在邏輯裡，在格式細節裡。** 第 6 次是拿原始紀錄
+  逐行看才發現的：四筆紀錄、同一個 `message.id`、同一份 usage。
+  **懷疑一個數字的時候，去看原始紀錄，不要再推論一次。**
+  探針在 `~/.kbusage/peek.py`，**它刻意不在 `tools/` 裡** —— 量測工具要有
+  回歸測試才配被信任，探針只是拿來看一眼的，混在一起會讓人以為它也驗證過。
+
+- **每一支量測工具都要有回歸 fixture，而且要涵蓋它自己踩過的坑。**
+  現有的 fixture 蓋住：界線正規化、負增量、開場區間內外的縮小、
+  模型輸出與工具結果分離、平行呼叫去重。**每一條都對應上表的一行。**
+
+### 改 `usage_of()` 之前先讀這一段
+
+它是整本帳的地基，四支工具（`usage_report`／`usage_scan`／`subagent_report`／
+`context_profile`）全部經過它。兩件事不可以拿掉：
+
+1. **用 `message.id` 去重。** 平行工具呼叫會讓同一則 assistant 訊息在逐字稿裡
+   出現好幾筆，每一筆都帶完整的 usage。2026-08-24 實測（advisory 主線第 30–33 輪）：
+   同一個 `msg=BpwvRbfp` 出現四次，那一則的加權有效 token 是 188,693，被算成 754,772。
+   **沒有 id 的紀錄照舊計入** —— 寧可少去重，不要漏算。
+
+2. **界線一律走 `_norm_iso()`。** `usage_of()` 做的是字串比較，台北位移
+   （`...+08:00`）丟進去會讓界線**整整鬆八小時，而畫面上完全看不出來**。
+
+**這兩件事各自都會讓數字看起來很合理。** 那正是它們危險的地方。
