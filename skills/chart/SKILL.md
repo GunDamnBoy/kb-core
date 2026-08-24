@@ -30,29 +30,32 @@ description: 產出每日五圖。每天台北 11:30 在 Mac mini 上執行；�
 
 ### 1. 清點手上有什麼
 
-讀 `chart/anchors.json`。讀上游投顧的當日 JSON（題材來源）——
-路徑是 **`~/advisory-rewrite/data/<今天>.json`**。
+```
+python3 ~/kb-core/scripts/chart/prep_chart.py
+```
 
-**`advisory-knowledge-hub` 是系統 id，不是路徑。** 這一步以前沒有寫路徑，
-於是 2026-08-21 首輪照舊文件走到 `~/advisory-knowledge-hub`，
-那是一份停在 08-18 的舊 checkout —— **讀它不會報錯，只會安靜拿到三天前的題材**。
-那份 checkout 已於 08-21 搬到 `~/_to_delete/`，所以現在走錯會直接找不到檔案，
-但**路徑要寫在這裡**，因為「錯得看得見」跟「知道該去哪」是兩件事。
-讀預抓狀態檔，確認它在 `anchors.prefetch.status_valid_hours` 之內。
+一次印出這一步的完成條件：今天星期幾、該出哪一條軌道（週末含「昨天用了哪一條」）、
+預抓的新鮮度與涵蓋、三大數據偵測**整份原樣**、以及上游今天的題材清單。
 
-**三大數據的發布偵測不在這一輪跑。** 讀 `chart-of-the-day/data/_macro_release.json`
-（11:00 的預抓在 Mac 上跑 `macro_release.check()` 寫的），**整份原樣**搬進
-`about.macro_release`（含 `checked_at` 與可能的 `error`，不要只挑 `items`）。
-帶 `error` 時檢查會判 SKIPPED 並把錯誤說出來 —— **「偵測失敗」與「今天沒發布」
-是兩件事，而空的 items 與「沒發布」在下游長得一模一樣**。
-檔案不存在時同樣要說出來，不要自己去問 FRED：
-沙箱對 `fred.stlouisfed.org` 是 Tunnel 403，人工用 web_fetch 重建三筆的做法
-在 08-21／08-22 各做了一次，而 08-22 那次有一筆沒重新量。
+**不要自己去讀上游那份 JSON。** 它是 11 萬字元（約 77k token），
+而讀進來之後**後面每一輪都要重讀它一次** —— 2026-08-23 量到這一輪 179 輪、
+重讀 36.7M，光那一份就佔三分之一上下。prep 把它壓成標題清單（30×），
+**選定五個題目之後**再用 `--card N` 讀那五張的全文。這是分層取材。
 
-**上游還沒好就等**（`anchors.schedule.upstream_wait_minutes`），仍無則用前一日並在 `about.run` 註明。
+三件 prep 幫你擋掉、但你仍要知道的事：
 
-**完成條件**：手上有一張表 —— 今天是星期幾、該出哪一條軌道、預抓涵蓋到哪些序列、
-以及上游今天給了什麼題材。
+- **上游路徑是 `~/advisory-rewrite/data/`。** `advisory-knowledge-hub` 是系統 id
+  不是路徑；2026-08-21 首輪走到一份停在 08-18 的舊 checkout —— **讀它不會報錯，
+  只會安靜拿到三天前的題材**。prep 只認對的那個路徑，讀不到就明說。
+- **三大數據那一格整份搬進 `about.macro_release`**（含 `checked_at` 與可能的
+  `error`），不要只挑 `items`。**「偵測失敗」與「今天沒發布」是兩件事**，
+  而空的 items 與「沒發布」在下游長得一模一樣。帶 `error` 時不要自己去問 FRED。
+- **沒有預抓狀態檔＝預抓沒跑**，不是「可能沒跑」，`about.data_path` 不可宣稱 prefetch。
+
+上游還沒好就等（`anchors.schedule.upstream_wait_minutes`），仍無則用前一日並在
+`about.run` 註明 —— prep 會把等多久印出來。
+
+**完成條件**：prep 跑過，且它印的每一個「⚠︎」都有處置。
 
 ### 2. 選五個題目
 
