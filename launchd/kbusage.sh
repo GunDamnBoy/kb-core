@@ -40,8 +40,14 @@
 #      "transcript":"/Users/macmini/Library/Application Support/Claude/…/<uuid>.jsonl",
 #      "since":"2026-08-24T07:35:00+08:00"}
 #
-# `until` 選填；沒給就用 `--until-receipt <date>`，讓 `usage_report.py` 自己去讀
-# 那一套的回執 `at`（它有 `OUTBOX_DIR` 對照表，知道 advisory 的回執在根目錄）。
+# `until` 應該填，值是那一輪寫進日檔 `window.to` 的那一刻。
+# **不要用回執當上界** —— `~/outbox/<日期>.receipt.json` 每一次 publish 都覆寫同一個檔，
+# 所以它的 `at` 是「那個日期最後一次 publish 的時刻」，不是「那一輪落地的時刻」。
+# 2026-08-24 實測四期：08-21 差 1 分、08-23 差 −1 分、08-24 差 24 分，
+# 而 **08-22 差 613 分鐘**（那天重發過）。平常只差一兩分鐘，
+# **所以它壞掉的那天不會有人發現**，而算出來的數字仍然很合理。
+# 沒給 `until` 時仍退回 `--until-receipt <date>`（`usage_report.py` 有 `OUTBOX_DIR`
+# 對照表，知道 advisory 的回執在根目錄），但會在日誌記一筆說上界是鬆的。
 #
 # ## 為什麼不跑 git
 #
@@ -136,6 +142,7 @@ PY
     BOUND=(--until "$UNTIL")
   else
     BOUND=(--until-receipt "$DATE")
+    log "$SYS $DATE 的 sidecar 沒給 until，退回回執當上界 —— **那是那個日期最後一次 publish 的時刻，不是那一輪落地的時刻**，同一天重發過就會偏高"
   fi
 
   log "量 $SYS $DATE（since=$SINCE ${BOUND[*]}）"
