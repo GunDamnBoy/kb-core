@@ -150,7 +150,16 @@ def profile(path: str, until, warmup: int = 5):
     live, cost, order, prev, drops = {}, {}, [], 0, 0
     for (i, c), (_, batch) in zip(turns, items):
         d = c - prev
-        if i <= warmup:
+        # **縮小的判斷要在最前面，不管是不是開場。**
+        # 2026-08-24 第一版把它排在 warmup 分支後面，於是前五輪裡的負增量被
+        # `max(0, d)` 吞掉、也沒觸發縮小 —— 帳多算 17%，而且連「有幾輪掉下來」
+        # 的註腳都不會印，因為那個分支根本沒被走到。**沉默的高估比報錯更糟。**
+        if d < 0 and prev > 0:
+            drops += 1
+            f = c / prev
+            for k in live:
+                live[k] *= f
+        elif i <= warmup:
             # **開場那幾輪不逐筆歸因。** 這一段的增量是快取暖機 ——
             # 系統提示、工具定義、派工單本來就在 context 裡，只是還沒被算成重讀。
             # 掛到「那一輪剛好跑的工具」上會產生看起來精確、實際上錯的標籤。
@@ -172,11 +181,6 @@ def profile(path: str, until, warmup: int = 5):
                 live[k] = live.get(k, 0) + d
                 if k not in order:
                     order.append(k)
-        elif d < 0 and prev > 0:
-            drops += 1
-            f = c / prev
-            for k in live:
-                live[k] *= f
         prev = c
         for k, v in live.items():
             cost[k] = cost.get(k, 0) + v
