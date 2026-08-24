@@ -58,6 +58,42 @@ OUTBOX_DIR = {"podcast": "podcast", "chart": "chart", "broker-research": "resear
               "bubble": "bubble", "convergence": "convergence", "houseview": "houseview"}
 
 
+def pick_transcript(explicit=None):
+    """挑一份逐字稿。回 `(path, err, code)`；path 是 None 就照 err／code 收工。
+
+    **這段抽出來是為了讓 `session_cost.py` 用同一份。** 兩邊各自寫一次的話，
+    下面那段錯誤訊息（它記著「Cowork 的逐字稿在 Mac 上、不在沙箱」這個訂正）
+    只會有一邊是對的 —— 而那正是 2026-08-23 在 payload 上剛發生過的事。
+    """
+    base = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude"))
+    if explicit:
+        return os.path.expanduser(explicit), None, 0
+    cands = glob.glob(os.path.join(base, "projects", "*", "*.jsonl"))
+    if not cands:
+        # **錯誤訊息要在犯錯的當下說出原因。** 文件是動手之前讀的，
+        # 錯誤是動手之後讀的 —— 而「找不到檔案」跟「你在錯的機器上」
+        # 在畫面上長得一模一樣。
+        return None, (
+            f"{base}/projects 底下找不到逐字稿。\n"
+            "  **先確認 CLAUDE_CONFIG_DIR 指對地方。** 不同執行環境不一樣：\n"
+            "  · Claude Code／雲端容器：預設的 `~/.claude` 通常就對\n"
+            "  · **Cowork：逐字稿在 Mac 上**，要指到某一場的 `.claude`——\n"
+            "      BASE=$(ls -dt \"$HOME/Library/Application Support/Claude/"
+            "local-agent-mode-sessions\"/*/*/local_*/.claude | head -1)\n"
+            "      CLAUDE_CONFIG_DIR=\"$BASE\" python3 …\n"
+            "    **Cowork 的沙箱那一側看不到它，也掛不上**（掛載會被明文拒絕），\n"
+            "    所以這支在 Cowork 要在 Mac 的終端機跑。\n"
+            "  （2026-08-23 訂正：這裡原本寫「逐字稿只存在於雲端那一側、"
+            "在 Mac 上跑一定失敗」——**那是錯的，剛好講反**。）\n"
+            "  **這跟「這一輪沒花 token」是兩件事。**"), 14
+    tp = max(cands, key=os.path.getmtime)
+    age = (dt.datetime.now().timestamp() - os.path.getmtime(tp)) / 60
+    if age > STALE_MIN:
+        return None, (f"最新的逐字稿是 {os.path.basename(tp)}，{age:.0f} 分鐘沒動過 —— "
+                      "**那不像是這一輪**。要就用 --transcript 明講。"), 12
+    return tp, None, 0
+
+
 def eff(u):
     return (u.get("input_tokens", 0) * W["inp"]
             + u.get("output_tokens", 0) * W["out"]
@@ -152,34 +188,10 @@ def main():
         print(f"不認得的旗標：{' '.join(unknown)}", file=sys.stderr)
         return 12
 
-    base = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude"))
-    if a.transcript:
-        tp = os.path.expanduser(a.transcript)
-    else:
-        cands = glob.glob(os.path.join(base, "projects", "*", "*.jsonl"))
-        if not cands:
-            # **錯誤訊息要在犯錯的當下說出原因。** 文件是動手之前讀的，
-            # 錯誤是動手之後讀的 —— 而「找不到檔案」跟「你在錯的機器上」
-            # 在畫面上長得一模一樣。
-            print(f"{base}/projects 底下找不到逐字稿。\n"
-                  "  **先確認 CLAUDE_CONFIG_DIR 指對地方。** 不同執行環境不一樣：\n"
-                  "  · Claude Code／雲端容器：預設的 `~/.claude` 通常就對\n"
-                  "  · **Cowork：逐字稿在 Mac 上**，要指到某一場的 `.claude`——\n"
-                  "      BASE=$(ls -dt \"$HOME/Library/Application Support/Claude/"
-                  "local-agent-mode-sessions\"/*/*/local_*/.claude | head -1)\n"
-                  "      CLAUDE_CONFIG_DIR=\"$BASE\" python3 …\n"
-                  "    **Cowork 的沙箱那一側看不到它，也掛不上**（掛載會被明文拒絕），\n"
-                  "    所以這支在 Cowork 要在 Mac 的終端機跑。\n"
-                  "  （2026-08-23 訂正：這裡原本寫「逐字稿只存在於雲端那一側、"
-                  "在 Mac 上跑一定失敗」——**那是錯的，剛好講反**。）\n"
-                  "  **這跟「這一輪沒花 token」是兩件事。**", file=sys.stderr)
-            return 14
-        tp = max(cands, key=os.path.getmtime)
-        age = (dt.datetime.now().timestamp() - os.path.getmtime(tp)) / 60
-        if age > STALE_MIN:
-            print(f"最新的逐字稿是 {os.path.basename(tp)}，{age:.0f} 分鐘沒動過 —— "
-                  f"**那不像是這一輪**。要就用 --transcript 明講。", file=sys.stderr)
-            return 12
+    tp, err, code = pick_transcript(a.transcript)
+    if tp is None:
+        print(err, file=sys.stderr)
+        return code
 
     until = a.until
     if until:
