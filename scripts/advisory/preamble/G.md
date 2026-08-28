@@ -75,28 +75,6 @@
 - 低於「被擋」那兩個數，**且**頁面出現明確攔截字串 → 才算真的被擋
 - 落在中間 → **先換選擇器重試**（重試幾組也在任務卡上），再下結論
 
-### 中文來源用另一組數字
-
-**任務卡上會給你兩組門檻，不是一組。** 以中文發稿的來源
-（本節第六節清單裡的**鉅亨網 Anue、MoneyDJ、華爾街見聞、TrendForce 中文站**）
-用 CJK 那一組，其餘用英文那一組。**兩組都會寫在任務卡上；只給一組就是漏帶，停下來回報。**
-
-理由是 2026-08-28 兩個採集員在同一輪各自獨立量到的同一件事：F 組（鉅亨、MoneyDJ）
-10 則正文全部落在 **454–978 字元、5–8 段**，C 組（華爾街見聞）另有 3 則落在
-740–1,276 字元 —— 兩邊都逐一換過選擇器複驗（鉅亨試了 6 組＋逐一列舉 13 個子節點、
-MoneyDJ 試了 7 組）、頁面均無攔截字串，**是原生短稿，不是截斷**。
-**中文一篇 800–1,000 字元約等於英文 1,500–2,000 字元的資訊量**，
-拿英文的門檻去卡中文，會系統性地把完整文章記成「未達完整」——
-而「未達完整」在下游看起來跟「品質可疑」一樣。
-
-**段數不隨語言縮放，字數才要。** 實測段數的差異來自媒體而不是語言：
-鉅亨 5–8、MoneyDJ 5–6、見聞 12–21，對照英文的 Fierce Biotech 5–7、
-Bloomberg 12、The Hill 12–14、NYT 34。所以 CJK 那一組只把段數從 8 降到 5，
-字數則按 2.5:1 縮。
-
-**「安靜的截斷」最危險**：有些站對未登入讀者只給導言（內文一律 255–360 字元、`<p>` 標籤 0 個），
-**頁面上沒有任何攔截字串** —— 只看有沒有訂閱提示就會誤以為讀到了。
-
 ## 四、上限與節流
 
 三個數字都在你的任務卡上：
@@ -191,10 +169,12 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 
 | 來源 | 現在要怎麼取 | 實測 |
 |---|---|---|
-| Nikkei Asia | 正文 `.ezrichtext-field p`；**發布時間只能從 `ld+json` 的 `datePublished` 取**，列表頁的 `<time>` 是渲染時間。**區段路徑已改小寫**（`asia.nikkei.com/economy`、`/politics/<slug>`、`/business/<slug>`），舊的 `/Economy` 大寫會被導向。**⚠️ 取連結的方法 08-28 換過**：舊寫法 `h1 a, h2 a, h3 a, article a` 在 `/economy` **只回 1 條**（開場測試與採集員各自實測到同一個數）。改成全掃 `a[href]` → 只留 `/` 開頭 → 濾掉 `/location/`、`/topic/`、`/tag/` → 路徑至少兩段 → **網址最後一段長度 > 25**（slug 特徵，同 WSJ 那一招），`/economy` 回 31 條、`/business` 34 條、`/business/markets` 33 條。**但這一組不依時間排序、混有舊稿**：08-28 有人靠它撈到一篇 `datePublished` 是 08-18 的長稿（22 段／4,762 字元，內文完整、選擇器正常），白花一篇文章頁額度 —— 同 IBD 的舊稿陷阱。**兩個新的預篩管道**：①`asia.nikkei.com/rss/feed/nar` 同網域 fetch 回 200，RSS 1.0／RDF、50 筆、**嚴格由新到舊排序，但完全沒有時間欄位**（只給順序）；其他 `/rss`、`/feed`、`/rss.xml` 全 404。②**列表頁的 `<time datetime>` 是 13 位 epoch ms，而且它就是真正的發布時間**（實測與文章頁 `datePublished` 秒級吻合），但**只掛在最近數小時內的稿子上** —— `/business` 6 個、`/business/markets` 1 個、`/economy` 0 個，**「`<time>` 數量 0」不等於「今天沒新聞」**。`sitemap.xml` 825 筆全是版面／專題頁、窗口過濾後命中 0，`/news-sitemap.xml` 404，兩個都不要浪費時間試 | 08-28 |
 `/"articleUrl":"[^"]*?wsj\.com(\/[^"]+)"[\s\S]{0,900}?"timestamp":"([^"]+)"/g`
 —— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文** | 08-23 |
-| 華爾街見聞 | **`article:published_time` 是真 UTC，要 +8 小時才是台北時間**（08-28 三篇獨立複驗全對，另官方 API 的 `display_time` epoch 秒也秒級吻合）。**⚠️ 輪詢秒數要 30–70 秒，不是 2–3 秒**：08-28 實測列表頁與首頁在 navigate 後 **20 秒**時 `body.innerText.length === 0`、`links === 0`、`#app` 全空、HTML 只有 2,195 字元；文章頁 30 秒時同樣全空，**再輪一輪（累計 60–70 秒）才渲染**。這個狀態沒有攔截字串、console 零錯誤，**跟「這家今天讀不到」一模一樣**。而 `javascript_tool` 的 CDP 在 **45,000ms 逾時**，所以「navigate ＋ 輪詢 60 秒」不能寫在同一次呼叫裡，**必須拆成兩次各輪 30–35 秒**。正文 `.rich-text p` ＝ `article p` ＝ `main p`（三者等值），`.article-content p`／`.article__content p` 回 0 段。**不要拿頁面上的「付费／会员／开通会员」字樣判付費牆** —— 那是站方導覽與推廣區塊，幾乎每頁都有。官方端點 `api-one-wscn.awtmt.com/apiv1/content/information-flow?channel=global-channel&accept=article&limit=30&action=upglide` 從站內 fetch CORS 會過、一頁 33 筆帶 `id`／`display_time`／`title`，**但 `channel` 參數會被靜默忽略**（四個不同 channel 回傳一字不差）、**`cursor` 配 `action=upglide` 回 0 筆**（下次改試 `downglide`），回傳裡混有 `livenews` 快訊與廣告位，**文章只取 id 以 `378` 開頭者** | 08-28 |
+| Mint（livemint.com） | 正文**分兩種模板**：`/market/…` 與 `/market/ipo/…` 用 **`div[class*="storyContent"] p`**；**`/news/…` 底下 `storyContent` 回 0 段，要改用 `div[class*="storyParagraph"] p`**（或同一組節點的 `div[class*="mainArea"] p`）——08-24 實測同一天兩種模板並存，storyContent 0 段／storyParagraph 12 段／5,499 字。**`article p` 與 `main p` 一律回 0 段，不要當備援**（`#article-body p`／`.storyPage p`／`[itemprop="articleBody"] p` 同樣 0 段）。**⚠️ 永久連結末尾是 14 位數不是 13 位**（前綴 `1` ＋ 13 位 epoch ms）：08-28 實測 124 條連結全部是 14 位，**用 `-\d{13}\.html` 抓會回 0 筆**，而那看起來就是「Mint 今天沒新聞」。正確寫法 `-1(\d{13})\.html`，取 group 1 當 epoch。而且**那個 epoch 是「建立時間」不是發布時間** —— 實測同一篇 URL epoch 解出台北 08-22 21:45、`ld+json` 的 `datePublished` 是 `2026-08-22T22:55:02+05:30` ＝ 台北 08-23 01:25，差 3 小時 40 分（08-28 另一篇差 45 分）。URL epoch 只能粗篩，**落窗判定一律用 `datePublished`（帶 `+05:30`，＋2:30 得台北）** | 08-28 |
+| Fierce Biotech | 正文 **`.article-body p`**；`.body-text p`／`.field--name-body p`／`#main-content p` 回 0 段。**⚠️ 落窗一律用 `meta[property="article:published_time"]`（帶明確的 `-0400`），不要用 RSS 的 `pubDate`、也不要用 `ld+json`。** RSS `pubDate` 08-28 實測會錯到跨日：一篇 RSS 給 `Aug 26 4:48pm`、meta 是 `2026-08-27T06:30:00-0400`；另一篇 RSS 給 `Aug 25 4:03pm`、meta 是 `2026-08-27T09:50:00-0400`。`ld+json` 的 **`@graph` 是物件不是陣列**，常見的 `Array.isArray(j)?j:[j]` 解法會回 `datePublished: NONE`。首頁／區段頁的 `.date` 與 meta 一致，可以用。**這一家的稿子普遍 5–7 段**（08-28 五篇裡三篇是 7／7／5 段、2,354／2,020／1,005 字元，四到七組選擇器結果一致、無攔截字串），**系統性壓在 8 段門檻之下 —— 壓線不等於被擋，同 The Hill 那一列** | 08-28 |
+| Korea Herald | 正文用 **`#articleText p`（＝`.news_content p`）**，那才是乾淨的內文容器；**`main p` 會多吃約 20 段的「相關新聞」清單、`article p` 更多，用它們量字數會高估兩到三倍**（08-24 實測同一篇：`main p` 25 段／2,950 字 vs `#articleText p` 7 段／1,622 字——**用錯的那一組會把未達門檻的短稿誤判成完整取得**）。`.article-content p` 與 `.article_txt p` 在這一家回 0 段。列表頁用 `a[href*="/article/"]` 掃 `/Business`、`/Business/Economy`、`/Business/Market`；直接抓首屏會**只回「Most Read」側欄**。發布時間在 `.date`（`Published : Aug. XX, 2026 - HH:MM:SS`，KST，**減 1 小時**才是台北）；**`.date` 有時同時含 `Published` 與 `Updated` 兩個時間，落窗取 `Published`**（08-28 實測 article/10854743）。**要把首頁 `koreaherald.com/` 加進掃描路徑**：08-23 三個區段頁最新都只到 8/21、會讓人誤判「今天沒新聞」，而首頁掃到 57 條、最高 ID 比區段頁高 400 多號（08-28 覆測：首頁 62 條 vs `/Business` 25 條，首頁最高 ID 仍最高）。**先濾掉 `biz.heraldcorp.com`** —— 首頁混了韓文姊妹站的連結、格式同樣是 `/article/<id>`，對它發同網域 `fetch` 會連續 `Failed to fetch`，看起來很像風控但其實是跨網域 CORS | 08-23 |
+| STAT News | 正文 `.article-content p`；`document.querySelector('article')` 只回 **97 字元**。標「STAT Plus」的是訂閱牆，屬**訂閱範圍外**不是被擋。**⚠️ 預篩主源改成 `/feed/`**（`pubDate` 是真 UTC、＋8 得台北，`<title>` 帶 `STAT+:` 前綴可直接預篩訂閱牆）：`news-sitemap.xml` 08-28 實測**落後兩天**（最新只到 08-25、完全沒有 8/26 與 8/27 的稿），只用它會得到「STAT 今天沒新聞」。**⚠️ STAT+ 文章的段數與字元數會假性過門檻**：08-28 一篇 STAT+ 的 `.article-content p` 量到 23 段／2,316 字元（看起來「完整取得」），實際散文只有 4 段、其後即為 `To read the rest of this story subscribe to STAT+.`，其餘是作者簡介重複兩次＋9 條相關文章清單。**判定這一家一定要另外找 "To read the rest of this story" 這個字串，光看數字會把訂閱牆記成完整取得** | 08-28 |
 
 **「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
 而實際上是選擇器沒對上或路徑搬家了。**擋源三分的第一步永遠是換一組選擇器重試。**

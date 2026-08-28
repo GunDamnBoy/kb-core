@@ -47,12 +47,20 @@ SECTION_OWNER = {
     "## 一、收什麼":          ALL,
     "## 二、怎麼讀":          ALL,
     "## 三、擋源三分":        ALL,
+    # 2026-08-28 新增。中文來源的門檻只有讀中文站的那三個採集員用得到；
+    # 關鍵字經 roster 換算：鉅亨→F、華爾街見聞→C、TrendForce→D（MoneyDJ 同屬 F）。
+    "### 中文來源用另一組數字": ["鉅亨", "華爾街見聞", "TrendForce"],
     "## 四、上限與節流":      ALL,
     "### 節流：":            ALL,
     "## 五、合規":            ALL,
     "## 六、來源":            ALL,          # 散文全體共用，只有裡面那張表要篩
     "### `[BLOCKED:":        ALL,
-    "### 電子報彙整頁":       ["SemiAnalysis"],
+    # 2026-08-28 改：原本只給 SemiAnalysis（＝D），但那張表列的是 NYT／WSJ／
+    # The Economist，一個都不屬於 D —— **真正需要它的三個採集員一列都看不到**。
+    # 同日又在 Bloomberg 撞到兩種（Washington Edition 電子報、Big Take podcast 頁），
+    # 所以再加 A。判準是「表上出現了誰的來源」，不是「這個教訓誰用得到」——
+    # 後者會一路擴張成 ALL，而那等於沒有切片。
+    "### 電子報彙整頁":       ["NYT", "WSJ", "The Economist", "Bloomberg", "SemiAnalysis"],
     "## 六之二、":            ALL,
     "## 七、台股官方端點":     ["TWSE"],
     "## 七之二、":            ["EIA", "SPDR Gold Shares", "央行官方"],

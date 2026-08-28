@@ -110,8 +110,14 @@ REQUIRED_BY_LABEL = {
     # `/usr/bin/git`（Xcode CLT 那支）。**它不依賴 Homebrew，這是它的運氣不是它的設計** ——
     # 哪天有人往那支程式加一個只有 Homebrew 才有的指令，這條會叫，而那正是它該做的事。
     "com.kenny.kbpublish.bubble":  ["git"],
-    # 2026-08-23：advisory 的保底層預抓。只用 curl 抓 origin 上的 raw JSON 到
-    # `~/.advisoryfetch/`，**不跑任何 git**（跑 git 會與每 60 秒的 kbpublish 搶 index.lock）。
+    # 2026-08-23：advisory 的保底層預抓。用 curl 抓 origin 上的 raw JSON 到
+    # `~/outbox/floor/`（2026-08-28 由 `~/.advisoryfetch/` 搬過來），
+    # **不跑任何 git**（跑 git 會與每 60 秒的 kbpublish 搶 index.lock）。
+    #
+    # 2026-08-28 新增的本機自取備援叫的是 `~/.venvs/kb/bin/python` 與
+    # `/usr/bin/python3`，**兩個都是絕對路徑、與 PATH 無關**，所以這一列不變 ——
+    # 同 kbprefetch.chart 與 kbusage 的判斷。列進來的唯一標準是「會不會因為
+    # launchd 的 PATH 只有四個目錄而找不到」。
     "com.kenny.kbprefetch.advisory": ["curl"],
 }
 

@@ -10,8 +10,14 @@
        **這三個時刻是一組的** —— 動了排程 advisory-daily-0730 的 cron 就要回頭動這裡。
 
        為什麼它不跑 git：com.kenny.kbpublish 每 60 秒跑一次，任何 git 指令留下的
-       index.lock 都會擋住它。這支只用 curl 抓一個檔到 ~/.advisoryfetch/，
+       index.lock 都會擋住它。這支只用 curl（或本機取數）寫一個檔到 ~/outbox/floor/，
        不碰 ~/advisory-rewrite —— 與 kbprefetch.chart 同一個紀律。
+
+       2026-08-28 快取由 ~/.advisoryfetch/raw/ 搬到 ~/outbox/floor/：舊路徑在使用者
+       的連接資料夾之外，輪次讀得到檔名、讀不到內容，於是第一層形同虛設。
+       同日新增本機自取備援（三次 curl 失敗後直接跑 tools/fetch_advisory.py），
+       因為 GitHub 的排程在 08-26 與 08-27 連兩天漏跑 —— 那是漏跑不是延後，
+       而漏跑不能靠調 cron 解決。**ProgramArguments 沒有變，不必重裝。**
 
        Mac 若在 07:20 睡著，launchd 會延到喚醒才跑，可能落在輪次之後。
        那一輪拿不到快取，會照 SKILL 步驟 1 的表退回 Chrome 那條路，
