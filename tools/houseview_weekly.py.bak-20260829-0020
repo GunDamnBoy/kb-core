@@ -211,14 +211,7 @@ def main(argv):
     if prev and R["sections"] and prev.get("sections") \
             and prev.get("checks", {}).get("prep", {}).get("period") == period:
         drops = find_drops(prev["sections"], R["sections"])
-        R["checks"]["sections_kept"] = {
-            "exit": 1 if drops else 0,
-            "drops": drops or None,
-            # 這次比對「沒有看」的節。全綠時要讀得到盲區 ——
-            # 沒有這一欄的話，exit 0 說不出自己到底看了什麼
-            "blind_to": [k for k in R["sections"]
-                         if not any(k.startswith(w) for w in WATCHED)] or None,
-        }
+        R["checks"]["sections_kept"] = {"exit": 1 if drops else 0, "drops": drops or None}
     else:
         why = ("沒有上一次的回執" if not prev else
                "上一次是別的月份，跨月不比 —— 月初本來就接近空的")
