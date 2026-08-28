@@ -1304,3 +1304,96 @@ sidecar 會一直堆在 outbox 裡沒人撿** —— 那不會壞任何東西，
 比多算一段長度不可控的別人的工作好。
 ③今天這一列（46,079k）**還沒重切**，等人跑那兩行指令。在那之前
 `usage.csv` 的第一列 advisory 是偏高的，拿它跟 chart／podcast 比會得到錯的結論。
+
+---
+
+## 2026-08-28｜保底層連兩天漏跑、中文來源被英文門檻系統性誤判，以及一個蓋了三天的雙向漂移
+
+當天早上那一輪照常出刊（112 張卡、`exit 0`、commit `c5d1db5`、1 小時 43 分、補位 0 輪），
+下午回頭處理它交出來的待修清單。**清單本身有兩條是錯的**，而修它們之前得先發現這件事。
+
+**動到哪些檔**
+`launchd/kbprefetch-advisory.sh`（快取由 `~/.advisoryfetch/raw/` 搬到 `~/outbox/floor/`；
+三次 curl 失敗後改在 Mac 本機跑 `tools/fetch_advisory.py`；落地的檔標 `produced_by`）、
+`launchd/com.kenny.kbprefetch.advisory.plist`（只改註解，**ProgramArguments 沒變、不必重裝**）、
+`kbcore/env.py`（那一列的註解，值仍是 `["curl"]`）、
+`advisory/anchors.json`（`paywall_verdict` 新增 `complete_cjk`／`blocked_cjk`；
+`dedup_exempt` 加 TWSE `t187ap04_L`；`collectors.roster` 把 MarketWatch 由 A 移給 D；
+黃金 quota 平日 3→4、週末 2→3，`owners` 同步）、
+`scripts/advisory/preamble.md`（第三節新增〈中文來源用另一組數字〉，
+第六節十二列選擇器改寫，第六之二的 `[BLOCKED]` 觸發條件與注入字串兩節改寫，
+電子報彙整頁表加四列，第七之二 EIA／SPDR／LBMA／FRED 四處，第八與第九節）、
+`scripts/advisory/slice_preamble.py`（`SECTION_OWNER` 補一列、改一列）、
+`scripts/advisory/preamble/{A..G}.md`（**全部重新生成**）、
+`skills/advisory/SKILL.md` 與排程 prompt（整份取代兩次，見下）。
+
+**量測**
+①`fetch-floor` 最近 14 筆的 `run_started_at`：08-19 到 08-25 的七次排程班延後
+**16／18／19／20／16／19／21 分鐘**，非常穩定；**08-26 與 08-27 那兩班整班沒有出現**
+（序列由 `08-25T23:03Z` 直接跳到 `08-27T04:00Z`）。
+②當日中文稿正文實測：鉅亨 5–8 段／454–972 字元（10 則）、MoneyDJ 5–6 段／674–978、
+華爾街見聞 12–21 段／740–1,276。對照英文的 Fierce Biotech 5–7 段、Bloomberg 12、NYT 34。
+③`preamble.md` 由 08-25 的 19,193 字元長到 **27,622 字元（+44%）**；
+七份切片 11,983–17,273 字元，省 **37–57%**。
+④`publish.py` 的 `QUIET` 是 **10 秒**；當日草稿寫入到回執 `exit 0` 隔 **84 秒**。
+⑤正本 SKILL 與排程副本比對：**兩邊各自領先** —— 正本有前言切片機制、
+`tabs_context_mcp` 禁令與兩條完成條件；副本有 usage sidecar 的 `since`／`until` 三段。
+
+**怎麼驗的**
+`py_compile` 全綠；`selftest()` 失敗數 0；`advisory_verify` 對已發布的 2026-08-28
+是 **17 PASS · 1 WARN · 0 FAIL**（那一條 WARN 是當期 `thermo.note` 354 字，
+發布後才看到、依規不改寫）；`anchors.json` 與 `data/*.json` 共 29 個全部 `json.load` 通過；
+資料 repo 內符號連結 0；`slice_preamble.py --check` 七份全部「一致」；
+`bash -n` 過預抓腳本；`plistlib` 讀得開那份 plist。
+**排程同步用行數對帳**：正本 511 行、排程檔 511 行 —— 相同才算對。
+
+**怎麼倒回去**
+預抓腳本把 `CACHE` 改回 `$HOME/.advisoryfetch/raw`、刪掉「第二條路」那一整段即可
+（驗證區塊與退出碼語意都沒動）。anchors 的四處各自獨立，拿掉任一處不影響其他。
+`preamble.md` 改回舊選擇器就重跑一次 `slice_preamble.py`。
+排程 prompt 拿 `skills/advisory/SKILL.md` 的舊版整份再貼一次。
+**七份切片是生成物，不要手動回復** —— 改正本再重跑那支。
+
+**當時已知的風險**
+
+①**這一輪最重要的產出不是任何一個修改，是「早上那份待修清單有兩條是錯的」。**
+「把 cron 提前 60–90 分鐘」是只看了兩筆 Actions 紀錄就下的診斷，而真相是漏跑 ——
+**提前 cron 對漏跑一點幫助都沒有**；「`publish.py` 的 `.strip()` bug 仍未修」
+是憑 08-24 的記憶寫的，當下讀一次檔就會看到它已經是 `rstrip("\n")`、
+連事故經過都寫在註解裡。兩條都已寫進 SKILL 步驟 9，規則是
+**每一條待修事項都要指得出它根據今天讀到的哪一個輸出**。
+
+②**本機自取備援還沒有在真實條件下跑過。** 它依賴 `~/.venvs/kb/bin/python` 裝了
+`openpyxl`（SPDR 回 XLSX，而 `SPDR:GLD` 在 `ESSENTIAL` 裡）與
+`~/.config/fred/api_key` 存在。兩個假設都有實據（前者在 `requirements.txt`、
+五圖那套天天在用那個 venv；後者是 `setup-keys.sh` 寫進去的），
+但**沒有一個是今天量到的** —— 這台機器的 shell 在這個工作階段碰不到。
+腳本對兩者都有具名的失敗訊息，落到 `~/outbox/floor/prefetch.log`（那個檔輪次讀得到）。
+**驗證方法是明天早上看第①層有沒有東西、`produced_by` 是什麼。**
+
+③**前言切片這一輪才第一次真的上線，而它已經蓋了三天。** 機制在 08-25 就寫好了、
+`C.md` 也生成了，但排程 prompt 一直沒同步，於是 08-26／08-27／08-28 三輪都照舊發完整版
+——**功能存在、沒有人用，而且不會有任何東西報錯**。這是雙向漂移的實際代價。
+現在七份都生成了，但**七份同時上線違反了 SKILL 自己寫的「切片一次只上一組、
+其餘各組行為完全不變」**。那句話是為了控制變因；今天一次全上，是判斷
+「正本已經長到 27.6k、每天七個採集員各扛一份的成本比控制變因的價值高」。
+**若明天出現無法歸因的採集品質下滑，第一個要回退的就是這裡。**
+
+④**CJK 門檻的兩組數字只有一天的樣本。** 段數下限 5 取的是當日中文樣本的下緣
+（鉅亨 AIDC 那篇就是 5 段），字數 600 是拿 1,500 除以 2.5 的資訊密度比推的 ——
+**那個 2.5 是判斷，不是量測**。若接下來幾輪出現「中文稿普遍卡在 5 段」的回報，
+代表下限訂得太貼；反過來若開始有明顯被截斷的稿子通過，代表訂得太鬆。
+
+⑤**MarketWatch 搬走之後，A 只剩三家外部新聞源。** 當日 A 交 22 則的組成是
+Bloomberg 15（讀滿上限收工）＋ CNBC 6 ＋ MarketWatch 1，所以搬走的是它幾乎沒用到的那家；
+但這也意味著 **Bloomberg 再被風控一次（如 2026-08-09），A 會比以前更難補**。
+那一天的解法是降 A 的配額或臨時借一家，**不是讓兩個人同時打 Bloomberg**。
+
+⑥**`~/outbox/floor/` 這個新目錄沒有任何檢查在看它。** `publish.py` 只掃根目錄的
+`*.draft.json`、`kbusage.sh` 只掃 `*.usage.json` 與 `*/*.usage.json`，都不會誤撿；
+但同樣地，**它長期不更新也不會有人叫**。目前唯一的訊號是輪次步驟 1 那張表。
+
+⑦**`fetch-floor` 的 cron 一個字都沒改，而 Actions 那一側今天完全沒動。**
+workflow 檔在 `advisory-rewrite` 裡，而 `publish.py` 只 stage `data` 與 `index.html` ——
+在本機改它會讓工作區變髒、下一輪發布直接 `exit 15`。**要改得由人在 GitHub 上改。**
+本輪的判斷是不必改：本機自取備援已經讓保底層不依賴那個排程器。
