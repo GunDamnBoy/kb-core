@@ -225,6 +225,9 @@ def main(argv):
         R["checks"]["sections_kept"] = {"exit": 0, "skipped": why}
         R["notes"].append("分節體積這次沒有比：" + why)
 
+    # 跳過的檢查在頂層留一份機器可讀的清單。SKIPPED 不是 PASS ——
+    # 但跨月不比是設計，不該讓 exit 每個月固定響一次，所以留欄位不動退出碼
+    R["skipped"] = [n for n, c in R["checks"].items() if c.get("skipped")] or None
     R["exit"] = 1 if any(c.get("exit") for c in R["checks"].values()) else 0
     write(a.outbox, stamp, R)
     report(R)
@@ -235,14 +238,17 @@ def find_drops(prev, now):
     """上一次有、這一次歸零的受監控節。
 
     節名帶期數（`4. 匯流訊號報 · 當月 3 期`），期數每月會變，所以用前綴對，
+    而且前綴直接用 WATCHED 那一項本身 —— 另外算一個（例如 k[:8]）等於讓
+    「哪些節要看」和「拿什麼去對」變成兩套定義，今天剛好一致不代表明天還是，
     不用等值對 —— 等值對的話每個月都會「找不到 → 當成 0 → 全部誤報」，
     而**會固定響的警報就是雜訊**。
     """
     out = []
     for k, v in prev.items():
-        if not any(k.startswith(w) for w in WATCHED):
+        pre = next((w for w in WATCHED if k.startswith(w)), None)
+        if pre is None:
             continue
-        cur = next((n for kk, n in now.items() if kk.startswith(k[:8])), 0)
+        cur = next((n for kk, n in now.items() if kk.startswith(pre)), 0)
         if v > 0 and cur == 0:
             out.append(f"{k}：{v:,} → 0")
     return out
