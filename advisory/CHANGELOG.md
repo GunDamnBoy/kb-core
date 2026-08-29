@@ -1397,3 +1397,73 @@ Bloomberg 15（讀滿上限收工）＋ CNBC 6 ＋ MarketWatch 1，所以搬走�
 workflow 檔在 `advisory-rewrite` 裡，而 `publish.py` 只 stage `data` 與 `index.html` ——
 在本機改它會讓工作區變髒、下一輪發布直接 `exit 15`。**要改得由人在 GitHub 上改。**
 本輪的判斷是不必改：本機自取備援已經讓保底層不依賴那個排程器。
+
+---
+
+## 2026-08-29｜黃金第二次用「每天換網址」閃過去重，而 BRIEF 指的那個豁免清單並不存在
+
+當天早上那一輪照常出刊（117 張卡、`exit 0`、commit `746d0cd`、1 小時 47 分、補位 0 輪），
+**而且它自己撞上了本次要修的東西**：交稿前驗證回 `exit 10`，LBMA 定盤卡的網址與前一版共用。
+下午回頭查，發現那不是單一事件。
+
+**動到哪些檔**
+`advisory/anchors.json`（`dedup_exempt` 加 LBMA `gold_pm.json` 與 `gold_am.json` 兩條；
+`_dedup_exempt_source` 補 08-29 的理由；**`_dedup_exempt_cost` 兩處過時一併更正**）、
+`advisory/BRIEF.md`（第五節那條指向不存在的 `DEDUP_EXEMPT`，改指 anchors，並補「網址固定不是內容固定」）、
+`scripts/advisory/preamble.md`（第六節十六列選擇器、第六之二三條、第七節台股端點三處、第七之二三處、第四節分頁那條）、
+`scripts/advisory/slice_preamble.py`（`ROW_OVERRIDE` 補 `Fed 官方演說`）、
+`scripts/advisory/preamble/{A..G}.md`（**全部重新生成**）、
+`skills/maintain/advisory/MAIN.md` 與 `MODIFY.md`（刪掉不存在的徽章表檢查項，共四處）。
+**`checks/advisory.py` 一個字都沒改** —— 它本來就從 anchors 讀，加豁免不必動它。
+
+**量測**
+①**LBMA 網址四天換三個**：08-25 `lbma.org.uk/prices-and-data/lbma-precious-metal-prices`、
+08-26 `gold_pm.json`、08-27 `gold_am.json`、08-28 `gold_pm.json`，08-29 再用 PM 那條被擋下。
+**08-27 那張卡的標題與主數字都是 PM 定盤、網址卻指向 AM 端點** —— 讀者點進去看不到卡片描述的那件事。
+②逐日跨版比對 08-22→08-29 七個接縫，非豁免的共用網址各為 0 條 —— **因為換了網址，所以檢查照樣全綠**。
+③`checks/advisory.py` 全檔搜不到 `DEDUP_EXEMPT` 這個識別字（BRIEF 指的那個家不存在）。
+④`index.html` 全檔搜不到任何以來源名為 key 的對照（`Bloomberg`／`CNBC`／`鉅亨`／`Nikkei`／`WSJ` 零命中），
+`.t-*` 也沒有任何 CSS —— **MAIN.md 叫人查的那張徽章表不存在**。
+⑤venv 實測：`pip install -r requirements.txt` 當場補裝了 `openpyxl` **與 `yfinance` 及其整串依賴**
+（numpy／pandas／protobuf／requests…）—— **缺的不只一個套件，是整份 requirements 從來沒同步過**。
+⑥`preamble.md` 27,597 → 35,430 字元；七份切片 23.8–32.9k → 27.0–38.6k。
+
+**怎麼驗的**
+`python3 -m py_compile` 全綠；`selftest()` 0 失敗；
+`advisory_verify.py` 對 `data/2026-08-29.json` 跑 **18 PASS · 0 WARN · 0 FAIL**（加豁免前後都是）；
+`anchors.json` 可 `json.load`；`data/*.json` 29 個全部可 `json.load`；
+`slice_preamble.py` 重跑七份全部生成；
+**`/Users/macmini/.venvs/kb/bin/python -c "import openpyxl"` 回 3.1.5**（使用者在 Mac 上跑的，本工作階段碰不到 shell）。
+
+**怎麼倒回去**
+anchors 的 `dedup_exempt` 砍掉最後兩條即回到 08-28 行為（其餘三個檔的改動都是文件，不影響執行）。
+`slice_preamble.py` 的 `ROW_OVERRIDE` 若回退，要連同 preamble 的 Fed 那一列一起拿掉，否則切片會炸——
+**而那個「炸」是對的**：它今天就是這樣擋下我的漏配置，沒有讓某一組瞎掉。
+七份切片是生成物，改正本再重跑。
+
+**當時已知的風險**
+
+①**豁免清單一次長兩條，盲點跟著大兩格。** `advisory.exempt_card_freshness` 只在數字集合
+**完全相同**時 WARN，而 LBMA 的 AM 與 PM 是兩條不同序列、卡片常同時引用兩者，
+**只要其中一條動了就不會觸發** —— 換句話說這兩條的「沒更新」比 FRED 那兩條更難被抓到。
+反過來說，不收 AM 就等於把 08-27 那種「改指 AM 閃去重」的動機留著。**兩害相權取其輕，但代價是真的。**
+
+②**08-28 那一筆的 `_dedup_exempt_cost` 漏改，今天才發現。** 那次加了第六條卻沒把
+「現在罩著五條」改成六條，也沒把「目前沒有任何機器在問」改掉（`exempt_card_freshness` 08-23 就做好了）。
+**同一段文字連續兩次沒跟上，代表它不會自己被想起來** —— 已在該段明寫「每次加豁免都要回頭改這個數字」，
+但更穩的做法是讓檢查程式自己去數，本輪沒做。
+
+③**preamble 又長了 7.8k，而它是每天七個採集員各扛一份的東西。** 切片把單份壓到 27–38k，
+但正本本身已經 35.4k、16 節。**下一次再長，該考慮的是把第六節那張表拆成獨立檔按需載入，
+而不是繼續往下加列。**
+
+④**今天寫回的 20 條全部來自單一輪次的回報，沒有一條是跨輪覆驗過的。**
+其中「Mint 模板不能靠路徑前綴判定」直接推翻了 08-28 才寫上去的半條規則 ——
+**兩天兩個相反的結論，代表這一家的樣本還不夠**。若下一輪 `storyContent` 又在 `/market/` 底下正常，
+要記的是「兩組都跑」這個做法本身，而不是任何一邊的路徑規則。
+
+⑤**Actions 的 `fetch-floor` 這一輪一樣沒動，而它的失效形態比 08-28 記的更複雜。**
+今天拉的 14 筆顯示：08-27 那班在台北 12:00 跑、08-28 那班在 14:21 跑，
+**兩班都跑了，但都在該輪收工之後** —— 檔案進了 `raw/` 卻對當輪無用；08-29 那班則完全沒出現。
+所以「漏跑 vs 延後」這個二分法本身不夠用，**真正該問的是「有沒有趕在該輪開跑前落地」**。
+本輪的判斷仍是不改 cron、先讓本機備援兜底（openpyxl 已補），**觀察一週**。

@@ -242,6 +242,43 @@ NEW_KINDS = ("waterfall", "grouped_bar", "stacked_bar", "pct_stacked_bar",
 # 寫了兩個 marker、檢查通過、兩軌都沒畫出來——**規則要求標記，實作卻默默丟掉**，
 # 正是 brief §4 歷史縱深最怕的那種半殘。舊 check_day 已據此擋下（現為 `checks/chart.py` 的 `chart.series_wellformed`）無日期軸圖型的 marker。
 DATE_AXIS_KINDS = ("timeseries", "range_area")
+
+# 日期軸的刻度格式候選，由粗到細。**挑哪一個由刻度本身決定，不由人猜。**
+_DATE_FMTS = ("%y/%m", "%m/%d")
+
+
+def _date_axis(ax):
+    """替日期軸挑一個**每個刻度都印得出不同字串**的格式。
+
+    2026-08-29 的事故：locator 是 matplotlib 自動選的（短窗口會給日級刻度），
+    formatter 卻被寫死成 `%y/%m` —— 於是 49 個交易日的窗口上，
+    兩個相差半個月的刻度被格式化成同一個字串，
+    圖上印出 `26/07、26/07、26/08、26/08`。當天的圖 3 與圖 4 都中。
+
+    **這不是「標籤重複、去重就好」**：去重會讓刻度消失，而刻度是對的、
+    格式才是錯的。真正的缺陷是**格式與 locator 各自決定、沒有人對過帳**。
+
+    所以這裡不猜窗口長度、也不換 locator，而是直接問那個會壞的性質：
+    「locator 選出來的這些刻度，用這個格式印出來會不會撞？」撞了就換細一級。
+    這條性質正是壞掉的那一條，所以它同時是修法與驗收。
+
+    **`get_xticks()` 會觸發 locator**，所以要在畫完資料之後呼叫。
+    連 `%m/%d` 都還會撞的情況（同一天內多個刻度）留著不處理 ——
+    這套系統的所有圖都是日頻或更粗，出現那種刻度表示選題出了問題，
+    **讓它在圖上看得出來，比在這裡安靜補一層好**。
+    """
+    lo, hi = ax.get_xlim()
+    ticks = [t for t in ax.get_xticks() if lo <= t <= hi]
+    fmt = _DATE_FMTS[-1]
+    for cand in _DATE_FMTS:
+        try:
+            labels = [mdates.num2date(t).strftime(cand) for t in ticks]
+        except (ValueError, OverflowError):
+            continue                      # 刻度落在可轉換範圍外，換下一個格式
+        if len(labels) == len(set(labels)):
+            fmt = cand
+            break
+    ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt))
 LINE_KINDS = ("timeseries",)     # 「非折線」的判定基準，檢查腳本用它守門
 
 
@@ -359,7 +396,7 @@ def _draw_range_area(ch: Chart, ax):
     for i, s in enumerate(ch.series):
         ax.plot([_d(x) for x in s.dates], s.values, lw=s.width,
                 color=s.color or PALETTE[i % len(PALETTE)], label=s.name)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%y/%m"))
+    _date_axis(ax)          # 格式配合刻度密度，見 _date_axis 的 2026-08-29 病歷
     ax.yaxis.set_major_formatter(_fmt(ch.y_fmt))
     ax.grid(axis="y")
 
@@ -456,7 +493,23 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
     elif ch.kind == "scatter":
         xs = [p[0] for p in ch.pts]; ys = [p[1] for p in ch.pts]
         ax.scatter(xs, ys, s=13, c=FAINT, alpha=0.55, linewidths=0)
-        ax.axhline(0, color=RULE, lw=0.9); ax.axvline(0, color=RULE, lw=0.9)
+        # **零線在 scatter 是有條件的，不是常態**（2026-08-25 errata）。
+        # 這兩行原本無條件畫，matplotlib 因此把兩個軸都撐到原點 ——
+        # 當期 `yen-nikkei-link-came-loose` 用美元兌日圓（約 140–164）對
+        # 日經 225（約 31,000–72,400）畫 620 個點，**全部擠在右上角約六分之一的畫面裡**。
+        # 而 `reading` 寫著「這一段在圖上是一條近乎垂直的線」——
+        # 圖上看不出來，那句話因此變成讀者無法驗證的宣稱。
+        #
+        # **資料是對的、欄位是齊的、檢查全綠（17 PASS · 1 WARN · 0 FAIL）**：
+        # `kind_data` 只驗 `pts` 在不在，`option_matches_spec` 只驗 option 有沒有
+        # 忠實編碼 spec，沒有任何一條在問「這張圖看得出它要講的事嗎」。
+        # 08-24 那張 scatter 兩軸都是報酬率、原點有意義，所以看起來沒事 ——
+        # **同一個缺陷，隔一天才長出症狀。**
+        #
+        # 改成讀 `ch.zero_line`（預設 false），與其他圖型一致。
+        # 既有封存不回頭改寫；要重畫舊期走 `rebuild_option.py --png`。
+        if ch.zero_line:
+            ax.axhline(0, color=RULE, lw=0.9); ax.axvline(0, color=RULE, lw=0.9)
         offs = [(11, 9), (11, -15), (-14, 12), (-14, -18)]   # 交錯避免標籤互壓
         for k, (x, y, lab) in enumerate(ch.hi_pts):
             ax.scatter([x], [y], s=66, c=ACCENT, zorder=5, linewidths=0)
@@ -514,7 +567,19 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
                     pool = [v for t in same for v in t.values if v is not None]
                     lo_, hi_ = (min(pool), max(pool)) if pool else (0.0, 1.0)
                     frac = (last - lo_) / (hi_ - lo_) if hi_ > lo_ else 0.5
-                    used = _label_slots.setdefault(axis_key, [])
+                    # **讓位要跨軸，因為疊印跨軸。** 這裡原本是
+                    # `_label_slots.setdefault(axis_key, [])` —— 左右軸各一個清單，
+                    # 於是雙軸的兩條線永遠不會互相讓位。2026-08-28 實測撞上：
+                    # 高收益 OAS（左）15.21 與 VIX（右）2.67 幾乎完全疊印，
+                    # 當天是靠**換掉一條序列**繞過去的，缺陷留到現在。
+                    #
+                    # 跨軸比 `frac` 是對的，而且理由要說清楚：matplotlib 把每個 y 軸
+                    # 各自縮放到自己的資料範圍，所以「軸內相對位置」對兩個軸來說
+                    # **都約等於畫布上的垂直位置** —— 兩條末值標籤又都畫在 x[-1]、
+                    # 同一個水平位置上，所以 frac 相近就是真的會疊。
+                    # 絕對值不可比（15.21 對 2.67 差六倍），frac 可比，
+                    # 這正是上面那段特地把範圍算成「同軸序列聯集」的理由。
+                    used = _label_slots.setdefault("__all__", [])
                     dy = -3
                     for prev in used:
                         if abs(prev - frac) < 0.06:
@@ -527,7 +592,7 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
         if ch.zero_line:
             ax.axhline(0, color=RULE, lw=1.0)
         _draw_markers(ch, ax)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%y/%m"))
+        _date_axis(ax)      # 格式配合刻度密度，見 _date_axis 的 2026-08-29 病歷
         ax.yaxis.set_major_formatter(_fmt(ch.y_fmt))
         if ax2 is not None:
             ax2.yaxis.set_major_formatter(_fmt(ch.y2_fmt))
@@ -894,8 +959,16 @@ def _echarts_new_kind(ch: Chart, base: dict) -> dict:
 # 這是「**改一半比沒改更難發現**」的教科書案例：當初測的那個案例剛好是 timeseries，
 # 所以看起來修好了。抽成共用函式並讓三條出口都經過它，讓「哪一種圖型」不再是變因。
 #
-# gauge 與 heatmap 排除，與 render_static() 第 408 行的條件逐字相同——
+# gauge 與 heatmap 排除，與 render_static() 那一段的條件逐字相同——
 # 那兩種沒有可言的零線。
+#
+# **2026-08-29 補：在此之前 scatter 是反過來漂的。** 上面那段講的是互動軌少畫，
+# 而 scatter 的靜態軌是**無條件多畫**（`axhline(0)` 與 `axvline(0)` 不讀 `zero_line`），
+# 互動軌卻老實走這個函式 —— 於是同一張 scatter，PNG 有零線、網頁沒有。
+# 兩軌漂移的兩個方向在同一個檔案裡同時存在了九天，而
+# `option_matches_spec` 只問「option 有沒有忠實編碼 spec」，
+# **它從來不問 PNG 有沒有多畫東西**（那正是 drift_assertions.blind_to 寫的
+# 「驗不到 matplotlib 畫錯了」）。現在兩邊都讀 `ch.zero_line`。
 def _apply_zero_line(ch: Chart, base: dict) -> dict:
     if not ch.zero_line or ch.kind in ("gauge", "heatmap"):
         return base

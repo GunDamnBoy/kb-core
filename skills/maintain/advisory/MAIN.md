@@ -108,8 +108,14 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
 - `preamble.md` 的黑名單與發稿日曆有沒有跟上來源異動。
 - 保底數據卡（`anchors.base_card_groups`）、窗口定義、則數目標、完成時間。
 - 跨版去重與 `dedup_exempt`。
-- `index.html` 的徽章表 vs `BRIEF.md` —— **從檔案實際解析**；
-  已停用的來源代碼應留在 CSS／BADGE 對照裡、只從顯示列拿掉。
+- ~~`index.html` 的徽章表 vs `BRIEF.md`；已停用的來源代碼應留在 CSS／BADGE 對照裡。~~
+  **2026-08-29 查證後刪除這一項：現行 `index.html`（2026-08-22 版）裡根本沒有徽章對照表。**
+  `cardHtml()` 直接把 `c.src`／`c.tag`／`deep`／`base`／`thread` 渲染成統一樣式的 chip
+  （`.chip.src` 只有一組配色），全檔搜不到任何以來源名為 key 的對照
+  （`Bloomberg`／`CNBC`／`鉅亨`／`Nikkei`／`WSJ` 全部零命中），`.t-*` 也沒有任何 CSS。
+  **結論：來源異動不需要動 `index.html`。** 照舊版去找那張表會找不到，
+  而「找不到」很容易被當成「表壞了」——所以刪掉比留著更安全。
+  （順帶記一筆，不必動：`tagcls` 寫進了資料、檢查也驗它的值域，但外殼從頭到尾沒有讀它。）
 - 瀏覽器 HOME deviceId 是否仍在 `list_connected_browsers` 回傳中；
   fallback 必須是排除 WORK，不可用 connectedAt。
 - 排程與實裝：`kb-core/launchd/*.plist` vs `~/Library/LaunchAgents/` 裡的副本

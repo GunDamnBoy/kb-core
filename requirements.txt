@@ -24,3 +24,29 @@ python-docx
 # pdftotext 的版面保留最好，有就用；沒有就走這裡，不會整條管線停擺。
 # 它同時是唯一抽得到表格的一條（pypdf 抽不到），而外資報告的數字大量住在表格裡。
 pdfplumber
+
+# 每日五圖的握手客戶端（scripts/chart/fetch.py 的 yahoo_handshake()）。
+#
+# **這一行 2026-08-29 才補上，而握手那條路 08-22 就寫好了。** 中間七天，
+# `anchors.rate_limits.handshake_allowlist` 上那五條（櫃買指數、韓綜、三星、
+# 東京威力科創、愛德萬）每天預抓都回
+# 「需要握手客戶端，但沒有安裝 yfinance：No module named 'yfinance'」，
+# 每天在執行報告裡被記一次，**而沒有人去裝它** ——
+# 症狀被當成新聞寫了四天，根因是一個從來沒有被宣告過的相依。
+# **`requirements.txt` 沒列的東西，不會有人幫你裝。**
+#
+# 為什麼 stdlib 做不到：SOURCES.md 已經量過（2026-08-22，同一台機器、同一個 IP、
+# 相隔幾秒），裸 urllib＋固定 UA 第一個請求就 429，做完 cookie／crumb 握手的
+# 客戶端拿得到資料。**封鎖是客戶端層，不是機器。** 同一份實測也查掉了六家
+# 有金鑰的來源與 Stooq、Twelve Data，那五條沒有第二條路。
+#
+# **代價要寫下來：它拉進 12 個執行期相依**（pandas、numpy、lxml、curl_cffi、
+# protobuf、websockets、peewee、beautifulsoup4、multitasking、platformdirs、
+# pytz、requests）。這是本檔開頭那條「每加一個都要問 stdlib 做不到嗎」
+# 最貴的一次讓步 —— 換到的是五條序列。考慮過只用 curl_cffi 自己做握手
+# （相依少得多），**但那等於自己維護一個 Yahoo 客戶端**，而 Yahoo 每隔幾個月
+# 改一次協定正是 yfinance 存在的理由。不釘版本，理由同 python-docx：
+# 壞掉的形態是「Yahoo 改了、舊版跟不上」，釘住只會讓我們卡在壞掉那一版；
+# 而壞掉是**看得見**的 —— yahoo_handshake() 把空表當失敗拋出去，
+# 預抓記進狀態檔的 `handshake.failed`，這次就是那樣被抓到的。
+yfinance

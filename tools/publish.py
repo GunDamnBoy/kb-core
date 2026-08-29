@@ -55,7 +55,7 @@ sys.path.insert(0, str(ROOT))
 import checks  # noqa: F401,E402
 import systems  # noqa: F401,E402  匯入即登記
 from kbcore.report import run_all  # noqa: E402
-from kbcore.repo import check_destination  # noqa: E402
+from kbcore.repo import check_destination, day_json  # noqa: E402
 from kbcore.result import Exit, Level  # noqa: E402
 from kbcore.system import REGISTRY as SYSTEMS, get as get_system  # noqa: E402
 
@@ -143,7 +143,11 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
 
     date = draft["date"]
     target = repo / "data" / f"{date}.json"
-    body = json.dumps(draft, ensure_ascii=False, indent=1)
+    # 格式的家在 `kbcore/repo.day_json()`，**不在這裡**。
+    # 這一行原本是 `json.dumps(draft, ensure_ascii=False, indent=1)`，而產生端那三支
+    # 寫的是 compact —— 守衛比的是字串，於是「先出圖再交草稿」必然撞 exit 11。
+    # 2026-08-29 的完整病歷寫在那個函式的 docstring 裡。
+    body = day_json(draft)
 
     # 2. 不可改寫守衛
     #

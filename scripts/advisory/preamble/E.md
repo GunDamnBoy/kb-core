@@ -49,7 +49,13 @@
 - **JSON／CSV 端點：先 `navigate` 到同網域頁面，再用 `javascript_tool` 發 `fetch`。**
   直接 `navigate` 到 JSON 網址會被 Chrome 當檔案下載；跨子網域直接 `fetch` 會被 CORS 擋。
 - **每組自建分頁、每次呼叫明確帶 `tabId`、收工前關掉。
-  不要叫 `tabs_context_mcp`。** 你不需要知道使用者原本開了哪些分頁 ——
+  不要叫 `tabs_context_mcp`。**
+  **⚠️ 「自建」的做法是先叫 `tabs_create_mcp` 拿一個新的 `tabId`，再用那個 id ——
+  不要用 standalone `navigate` 代替。** 2026-08-29 有採集員照禁令不叫 `tabs_context_mcp`、
+  改用 standalone `navigate` 自動建分頁，**結果拿到的是分頁群組的第一個共用分頁，
+  把另一組正在讀的 Barron's 頁面導走了** —— 正是下面第二個理由要防的那個事故。
+  （`tabs_create_mcp` 的工具說明要求「先叫 `tabs_context_mcp`」，**實測不叫也能直接建、
+  也會回傳 tabId**，兩者不衝突，以本節的禁令為準。） 你不需要知道使用者原本開了哪些分頁 ——
   你要的是你自己開的那一個。~~2026-08-24 量到：一次回傳 43k、第 7 輪進來、被重讀 180 多輪，
   佔採集員重讀成本 36%、全輪 14%。~~
   **2026-08-25 撤回這組數字。** 它是 `message.id` 去重之前量的。去重後重跑
@@ -169,11 +175,11 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 
 | 來源 | 現在要怎麼取 | 實測 |
 |---|---|---|
-| IBD | 正文**三組都要試、取段數最多的**：`article p`／`main p`／`.post-content p`。同一天實測到兩種相反的排序——有篇 `article p` 20 段／2,748 字勝過 `.single-post-content p` 14 段／2,135 字，另一篇 `article p` 只回 **7 段／1,023 字**（結尾還帶刪節號、像付費牆前導段）而 `main p` 回 **52 段／8,606 字**。**只試一組就下結論會把好文記成被擋。** 另注意 `/news/<主題>/` 底下有一批**常青 hub 頁**（`stock-market-today-...`、`ai-stocks-...`、`cpi-inflation-...`），`ld+json` 的 `datePublished` 停在遠期日期，那不是單篇文章。**⚠️ 入口：`investors.com/news/economy/` 已經不是列表頁**（08-24 實測，兩次都一樣）——它會 302 到一篇 **2018-01-05** 的舊稿，從該頁撈到的連結也全是 2018 年份。**改從 `investors.com/` 首頁或 `/news/` 進**（08-24 首頁掃到 19 條有效連結、`datePublished` 全部是 2026 年 8 月）。這種失敗**不會觸發任何門檻告警**：它安靜地回舊稿、內文完整、選擇器正常，比被擋更危險 —— **每一篇都要驗 `ld+json` 的 `datePublished`**。**⚠️ 2026-08-28 這一家整天被擋（登入態未帶上），而它被擋的樣子不會碰到門檻**：兩篇獨立複驗、十組選擇器全試過，最多的 `article p` 就是 **7 段／約 1,030 字元**（其中還有 2 段是版權宣告與跑馬燈），整頁 `innerText` 只有 4,260 字元、**沒有任何 Subscribe／Sign In／攔截字串**。決定性的機械特徵有三個，看到就直接判被擋、不必等字數掉到 800 以下：①可見內文掛在 **`div.investors-paywall-excerpt`** 底下（容器名稱自己就承認是摘要）②**內文結尾是刪節號**③`window.InvestorsPaywallData` 帶 `iv` 與 `encrypted_document_key`，而 **`is_unlocked` 讀出來是空字串** —— 全文確實送到瀏覽器了，只是前端解密沒被授權。**這時候該查的是這個 Chrome profile 的 IBD 登入／entitlement，不是選擇器** | 08-28 |
+| IBD | 正文**三組都要試、取段數最多的**：`article p`／`main p`／`.post-content p`。同一天實測到兩種相反的排序——有篇 `article p` 20 段／2,748 字勝過 `.single-post-content p` 14 段／2,135 字，另一篇 `article p` 只回 **7 段／1,023 字**（結尾還帶刪節號、像付費牆前導段）而 `main p` 回 **52 段／8,606 字**。**只試一組就下結論會把好文記成被擋。** 另注意 `/news/<主題>/` 底下有一批**常青 hub 頁**（`stock-market-today-...`、`ai-stocks-...`、`cpi-inflation-...`），`ld+json` 的 `datePublished` 停在遠期日期，那不是單篇文章。**⚠️ 入口：`investors.com/news/economy/` 已經不是列表頁**（08-24 實測，兩次都一樣）——它會 302 到一篇 **2018-01-05** 的舊稿，從該頁撈到的連結也全是 2018 年份。**改從 `investors.com/` 首頁或 `/news/` 進**（08-24 首頁掃到 19 條有效連結、`datePublished` 全部是 2026 年 8 月）。這種失敗**不會觸發任何門檻告警**：它安靜地回舊稿、內文完整、選擇器正常，比被擋更危險 —— **每一篇都要驗 `ld+json` 的 `datePublished`**。**⚠️ 2026-08-28 這一家整天被擋（登入態未帶上），而它被擋的樣子不會碰到門檻**：兩篇獨立複驗、十組選擇器全試過，最多的 `article p` 就是 **7 段／約 1,030 字元**（其中還有 2 段是版權宣告與跑馬燈），整頁 `innerText` 只有 4,260 字元、**沒有任何 Subscribe／Sign In／攔截字串**。決定性的機械特徵有三個，看到就直接判被擋、不必等字數掉到 800 以下：①可見內文掛在 **`div.investors-paywall-excerpt`** 底下（容器名稱自己就承認是摘要）②**內文結尾是刪節號**③`window.InvestorsPaywallData` 帶 `iv` 與 `encrypted_document_key`，而 **`is_unlocked` 讀出來是空字串** —— 全文確實送到瀏覽器了，只是前端解密沒被授權。**這時候該查的是這個 Chrome profile 的 IBD 登入／entitlement，不是選擇器**。**08-29 複驗：仍然被擋，這是連續第二輪**，三項機械特徵完全重現（`article p` 7 段／1,020 字元、excerpt 容器在、`is_unlocked` 空字串、整頁無攔截字串），開場測試與採集員各自獨立測到同一組數字。**另一個入口坑**：首頁的文章連結**末尾帶斜線**，用 `href.split('/').pop().length > 25` 篩 slug 會回 **0 條**、看起來就像「首頁沒有文章」，要先 `.replace(/\/$/,'')` 再取最後一段 | 08-29 |
 | Politico | `politico.com/news` 與 `politico.eu/section/economy` 都是 **404**，從首頁進。正文用 **`main p`**；`.story-text p` 與 `div[class*="story"] p` 都回 **0 段** | 08-22 |
 `/"articleUrl":"[^"]*?wsj\.com(\/[^"]+)"[\s\S]{0,900}?"timestamp":"([^"]+)"/g`
-—— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文** | 08-23 |
-| The Hill | 正文**先試 `.article__text p`，再試 `article p`，取段數多的那一組**；**`main p` 回 0 段，不要當備援**（08-24 三篇實測都是 0）。這一家的稿子普遍偏短、常常剛好壓在門檻上（08-24 實測 9–12 段／1,921–2,448 字），**壓線不等於被擋** | 08-24 |
+—— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文**。**08-29 補兩條**：①`__NEXT_DATA__` 的配對正則仍然有效，`/news/archive/2026/08/28` 抓到 117 組、時間戳範圍 `04:00Z → 次日 04:00Z`，**美東日界確認**；跨窗口起點時**必須抓兩天的 archive**，只抓當天會漏掉台北 07:00–12:00 那五小時。②**`/politics/` 也會出電子報**（`/politics/cia-chiefs-trip-to-moscow-has-everyone-on-edge-<hash>` 實為 WSJ Politics Newsletter，`main p` 只有 10 段／794 字元、正文開頭是 `NEWSLETTERS` ＋ `Good morning.`），**唯一認得出來的地方是 `<title>` 尾巴的 `Newsletter for <日期>`** —— 它同時不符「完整」也不符「被擋」，換選擇器救不回來，因為本來就沒有正文 | 08-29 |
+| The Hill | 正文**先試 `.article__text p`，再試 `article p`，取段數多的那一組**；**`main p` 回 0 段，不要當備援**（08-24 三篇實測都是 0）。這一家的稿子普遍偏短、常常剛好壓在門檻上（08-24 實測 9–12 段／1,921–2,448 字；08-29 再測 9 段／1,739 與 22 段／3,978，兩篇都是 `article p` 勝出），**壓線不等於被擋**。**⚠️ `newsletters/` 前綴整批是電子報，直接列黑名單**：08-29 實測首頁 77 條連結裡有 `newsletters/whole-hog-politics`、`/defense-national-security`、`/energy-environment`、`/technology`，**格式與一般文章完全相同、ID 也在同一序列**，等同 WSJ 的 `/cio-journal/` 那四個前綴。另 `homenews/…/live-updates-…` 是滾動直播頁，同樣不當文章用 | 08-29 |
 
 **「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
 而實際上是選擇器沒對上或路徑搬家了。**擋源三分的第一步永遠是換一組選擇器重試。**
@@ -206,6 +212,20 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 - 真的需要識別碼時，**只回裸 slug、裸 GUID 或裸 id**，由呼叫端拼回永久連結
   —— 08-28 全程這樣做的採集員被擋 0 次。
 - 一次回傳的路徑條數也要壓：Nikkei 那次一口氣回 15 條被擋，切成 8 條就過。
+- **⚠️ 2026-08-29 再擴一次觸發物：學術註腳／參考書目也會中，而且與 URL 無關。**
+  當天在 `federalreserve.gov` 的演說全文上連兩次被擋：第二次已經把 `https?://\S+`、
+  `\?[\w=&%-]{3,}`、`<>` 全部剝掉、只回 4 段內文、長度壓到 1,500，**仍舊被吃掉**。
+  推測觸發物是內文尾端的註腳區塊（含 DOI、`vol. 63 (1), pp. 277–80` 這類形狀）。
+  **這種長文直接用 `get_page_text`，不要用 `javascript_tool` 回內文。**
+- **可以安全回傳的一種形狀：去掉 scheme 與網域的純路徑**（例 `market/ipo/jio-…-1178…html`）。
+  2026-08-29 在 Mint、Fierce Biotech、STAT News 三家共 3 次全部通過。
+  **這比「只回裸 slug、呼叫端自己拼區段」省一輪猜測**（Fierce 的 `/biotech/` vs `/medtech/`、
+  Mint 的多層區段都猜不出來）。但「絕不回 query string、絕不回 HTML 片段」兩條不變。
+- **⚠️ `browser_batch` 的 `actions[].name` 必須用未加前綴的短名**（`navigate`、`javascript_tool`）；
+  寫成 `mcp__claude-in-chrome__navigate` 會回 `unknown tool` 並**整批中止**，白打一次呼叫。
+  另外**批次內不要放跨越頁面導向的長 sleep**：08-29 在 WSJ、NYT、MarketWatch 都撞到
+  `Inspected target navigated or closed`（這幾家載入後會自我重導）——
+  改成「先 navigate，等頁面靜下來後另發一次 `javascript_tool`」即可。
 
 ### 電子報彙整頁不是文章，而它的網址跟文章一模一樣
 

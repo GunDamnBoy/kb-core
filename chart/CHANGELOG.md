@@ -1,5 +1,148 @@
 # 每日五圖｜重建紀錄
 
+## 2026-08-29（六）｜清掉六件積欠的維護，其中三件都是「綠燈的失效」
+
+這一輪處理的六項全部來自 08-25 至 08-29 的執行報告，**沒有一項是新發現的**——
+它們每天都被寫進報告，然後每天原樣留到隔天。這件事本身就是這一輪最值得記的：
+**寫進報告不等於進了修復佇列。**
+
+### 動到哪些檔
+
+| 檔 | 改了什麼 |
+|---|---|
+| `requirements.txt` | 新增 `yfinance`（握手客戶端），連同 12 個相依的代價寫在原地 |
+| `chart/anchors.json` | `known_exceptions.qa_disposed_from` `null` → `2026-08-25`；`rendering.legacy_json_format` 新增；`kinds._pick._anti` 補 scatter 零線那條 |
+| `kbcore/repo.py` | 新增 `day_json()` 與 `write_day_json()`——日檔序列化的唯一的家 |
+| `tools/publish.py` | `body` 改走 `day_json()` |
+| `scripts/chart/_repo.py` | 把 kb-core 根加進 `sys.path`（讓 chart 腳本能 import `kbcore`） |
+| `scripts/chart/render_day.py`／`build_series.py`／`rebuild_option.py` | 三支的寫檔全部改走 `write_day_json()` |
+| `scripts/chart/chartkit.py` | 新增 `_date_axis()`；`_label_slots` 改跨軸；scatter 零線改讀 `ch.zero_line` |
+| `skills/chart/SKILL.md` | 第 4 步補上 `about.qa_dispositions` 的確切形狀 |
+| `scripts/chart/RUN-PROMPT.md` ＋ 排程 prompt | exit 11 的處置補上「先問那一天真的發布過嗎」 |
+
+### 六件事各自「當初藏住的方式」
+
+1. **yfinance 從來沒有被宣告過。** 握手那條路 08-22 就寫好了，`anchors` 登記了五條代號，
+   `fetch.py` 也實作了——**唯獨沒有人把套件裝進去**。四天的執行報告都寫著
+   「連續第 N 天同一個原因」，把症狀當成新聞記了四次。
+   **藏住的方式**：失敗是大聲的（`handshake.failed` 每天都有東西），
+   但它每天長得一模一樣，於是變成背景噪音。
+   **`requirements.txt` 沒列的東西，不會有人幫你裝。**
+
+2. **`qa_disposed_from` 空轉了五天。** SKILL 第 4 步實際上從 08-25 起每一期都在寫
+   `about.qa_dispositions`，而檢查每天回 SKIPPED。
+   **藏住的方式**：**一條永遠 SKIPPED 的檢查，與一條不存在的檢查，在輸出上長得一模一樣。**
+   兩者都不會變紅，也都不會擋任何東西。
+
+3. **日檔有兩種寫法，而守衛比的是字串。** `publish.py` 寫 `indent=1`，
+   `render_day`／`build_series`／`rebuild_option` 三支寫 compact。
+   **藏住的方式**：症狀是 exit 11「已存在且內容不同」，
+   而 exit 11 的字面意思是「已發布的一期就是已發布的樣子」——
+   **一個指向錯誤結論的正確訊息**。08-29 那輪差一點就去掛一份不存在的 errata。
+   更糟的是 `rebuild_option.py`：它是修既有封存的唯一合法工具，
+   卻會把封存整份重排，**資料沒變而 diff 是全檔重寫**。
+
+4. **x 軸 formatter 與 locator 各自決定、沒有人對過帳。** locator 是自動的，
+   formatter 被寫死 `%y/%m`，於是 49 個交易日的窗口印出 `26/07、26/07、26/08、26/08`。
+   **藏住的方式**：檢查程式看不到像素；而長窗口的圖（大多數）完全正常，
+   只有短窗口會現形。修法不是「標籤去重」——**去重會讓刻度消失，刻度是對的、格式才是錯的**。
+
+5. **末值標籤的讓位以軸為鍵，而疊印跨軸。** 左右軸各一個清單，兩條線永遠不互相讓位。
+   **藏住的方式**：08-28 撞上時是**換掉一條序列**繞過去的，
+   當期圖看起來沒事，缺陷因此留下來——**繞過去的缺陷不會出現在任何紅字裡**。
+
+6. **scatter 的零線是反方向的雙軌漂移。** 靜態軌無條件畫 `axhline(0)`＋`axvline(0)`、
+   不讀 `zero_line`，互動軌卻老實走 `_apply_zero_line()`——**同一張圖 PNG 有、網頁沒有**。
+   **藏住的方式**：08-24 那張 scatter 兩軸都是報酬率、原點有意義，看起來沒事；
+   08-25 兩軸都是水準值，620 個點被壓進畫面六分之一，而檢查全綠
+   （17 PASS · 1 WARN · 0 FAIL）。`option_matches_spec` 只問
+   「option 有沒有忠實編碼 spec」，**它從來不問 PNG 有沒有多畫東西**。
+
+### 怎麼驗的（全部是當場量的，沒有估算）
+
+- `py_compile` 五個目錄、檢查自檢（fixture ＋ near_miss）**0 失敗**、
+  `build_series.py --selftest` 通過。
+- **`chart_verify` 2026-08-29：`17 PASS · 1 WARN · 0 FAIL · 1 SKIPPED`
+  → `18 PASS · 1 WARN · 0 FAIL · 0 SKIPPED`。** 唯一的 SKIPPED 變成 PASS，
+  這正是第 2 項的預期效果，沒有第二個檢查跟著動。
+- 生效日回測：`chart.qa_disposed` 在 08-24 回 SKIPPED（早於生效日）、
+  08-25／26／28／29 全部 PASS（1/1、6/6、6/6、1/1 筆）。08-25 之前那 12 期
+  「有旗標、零處置」照 MAIN.md 的規矩回 SKIPPED，不是 FAIL。
+- `chartkit_smoke.py` **9/9 種圖型畫得出來**。
+- 三張圖在暫存 repo 重畫後**實際看過**（封存一個位元都沒動）：
+  x 軸由 `26/07、26/07、26/08、26/08` 變成 `07/01、07/15、08/01、08/15`，
+  長窗口的圖仍是 `%y/%m`（無回歸）；重現 08-28 的雙軸案例（高收益 OAS 2.63 對 VIX 14.51，
+  軸內相對位置 0.000 對 0.015、差 0.015 遠小於門檻 0.06），兩個標籤**分開了**；
+  重畫 08-25 的 scatter，620 個點填滿畫布，`reading` 說的「近乎垂直的線」現在看得見。
+- **改了 `publish.py`，所以照 MODIFY.md 在 `/tmp` 另建 bare origin ＋ 工作 repo 跑端到端**
+  （沒有碰任何真 repo）：第一次 `exit 0 @ pushed`，`git ls-tree` 確認遠端
+  同時收到 `data/2026-08-30.json` 與 `charts/2026-08-30/` 的 10 個檔；
+  再交同一份草稿 → `exit 0 @ already-published`。
+  **針對 08-29 那個症狀的直接回歸**：同一份 doc，舊寫法（compact）與 publish 的
+  `body` 不同 → 守衛開火 exit 11；新寫法相同 → 不開火。
+- 22 份封存全部可 `json.load`；`anchors.json` 可 `json.load`；
+  `index.html` 抽 script 後 `node --check` 通過；兩個 repo 的 symlink 各自歸零。
+
+### 順帶量出來的一件事（沒有修，登錄在 anchors）
+
+逐檔盤 22 份封存的字面格式：**08-05 至 08-17 有 12 份是 compact，08-21 之後全部 indent=1**
+（08-10 例外，應是事後補發過）。**這條分界線與 `rendering.legacy_dialect` 完全重合**——
+都是 08-20 重建的前後，因為重建之後寫入者換成了 `publish.py`。
+封存不改寫，所以那 12 份維持原樣；代價寫進 `anchors.rendering.legacy_json_format`：
+**現在拿 `rebuild_option.py` 修它們任何一份，會順手把整份重排，diff 變成全檔重寫。**
+
+### 怎麼倒回去
+
+六項互相獨立，可以逐項倒：
+
+- yfinance：`requirements.txt` 刪那一段；已裝的套件留著不影響任何東西。
+- `qa_disposed_from`：改回 `null`，`chart.qa_disposed` 立刻回到每天 SKIPPED。
+- 共用寫入函式：`publish.py` 的 `body` 改回 `json.dumps(draft, ensure_ascii=False, indent=1)`，
+  三支腳本改回 `separators=(",", ":")`——**但那等於把 exit 11 的假警報放回來**。
+- chartkit 三項各自獨立：`_date_axis(ax)` 改回 `set_major_formatter(DateFormatter("%y/%m"))`、
+  `_label_slots.setdefault("__all__", [])` 改回 `setdefault(axis_key, [])`、
+  scatter 的 `if ch.zero_line:` 拿掉。**已發布的 PNG 不受影響**（封存不重畫）。
+
+### 當時已知的風險
+
+- **`chartkit.py` 不只 chart 在用。** `scripts/research/assemble.py`（外資報告週摘，
+  週日 23:00）也 import 它，`checks/houseview.py` 會讀它的全文。
+  三項改動都經過 `chartkit_smoke.py` 的九種圖型，但**那支不畫外資報告的實際版面**——
+  **下一期週摘（08-30 深夜）是第一個真實驗收點**，值得看一眼它的圖。
+- **`_date_axis()` 會在 `get_xticks()` 時觸發 locator**，所以必須在畫完資料之後呼叫。
+  兩個呼叫點都放在繪圖之後，但**若之後有人在別的地方加第三個日期軸圖型，
+  順序放錯的樣子是「格式退回 `%m/%d`」而不是報錯**。
+- **`qa_disposed` 現在會擋發布。** SKILL 第 4 步已補上確切的 JSON 形狀，
+  但那是文件，不是守門人——**下一輪如果把 key 拼錯，會拿到 exit 10 而不是靜默通過**。
+  那是刻意的，但要有人知道。
+- yfinance 未釘版本：壞掉的形態是「Yahoo 改了、舊版跟不上」，
+  釘住只會讓我們卡在壞掉那一版。**壞掉是看得見的**（空表當失敗拋、記進 `handshake.failed`）。
+- ~~**第 1 項還沒完成。** 宣告了不等於裝了~~ —— **當天稍後已在 Mac 上裝好並實測，見下。**
+
+### 補記（同日 12:35）：yfinance 裝好了，而 `^TWOII` 是另一回事
+
+在 Mac 上裝好之後逐條實測握手清單五條（唯讀探針，每條只打一次）：
+`^KS11` 2,447 點末日 08-27（落後 2 天，警示）、`005930.KS` 2,447 點末日 08-28、
+`8035.T` 與 `6857.T` 各 2,464 點末日 08-28（三條可用）。
+**握手那條路本身是好的**，客戶端層的封鎖確實靠它解掉了。
+
+**但 `^TWOII` 落後 43 天、末日凍在 2026-07-17。** 08-08 量到的是 22 天——
+不是固定延遲，是**這條序列在 Yahoo 上停止更新了，而且還在惡化**。
+對照組決定了結論：同日 `8069.TWO`（櫃買個股、走櫃買官方端點）末日 08-27，
+所以不是櫃買資料拿不到，是**櫃買的「指數」在這條路上死了**。留在允許清單裡，
+因為官方端點仍只給個股與加權指數，FRED 無等價、也沒有 ETF 代理——**還是沒有第二條路。**
+
+**要記的是它的失敗形狀變了。** 在此之前它每天落在 `handshake.failed`，是大聲的失敗；
+從明天起它會落進 `ok`，預抓涵蓋率從 33/48 往上跳，看起來像進步，
+**而它依然過不了 `freshness` 的硬失敗門檻**。
+**失敗沒有變好，只是變安靜了**——這正是 `data_paths.streak_note` 講的那個形狀，
+換一個位置又長了一次。已登錄進 `SOURCES.md` 與 `rate_limits.handshake_allowlist`。
+
+**驗證指令自己也錯過一次**：第一版漏了 `CHART_REPO`，而 `fetch.py` 在 import 時就
+呼叫 `_repo.repo()`——**失敗訊息長得像資料 repo 找不到，實際上安裝是成功的**。
+`yahoo_handshake()` 本身用不到資料 repo（它只讀 kb-core 的 anchors），
+是模組層的副作用把環境變數變成了必需品。
+
 ## 2026-08-25（二）｜errata：scatter 的零線把水準尺度的散點壓進角落
 
 `data/2026-08-25.json` 已於 11:46 發布（commit `447a515`，回執 exit 0），

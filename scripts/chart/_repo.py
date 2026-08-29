@@ -15,6 +15,18 @@
 import os
 import sys
 
+# ── kb-core 自己的根目錄 ────────────────────────────────────────────
+# **這裡從 `__file__` 推是對的，上面那段警告不適用。** 兩者是不同的東西：
+# 資料 repo 的位置是**執行時的選擇**（同一份程式可以指向不同的 repo，
+# 猜錯的樣子是「寫到別的目錄而且看起來成功」），而 kb-core 的根目錄是
+# **這個模組自己所在的位置**——它不可能指到別份程式碼，推錯會 ImportError。
+#
+# 加它是為了讓 `scripts/chart/*` 能 `from kbcore.repo import ...`：
+# 日檔的序列化格式與 publish 共用一個家（2026-08-29，見 `kbcore/repo.day_json`）。
+_KB_CORE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _KB_CORE not in sys.path:
+    sys.path.insert(0, _KB_CORE)
+
 
 def repo(explicit: str = "") -> str:
     p = explicit or os.environ.get("CHART_REPO") or ""

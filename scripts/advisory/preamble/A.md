@@ -49,7 +49,13 @@
 - **JSON／CSV 端點：先 `navigate` 到同網域頁面，再用 `javascript_tool` 發 `fetch`。**
   直接 `navigate` 到 JSON 網址會被 Chrome 當檔案下載；跨子網域直接 `fetch` 會被 CORS 擋。
 - **每組自建分頁、每次呼叫明確帶 `tabId`、收工前關掉。
-  不要叫 `tabs_context_mcp`。** 你不需要知道使用者原本開了哪些分頁 ——
+  不要叫 `tabs_context_mcp`。**
+  **⚠️ 「自建」的做法是先叫 `tabs_create_mcp` 拿一個新的 `tabId`，再用那個 id ——
+  不要用 standalone `navigate` 代替。** 2026-08-29 有採集員照禁令不叫 `tabs_context_mcp`、
+  改用 standalone `navigate` 自動建分頁，**結果拿到的是分頁群組的第一個共用分頁，
+  把另一組正在讀的 Barron's 頁面導走了** —— 正是下面第二個理由要防的那個事故。
+  （`tabs_create_mcp` 的工具說明要求「先叫 `tabs_context_mcp`」，**實測不叫也能直接建、
+  也會回傳 tabId**，兩者不衝突，以本節的禁令為準。） 你不需要知道使用者原本開了哪些分頁 ——
   你要的是你自己開的那一個。~~2026-08-24 量到：一次回傳 43k、第 7 輪進來、被重讀 180 多輪，
   佔採集員重讀成本 36%、全輪 14%。~~
   **2026-08-25 撤回這組數字。** 它是 `message.id` 去重之前量的。去重後重跑
@@ -169,12 +175,13 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 
 | 來源 | 現在要怎麼取 | 實測 |
 |---|---|---|
-| Bloomberg | 正文 `article p`（＝`main p`）；`p[class*="paragraph"]` 回 **0 段**。**列表頁 HTML 內嵌 `"publishedAt"`（真 UTC）＋`"slug"`，可整版預篩、完全不必逐篇開頁** —— 配對法是「`publishedAt` 之後 4,000 字元內的第一個 `slug`」，08-23 拿 90 篇的時間戳、事後對 8 篇開頁複驗 `datePublished` **8/8 吻合**。這正是 2026-08-09 風控事故要防的行為模式的解法。**`/latest`、`/markets/stocks`、`/markets/currencies`、`/markets/commodities`、`/businessweek` 五個路徑回 0 篇**，改用 `/markets`、`/economics`、`/technology`、`/markets/fixed-income`、`/industries`、`/wealth`、`/opinion`、`/deals`。**⚠️ 這一家也有電子報彙整頁與 podcast 頁，而 slug 完全看不出來**（見「電子報彙整頁」那一節） | 08-28 |
-| CNBC | 正文**先試 `div[class*="ArticleBody"] p`；回 0 段時改取 `.ArticleBody-articleBody` 的子節點 `innerText`**。08-24 實測：一般新聞稿四篇都命中第一組（13–36 段），但 **Cramer 那種專欄型文章 `div[class*="ArticleBody"] p`／`main p`／`article p` 全回 0 段**，正文是裸 `<span>` 掛在 `.ArticleBody-articleBody` 底下，改取容器子節點得 10,106 字元。**這是「回 0 段與被擋長得一樣」的又一例。** RSS 在 `cnbc.com/id/<sectionId>/device/rss/rss.html`，可同網域 fetch。**⚠️ RSS 的 `pubDate` 是更新時間、不是發布時間，而且差得夠遠會跨過窗口** —— 08-23 實測一篇 RSS 給 07:12（窗口內）、`article:published_time` 卻是 02:03 台北（窗口起點前 4 小時），另一篇 pub 與 mod 差 6 小時 21 分。**預篩一律以文章頁 `datePublished` 為準。** `/pro/` 與 Investing Club 是獨立付費層，屬訂閱範圍外 | 08-23 |
+| Bloomberg | 正文 `article p`（＝`main p`）；`p[class*="paragraph"]` 回 **0 段**。**列表頁 HTML 內嵌 `"publishedAt"`（真 UTC）＋`"slug"`，可整版預篩、完全不必逐篇開頁** —— 配對法是「`publishedAt` 之後 4,000 字元內的第一個 `slug`」，08-23 拿 90 篇的時間戳、事後對 8 篇開頁複驗 `datePublished` **8/8 吻合**。這正是 2026-08-09 風控事故要防的行為模式的解法。**`/latest`、`/markets/stocks`、`/markets/currencies`、`/markets/commodities`、`/businessweek` 五個路徑回 0 篇**，改用 `/markets`、`/economics`、`/technology`、`/markets/fixed-income`、`/industries`、`/wealth`、`/opinion`、`/deals`。**⚠️ 這一家也有電子報彙整頁與 podcast 頁，而 slug 完全看不出來**（見「電子報彙整頁」那一節）。**⚠️ 正文會夾入「行內連結卡片」的標題，把句子從中間切斷** —— 08-29 撞到三處，例：`It CXMT 1H Revenue 150.3B Yuan Vs. 15.44B Yuan Y/y (1) a profit of 77.6 billion yuan`，原句是 `It posted a profit of…`；另一處把卡片標題塞進引號內，看起來像受訪者的原話。**直接照抄會產生看似原文、實則錯誤的句子與假引述** | 08-29 |
+| CNBC | 正文**先試 `div[class*="ArticleBody"] p`；回 0 段時改取 `.ArticleBody-articleBody` 的子節點 `innerText`**。08-24 實測：一般新聞稿四篇都命中第一組（13–36 段），但 **Cramer 那種專欄型文章 `div[class*="ArticleBody"] p`／`main p`／`article p` 全回 0 段**，正文是裸 `<span>` 掛在 `.ArticleBody-articleBody` 底下，改取容器子節點得 10,106 字元。**這是「回 0 段與被擋長得一樣」的又一例。** RSS 在 `cnbc.com/id/<sectionId>/device/rss/rss.html`，可同網域 fetch。**⚠️ RSS 的 `pubDate` 是更新時間、不是發布時間，而且差得夠遠會跨過窗口** —— 08-23 實測一篇 RSS 給 07:12（窗口內）、`article:published_time` 卻是 02:03 台北（窗口起點前 4 小時），另一篇 pub 與 mod 差 6 小時 21 分。**預篩一律以文章頁 `datePublished` 為準。** `/pro/` 與 Investing Club 是獨立付費層，屬訂閱範圍外。**⚠️ 走 fallback 選擇器時段數判定會失效，這一家的完整判定要以字元數為主、段數僅供參考**：08-29 七篇裡有四篇 `div[class*="ArticleBody"] p` 回 0–2 段、必須改抓 `.ArticleBody-articleBody` 的子節點，而改抓之後**整篇正文聚合成「1 段」**、字元數卻是 2,358／2,721／3,818／3,968 —— 照「≥8 段」判會把這四篇全部判成不完整。**適用範圍比原記載大**：不只 Cramer 專欄型，一般市場稿與盤前盤中異動稿也會走 fallback | 08-29 |
 | ECB（官方站） | **首屏 `document.body.innerText` 只有約 780 字元（空殼），要輪詢約 5 秒後 `dl > dt/dd` 才有內容。**這個狀態很容易被誤判成「今天沒新聞」 | 08-23 |
 | 美國財政部（home.treasury.gov） | 新聞稿清單用 `a[href*="/news/press-releases/"]`；`.views-row`／`.press-release-teaser` 回 **0 段** | 08-23 |
+| Fed 官方演說（federalreserve.gov） | **不要信索引頁，直接組 URL：`/newsevents/speech/<姓氏小寫><YYYYMMDD>a.htm`** | 2026-08-29 實測 `/newsevents/speech/2026-speeches.htm` **頁面正常、選擇器正常、無攔截字串，但頁尾寫 `Last Update: August 05, 2026`**，抓到的最新演說是 `cook20260805a`，**完全沒有當天沃許在 Jackson Hole 的主題演說** —— 照索引判會得出「Fed 今天沒有官方演說」。而直接猜 `warsh20260828a.htm` 就打得開（100 段／29,262 字元，頁尾 `Last Update: August 28, 2026`）。**這是「每一項檢查都通過、只有內容停住」那一類失效，同 EIA 舊週報。** 正文用 `get_page_text`（見「六之二」註腳那條） | 08-29 |
 `/"articleUrl":"[^"]*?wsj\.com(\/[^"]+)"[\s\S]{0,900}?"timestamp":"([^"]+)"/g`
-—— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文** | 08-23 |
+—— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文**。**08-29 補兩條**：①`__NEXT_DATA__` 的配對正則仍然有效，`/news/archive/2026/08/28` 抓到 117 組、時間戳範圍 `04:00Z → 次日 04:00Z`，**美東日界確認**；跨窗口起點時**必須抓兩天的 archive**，只抓當天會漏掉台北 07:00–12:00 那五小時。②**`/politics/` 也會出電子報**（`/politics/cia-chiefs-trip-to-moscow-has-everyone-on-edge-<hash>` 實為 WSJ Politics Newsletter，`main p` 只有 10 段／794 字元、正文開頭是 `NEWSLETTERS` ＋ `Good morning.`），**唯一認得出來的地方是 `<title>` 尾巴的 `Newsletter for <日期>`** —— 它同時不符「完整」也不符「被擋」，換選擇器救不回來，因為本來就沒有正文 | 08-29 |
 
 **「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
 而實際上是選擇器沒對上或路徑搬家了。**擋源三分的第一步永遠是換一組選擇器重試。**
@@ -207,6 +214,20 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 - 真的需要識別碼時，**只回裸 slug、裸 GUID 或裸 id**，由呼叫端拼回永久連結
   —— 08-28 全程這樣做的採集員被擋 0 次。
 - 一次回傳的路徑條數也要壓：Nikkei 那次一口氣回 15 條被擋，切成 8 條就過。
+- **⚠️ 2026-08-29 再擴一次觸發物：學術註腳／參考書目也會中，而且與 URL 無關。**
+  當天在 `federalreserve.gov` 的演說全文上連兩次被擋：第二次已經把 `https?://\S+`、
+  `\?[\w=&%-]{3,}`、`<>` 全部剝掉、只回 4 段內文、長度壓到 1,500，**仍舊被吃掉**。
+  推測觸發物是內文尾端的註腳區塊（含 DOI、`vol. 63 (1), pp. 277–80` 這類形狀）。
+  **這種長文直接用 `get_page_text`，不要用 `javascript_tool` 回內文。**
+- **可以安全回傳的一種形狀：去掉 scheme 與網域的純路徑**（例 `market/ipo/jio-…-1178…html`）。
+  2026-08-29 在 Mint、Fierce Biotech、STAT News 三家共 3 次全部通過。
+  **這比「只回裸 slug、呼叫端自己拼區段」省一輪猜測**（Fierce 的 `/biotech/` vs `/medtech/`、
+  Mint 的多層區段都猜不出來）。但「絕不回 query string、絕不回 HTML 片段」兩條不變。
+- **⚠️ `browser_batch` 的 `actions[].name` 必須用未加前綴的短名**（`navigate`、`javascript_tool`）；
+  寫成 `mcp__claude-in-chrome__navigate` 會回 `unknown tool` 並**整批中止**，白打一次呼叫。
+  另外**批次內不要放跨越頁面導向的長 sleep**：08-29 在 WSJ、NYT、MarketWatch 都撞到
+  `Inspected target navigated or closed`（這幾家載入後會自我重導）——
+  改成「先 navigate，等頁面靜下來後另發一次 `javascript_tool`」即可。
 
 ### 電子報彙整頁不是文章，而它的網址跟文章一模一樣
 
@@ -294,9 +315,12 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 | 汽柴油零售週價 | `eia.gov/petroleum/gasdiesel/` | 週一資料、含分區 |
 | 原油現貨日序列 | `eia.gov/dnav/pet/pet_pri_spt_s1_d.htm` | **現貨口徑**，與期貨分開標。**發布落後**：08-28（週五）當天最新資料日是 8/26 |
 | ~~每日一則能源短文~~ | ~~`eia.gov/todayinenergy/`~~ | **不要排進每日行程**：08-28 實測列表頁最新停在 **July 22, 2026**，只剩 7/22、7/17、7/3 三個日期 |
-| 原油／黃金期貨報價 | `cmegroup.com/markets/energy/crude-oil/light-sweet-crude.quotes.html`、`/markets/metals/precious/gold.quotes.html` | **口徑是 Globex「最後成交價」、非結算價、延遲 ≥10 分鐘**，寫卡務必標明。同頁另有全月份曲線與 CVOL（30 天隱含波動率） |
+| 原油／黃金期貨報價 | `cmegroup.com/markets/energy/crude-oil/light-sweet-crude.quotes.html`、`/markets/metals/precious/gold.quotes.html` | **口徑是 Globex「最後成交價」、非結算價、延遲 ≥10 分鐘**，寫卡務必標明。同頁另有全月份曲線與 CVOL（30 天隱含波動率）。**⚠️ 這是 React 表格頁，輪詢條件要盯 DOM 節點數、不要盯 innerText 字串**：08-29 只等 `DEC 2026` 字樣（14 秒）拿到的 `body.innerText` 只有 4,927 字元、全是頁尾，**看起來完全像「這家今天讀不到」**；改成輪詢 `document.querySelectorAll('table tr').length > 3` 一次就拿到完整報價表。另表格第 2 列會回 `[BLOCKED: Base64 encoded data]`（走勢縮圖），**不影響資料列**，取列時略過即可 |
+| 期貨官方結算價 | `…/light-sweet-crude.settlements.html`、`…/gold.settlements.html` | **⚠️ 預設交易日不是「今天」，一定要先讀頁上的 TRADE DATE 欄。** 08-29 台北早上（美東週五傍晚）讀到的仍是 `Thursday, 27 Aug 2026`（頁註 `Last Updated 27 Aug 2026 11:55:00 PM CT`）—— 當日結算要等美東 23:55 CT 才貼。**這一頁有資料、選擇器正常、沒有攔截字串，只是資料日晚一天**，與上面 EIA 舊週報是同一種失效形狀。要當日價格必須改用 `*.quotes.html`（口徑不同，見上一列）。**⚠️ 合約月在兩頁不一致**：08-29 Brent LDF 的前月在 Quotes 頁是 `Nov 26（BZX6）`、Settlements 頁卻仍列 `Oct 26`，**寫卡務必明寫合約月** |
 | 美國公債未償餘額 | `api.fiscaldata.treasury.gov`（Debt to the Penny） | 走 `web_fetch`。**沙箱的 `curl` 被代理擋（403 after CONNECT）**，不要用 shell |
 | FRED 序列（OAS 等） | `fred.stlouisfed.org/graph/fredgraph.csv?id=<series>` | **只有 Chrome 同網域 fetch 走得通**：先 `navigate` 到 `fred.stlouisfed.org` 任一頁，再用 `javascript_tool` 對這個路徑發 fetch。`web_fetch` 回 `Content-Type: application/csv` ＋ `[binary data]`（拿不到內容），沙箱 `curl` exit 56。**OAS 序列固定落後兩個交易日**，取到最新那一點就好、並寫明它的資料日期 |
+
+**⚠️ 週五窗口的能源組不要把 EIA 週報排進配額。** 石油庫存週報發布在**週三**、天然氣庫存與敘事在**週四** —— 對一個「前一日 07:00 起算」的窗口來說，**週五那一輪的窗口起點在週四 07:00，兩份週報都落在起點之前**，當輪零可交。08-29（週五窗口）就是這樣：EIA 完全沒有可交素材，缺口由 OGJ（當日 4 篇）與 CME 報價補足。**這是行事曆問題不是來源問題**，不要記進來源健康度。
 
 **CORS 邊界（撞過才知道的）**：`ir.eia.gov/wpsr/*.csv` 與 `ir.eia.gov/ngs/*`
 從 `www.eia.gov` 發 `fetch` **一律被 CORS 擋**；`www.eia.gov/dnav/pet/hist_xls/*.xls`
@@ -311,7 +335,7 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 **而實際上持倉噸數、收盤價、NAV、折溢價、成交量全都在 `body.innerText` 裡**
 （6,940 字元，日期標的都是當天）。那幾個表格似乎只是圖表容器，本來就不裝數字。
 **判定依據固定成：`body.innerText` 裡有沒有 `Tonnes` 與 `Closing Price` 的數值。**
-`/usa/gldm/` 同理。2026-08-23 那次三格動態值全空、外部請求 `consent.trustarc.com` 回 503，
+`/usa/gldm/` 同理。**⚠️ `/usa/historical-data/` 取不到、會被導回 `/usa/gld/`**（08-27 首次記錄，08-29 覆測仍然如此），所以**站方的歷史序列拿不到** —— 日變化與週變化只能拿前值序列自己算，**而那是推算、不是官方數列，卡片上要留痕**。2026-08-23 那次三格動態值全空、外部請求 `consent.trustarc.com` 回 503，
 **那一次確實是站方資料層失效** —— 兩種狀態要靠 innerText 有沒有數值分開，不是靠表格列數。
 
 **LBMA 的取法與別家相反**：`prices.lbma.org.uk/` **根路徑回 401**，

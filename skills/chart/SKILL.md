@@ -108,12 +108,30 @@ python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 
 ### 4. 過一次 QA
 
-跑 `anchors.quality` 的 5σ 檢查。每個旗標要分類並在 `about` 記處置：
+跑 `anchors.quality` 的 5σ 檢查（`render_day.py` 會把旗標寫進 `about.qa_flags`）。
+每個旗標要分類並寫進 **`about.qa_dispositions`**：
 真實事件／轉倉／錯價／衍生序列的窗口效應。
 
-**先看幅度再看故事**：轉倉價差正常在 1% 以內，所以「跌 11% 是轉倉」在數量級上就不成立。
+**2026-08-29 起這條會擋發布**（`anchors.known_exceptions.qa_disposed_from` 已翻開，
+生效日 2026-08-25）。在那之前它每天回 SKIPPED——**一條永遠 SKIPPED 的檢查，
+與一條不存在的檢查在輸出上長得一模一樣**。所以形狀要寫對：
 
-**完成條件**：每個旗標都有具名的處置，沒有「不確定」。
+```json
+"qa_dispositions": [
+ {"key": "<slug>|<序列名>|<日期>",     ← 三個值逐字取自對應的 qa_flags 那一筆
+  "category": "真實事件",              ← 只能是 anchors.quality.disposition_categories 那四個
+  "note": "說得出是哪一次的那段話"}     ← 非空，且**不能出現「不確定」**
+]
+```
+
+衍生序列（`derived`）整條說明一次即可，鍵寫 `<slug>|<序列名>|*`——
+逐筆要求只會逼出罐頭文字。
+
+**先看幅度再看故事**：轉倉價差正常在 1% 以內，所以「跌 11% 是轉倉」在數量級上就不成立。
+檢查會擋下幅度超過 `rollover_spread_rare_pct` 卻被分類成轉倉的旗標。
+
+**完成條件**：每個旗標都有具名的處置，沒有「不確定」，且 `chart_verify` 的
+`chart.qa_disposed` 回 PASS（不是 SKIPPED）。
 
 ### 5. 寫判讀
 

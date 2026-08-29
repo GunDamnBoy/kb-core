@@ -43,6 +43,7 @@ import json, os, statistics, sys
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _repo  # noqa: E402
+from kbcore.repo import write_day_json  # noqa: E402  （_repo 匯入時已把 kb-core 根加進 sys.path）
 REPO = _repo.repo()
 # 同目錄的兄弟模組。舊制是 os.path.join(REPO, "tools")——
 # 那綁在「程式住在資料 repo 底下」這個佈局上，搬家就斷。
@@ -170,8 +171,8 @@ def run(day: str, dry: bool = False) -> bool:
     if dry:
         print(f"·  {day}：（dry-run）會實體化：{'；'.join(changed)}")
         return True
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
+    # 格式的家在 `kbcore/repo.day_json()`，見那裡的 2026-08-29 病歷。
+    write_day_json(path, doc)
     print(f"✓  {day}：已實體化 {'；'.join(changed)}")
     return True
 

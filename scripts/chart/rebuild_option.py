@@ -35,6 +35,7 @@ import glob, json, os, sys
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _repo  # noqa: E402
+from kbcore.repo import write_day_json  # noqa: E402  （_repo 匯入時已把 kb-core 根加進 sys.path）
 REPO = _repo.repo()
 # 同目錄的兄弟模組。舊制是 os.path.join(REPO, "tools")——
 # 那綁在「程式住在資料 repo 底下」這個佈局上，搬家就斷。
@@ -80,8 +81,11 @@ def rebuild(day: str, dry: bool = False, png: bool = False) -> bool:
         return True
 
     if changed:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
+        # **這一支是修既有封存的唯一合法工具**，所以它的寫入格式最要緊：
+        # 原本寫 compact，會把一份已發布的 `indent=1` 檔整份改寫成一行 ——
+        # 資料一個位元都沒變，而 diff 是全檔重寫，**真正改了什麼因此看不見**。
+        # 格式的家在 `kbcore/repo.day_json()`（2026-08-29）。
+        write_day_json(path, doc)
         print(f"✓  {day}：已更新 {len(changed)} 張圖的 option：{changed}")
     else:
         print(f"·  {day}：option 已是最新，無需變更")

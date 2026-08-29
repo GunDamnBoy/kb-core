@@ -15,6 +15,7 @@ import chartkit as ck
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _repo  # noqa: E402
+from kbcore.repo import write_day_json  # noqa: E402  （_repo 匯入時已把 kb-core 根加進 sys.path）
 REPO = _repo.repo()
 
 
@@ -80,9 +81,12 @@ def main(day: str):
     # 而 08-21 的執行報告正是拿 mtime 當「量測」。檔案系統的時間戳不是我們的量測點。
     doc["about"]["rendered_at"] = dt.datetime.now(
         dt.timezone(dt.timedelta(hours=8))).isoformat(timespec="seconds")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
-    print(f"OK  {day}：{len(doc['charts'])} 張圖，JSON 已回寫 option")
+    # 格式與原子性都走 `kbcore/repo.write_day_json()`——**publish 是最後寫入者，
+    # 它決定磁碟上的樣子**，所以產生端要向它靠攏。這裡原本寫 compact，
+    # 而 publish 的不可改寫守衛比的是 `indent=1` 的字串，於是「先出圖再交草稿」
+    # 必然撞 exit 11「已存在且內容不同」（2026-08-29，病歷在那個函式的 docstring）。
+    n = write_day_json(path, doc)
+    print(f"OK  {day}：{len(doc['charts'])} 張圖，JSON 已回寫 option（{n:,} bytes）")
     if flags:
         print(f"⚠  {len(flags)} 筆單日跳動異常，需人工覆核（多半是期貨轉倉或來源錯價）：")
         for f_ in flags:
