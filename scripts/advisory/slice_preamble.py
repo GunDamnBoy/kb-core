@@ -98,11 +98,34 @@ def who(keyword, owners):
     return hit
 
 
+TABLE_MARK = "**選擇器與路徑"
+
+
 def split_sections(text):
     lines = text.split("\n")
     idx = [i for i, l in enumerate(lines) if re.match(r"^#{1,3} ", l)]
     idx.append(len(lines))
-    return [("\n".join(lines[a:b])).rstrip("\n") for a, b in zip(idx, idx[1:])]
+    secs = [("\n".join(lines[a:b])).rstrip("\n") for a, b in zip(idx, idx[1:])]
+
+    # 2026-08-30 加的護欄。**只驗一件事：那張選擇器表還在第六節裡面嗎。**
+    #
+    # 為什麼需要它：`filter_table` 只對開頭是「## 六、來源」的那一節生效，
+    # 而 `owner_of` 是按節分配的。**在表的前面插一個 `###` 子標題，
+    # 表就會被切進那個子節** —— 於是①它不再被過濾（每個人拿到全部 21 列）
+    # ②它跟著那個子節的 owner 走（沒被分到的人整張表都拿不到）。
+    #
+    # 這正是 2026-08-30 發生的事：新增的〈發稿日曆〉插在表前面，
+    # A／C／E 三份切片的選擇器表整張消失、B／D／F／G 則拿到了別人的來源，
+    # **而 `--check` 是綠的**（它比的是磁碟與重生成，兩邊一起錯）。
+    # 那一輪沒有排程跑過，所以沒有造成實害 —— 下一次不會這麼幸運。
+    six = next((s for s in secs if s.startswith("## 六、來源")), None)
+    if six is not None and TABLE_MARK not in six:
+        where = next((s.split("\n", 1)[0] for s in secs if TABLE_MARK in s), "（整份都找不到）")
+        raise SystemExit(
+            f"選擇器表跑出「## 六、來源」了，它現在在：{where}\n"
+            f"→ 那一節前面多了一個 `###` 子標題，把表切走了。**把子標題移到表後面。**\n"
+            f"**不修就繼續**：表不再被 `filter_table` 過濾，而且只有那個子節的 owner 拿得到。")
+    return secs
 
 
 def owner_of(sec, owners):
