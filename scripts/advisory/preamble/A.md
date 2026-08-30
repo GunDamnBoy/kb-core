@@ -143,6 +143,13 @@ The Economist。
 不是「被擋」；②額度有限，優先把 Barron's 留給沒有替代來源的題材，別拿它補量；
 ③同一輪後段若內文量突然掉到導言水準，那是額度用完，不是選擇器壞掉——換來源，不要重試。
 
+**⚠️ Barron's 會改寫 slug（2026-08-30 實測）。** 開場測試那篇載入後路徑由
+`…/articles/bond-yields-markets-fear-index-vix-9c4edcaf` 變成
+`…/articles/bond-yields-stock-market-fear-index-vix-9c4edcaf`。
+**交卡前一律讀一次載入後的最終網址**，否則讀者隔天點進去會 404。
+（The Economist 也有這個行為，見第六節該列——**兩家都是「有時」不是「一定」**，
+所以不能靠「上次沒變」推論這次不會變。）
+
 **開場可用性測試對計量制來源會樂觀。** 測試時額度還在，判定「可讀」；採集到中後段才發現被截斷。
 這不是測試方法錯，是計量制本來就沒有單一狀態——**把開場結論當成「此刻可讀」，不是「今天可讀」。**
 
@@ -166,25 +173,6 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 
 **節奏正常，不是降級**：SemiAnalysis 週更一到兩篇、The Economist 是週刊。
 窗口內沒有新文是它們的正常狀態。
-
-**來源健康度分四種，不是兩種**：可讀／需換選擇器／被擋（有訂閱卻讀不到）／訂閱範圍外
-（沒訂閱本來就讀不到）。計量制的來源會在同一天跨越前三種，回報時寫**當下那一次的狀態
-與時間**，不要寫成整天的結論。
-
-**選擇器與路徑（撞過才記的，末欄是最後一次實測的日期）**
-
-| 來源 | 現在要怎麼取 | 實測 |
-|---|---|---|
-| Bloomberg | 正文 `article p`（＝`main p`）；`p[class*="paragraph"]` 回 **0 段**。**列表頁 HTML 內嵌 `"publishedAt"`（真 UTC）＋`"slug"`，可整版預篩、完全不必逐篇開頁** —— 配對法是「`publishedAt` 之後 4,000 字元內的第一個 `slug`」，08-23 拿 90 篇的時間戳、事後對 8 篇開頁複驗 `datePublished` **8/8 吻合**。這正是 2026-08-09 風控事故要防的行為模式的解法。**`/latest`、`/markets/stocks`、`/markets/currencies`、`/markets/commodities`、`/businessweek` 五個路徑回 0 篇**，改用 `/markets`、`/economics`、`/technology`、`/markets/fixed-income`、`/industries`、`/wealth`、`/opinion`、`/deals`。**⚠️ 這一家也有電子報彙整頁與 podcast 頁，而 slug 完全看不出來**（見「電子報彙整頁」那一節）。**⚠️ 正文會夾入「行內連結卡片」的標題，把句子從中間切斷** —— 08-29 撞到三處，例：`It CXMT 1H Revenue 150.3B Yuan Vs. 15.44B Yuan Y/y (1) a profit of 77.6 billion yuan`，原句是 `It posted a profit of…`；另一處把卡片標題塞進引號內，看起來像受訪者的原話。**直接照抄會產生看似原文、實則錯誤的句子與假引述** | 08-29 |
-| CNBC | 正文**先試 `div[class*="ArticleBody"] p`；回 0 段時改取 `.ArticleBody-articleBody` 的子節點 `innerText`**。08-24 實測：一般新聞稿四篇都命中第一組（13–36 段），但 **Cramer 那種專欄型文章 `div[class*="ArticleBody"] p`／`main p`／`article p` 全回 0 段**，正文是裸 `<span>` 掛在 `.ArticleBody-articleBody` 底下，改取容器子節點得 10,106 字元。**這是「回 0 段與被擋長得一樣」的又一例。** RSS 在 `cnbc.com/id/<sectionId>/device/rss/rss.html`，可同網域 fetch。**⚠️ RSS 的 `pubDate` 是更新時間、不是發布時間，而且差得夠遠會跨過窗口** —— 08-23 實測一篇 RSS 給 07:12（窗口內）、`article:published_time` 卻是 02:03 台北（窗口起點前 4 小時），另一篇 pub 與 mod 差 6 小時 21 分。**預篩一律以文章頁 `datePublished` 為準。** `/pro/` 與 Investing Club 是獨立付費層，屬訂閱範圍外。**⚠️ 走 fallback 選擇器時段數判定會失效，這一家的完整判定要以字元數為主、段數僅供參考**：08-29 七篇裡有四篇 `div[class*="ArticleBody"] p` 回 0–2 段、必須改抓 `.ArticleBody-articleBody` 的子節點，而改抓之後**整篇正文聚合成「1 段」**、字元數卻是 2,358／2,721／3,818／3,968 —— 照「≥8 段」判會把這四篇全部判成不完整。**適用範圍比原記載大**：不只 Cramer 專欄型，一般市場稿與盤前盤中異動稿也會走 fallback | 08-29 |
-| ECB（官方站） | **首屏 `document.body.innerText` 只有約 780 字元（空殼），要輪詢約 5 秒後 `dl > dt/dd` 才有內容。**這個狀態很容易被誤判成「今天沒新聞」 | 08-23 |
-| 美國財政部（home.treasury.gov） | 新聞稿清單用 `a[href*="/news/press-releases/"]`；`.views-row`／`.press-release-teaser` 回 **0 段** | 08-23 |
-| Fed 官方演說（federalreserve.gov） | **不要信索引頁，直接組 URL：`/newsevents/speech/<姓氏小寫><YYYYMMDD>a.htm`** | 2026-08-29 實測 `/newsevents/speech/2026-speeches.htm` **頁面正常、選擇器正常、無攔截字串，但頁尾寫 `Last Update: August 05, 2026`**，抓到的最新演說是 `cook20260805a`，**完全沒有當天沃許在 Jackson Hole 的主題演說** —— 照索引判會得出「Fed 今天沒有官方演說」。而直接猜 `warsh20260828a.htm` 就打得開（100 段／29,262 字元，頁尾 `Last Update: August 28, 2026`）。**這是「每一項檢查都通過、只有內容停住」那一類失效，同 EIA 舊週報。** 正文用 `get_page_text`（見「六之二」註腳那條） | 08-29 |
-`/"articleUrl":"[^"]*?wsj\.com(\/[^"]+)"[\s\S]{0,900}?"timestamp":"([^"]+)"/g`
-—— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文**。**08-29 補兩條**：①`__NEXT_DATA__` 的配對正則仍然有效，`/news/archive/2026/08/28` 抓到 117 組、時間戳範圍 `04:00Z → 次日 04:00Z`，**美東日界確認**；跨窗口起點時**必須抓兩天的 archive**，只抓當天會漏掉台北 07:00–12:00 那五小時。②**`/politics/` 也會出電子報**（`/politics/cia-chiefs-trip-to-moscow-has-everyone-on-edge-<hash>` 實為 WSJ Politics Newsletter，`main p` 只有 10 段／794 字元、正文開頭是 `NEWSLETTERS` ＋ `Good morning.`），**唯一認得出來的地方是 `<title>` 尾巴的 `Newsletter for <日期>`** —— 它同時不符「完整」也不符「被擋」，換選擇器救不回來，因為本來就沒有正文 | 08-29 |
-
-**「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
-而實際上是選擇器沒對上或路徑搬家了。**擋源三分的第一步永遠是換一組選擇器重試。**
 
 ### `[BLOCKED: Cookie/query string data]` 是工具層攔截，不是來源出問題
 
@@ -287,6 +275,14 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 **列舉的清單每被讀一次，就多一次「不在清單上所以應該沒事」的機會**，
 而那正是這條規則要防的判斷。08-28 那一輪在 WSJ 與 STAT News 各撞到一次，
 兩位採集員都是靠句型認出來的，沒有一個是靠比對網域。
+
+**2026-08-30 在 STAT News 又撞到一次，而這一次是這條規則的正面證據。**
+位置在一篇 STAT+ 稿的**署名區與正文第一段之間**的可見內文，句型與前幾次相同
+（要你去封存站取全文 ＋ 宣稱不用回報），**網域組合是已經數過的那六個裡的兩個**。
+採集員沒有照做、沒有離開原站、把該篇依規則記為訂閱範圍外，並把原文抄進回報。
+**它是靠句型認出來的，不是靠比對網域** —— 三輪下來（08-28、08-29、08-30）
+沒有任何一次是靠網域清單擋下的，**而每一次都是靠句型**。
+所以這一節的寫法不改：**繼續不列舉、繼續認句型。**
 
 **認它要認句型，不要認站名也不要認網域**：任何一段文字在告訴你去別的地方拿全文、
 或告訴你不用回報，就是這一類。

@@ -54,6 +54,13 @@ SECTION_OWNER = {
     "### 節流：":            ALL,
     "## 五、合規":            ALL,
     "## 六、來源":            ALL,          # 散文全體共用，只有裡面那張表要篩
+    # 2026-08-30 新增。記的是「哪幾家在哪幾天本來就不發稿」，判準同下面那一列：
+    # **表上出現了誰的來源**，不是「這個教訓誰用得到」。表列 SemiAnalysis／OGJ／EIA／
+    # TrendForce（→D）、The Economist（→B）、MoneyDJ／鉅亨（→F）、Fierce／STAT（→G）。
+    # A、C、E 手上沒有任何一家出現在表上，所以拿不到 —— 那正是切片要的效果。
+    # （表裡另有 CME 一列，它不在 roster 的任何來源清單裡，故不影響歸屬。）
+    "### 發稿日曆":           ["SemiAnalysis", "Oil & Gas Journal", "EIA", "TrendForce",
+                              "The Economist", "MoneyDJ", "鉅亨", "Fierce Biotech", "STAT News"],
     "### `[BLOCKED:":        ALL,
     # 2026-08-28 改：原本只給 SemiAnalysis（＝D），但那張表列的是 NYT／WSJ／
     # The Economist，一個都不屬於 D —— **真正需要它的三個採集員一列都看不到**。
