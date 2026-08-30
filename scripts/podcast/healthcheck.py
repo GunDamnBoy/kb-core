@@ -603,23 +603,31 @@ def check_observations():
 
 # ------------------------------------------------------------- 5. 推送鏈（唯讀）
 def latest_receipt():
-    """最新一份 publish 回執的 (日期, exit, stage, detail)。讀不到回 None。
+    """最新一份 publish 回執 →〈(日期, exit, stage, detail), None〉；讀不到 →〈None, 原因〉。
+
+    **三種讀不到要分得出來**，照本檔 `scheduled_run()` 的先例（outbox 沒連線／
+    沒有回執／回執讀不開）。把三者擠成一句「~/outbox 未連線？」，那個括號裡的
+    猜測對其中兩種都是錯的——**同一支檔案裡已經有分得清楚的寫法，新的不該比舊的退步。**
 
     **回執每輪都會被覆寫，所以它只講得出最後一輪。** 要看歷史去
     `~/outbox/podcast/publish.log` 的「回執：」那幾行——那是唯一有歷史的地方，
-    而「同一個 stage 連三輪」與「重試中」在單一份回執上長得一模一樣。
+    而「同一個 stage 連三輪」與「還在重試」在單一份回執上長得一模一樣。
+
+    **已知的坑：排的是檔名日期，不是寫入時刻。** 補發或 errata 舊日期時，
+    最新寫入的那份日期較舊，`[-1]` 會挑回今天那份而不是剛寫的那份。
+    現況兩種挑法答案一致所以看不出來；真要修就改用 mtime 或回執的 `at` 欄位。
     """
     if not OUTBOX:
-        return None
+        return None, "讀不到 ~/outbox"
     files = sorted(glob.glob(os.path.join(OUTBOX, "podcast", "20*.receipt.json")))
     if not files:
-        return None
+        return None, "沒有回執"
     try:
         r = json.load(open(files[-1], encoding="utf-8"))
-    except Exception:
-        return None
+    except Exception as e:
+        return None, f"回執讀不開（{e}）"
     return (os.path.basename(files[-1]).split(".")[0],
-            r.get("exit"), r.get("stage", ""), r.get("detail", ""))
+            r.get("exit"), r.get("stage", ""), r.get("detail", "")), None
 
 
 def check_push():
@@ -653,31 +661,47 @@ def check_push():
     elif local == origin:
         log("PASS", "推送鏈", f"local 與 origin 同雜湊 {local[:7]}")
     else:
-        # **push 的執行者是 `com.kenny.kbpublish.podcast`（每 60 秒），不是 dashpush。**
-        # dashpush 在 2026-08-20 重建時就退場了（殘骸在
-        # `chart-of-the-day/tools/_to_delete/dashpush-auto-push.sh`，九支 launchd 裡沒有它），
-        # 而這一行一直叫人「稍等再看」——**它在最該動作的時候叫人不要動作**。
-        # 2026-08-31 踩到：publish 卡在 `exit 15 @ worktree-dirty` 兩個半小時
-        # （兩個非 data/ 的檔案沒提交、擋住 rebase），local 一路領先 origin，
-        # 而這則 WARN 說的是「等一個不存在的推送者」。
+        # **push 的執行者是 `com.kenny.kbpublish.podcast`（StartInterval 60），不是 dashpush。**
+        # dashpush 在 2026-08-20 重建時退場，殘骸在
+        # `chart-of-the-day/tools/_to_delete/dashpush-auto-push.sh`。
+        # **plist 的數量不要在這裡寫**——`launchd/README.md` 明文寫著那個數字只有一個家
+        # （它底下那張表），2026-08-21 一天之內就在別處錯了三次。
         #
-        # 現在改成去讀 publish 自己的回執，理由是**兩個訊號的雜訊程度不一樣**：
-        # 「local 領先」單獨看必然有雜訊（publish 每 60 秒才跑一次，剛發布完的那幾十秒
-        # 本來就會領先）；回執非 0 才是第二個獨立訊號。兩個同時成立才值得叫人動手，
-        # 而且此時該講的是**成因**，不是「再等等」。
-        rc = latest_receipt()
+        # 舊訊息是「dashpush 每 180 秒推一次，稍等再看」，而 2026-08-31 踩到：
+        # publish 卡在 `exit 15 @ worktree-dirty` 兩個半小時（兩個非 data/ 的檔案沒提交、
+        # 擋住 rebase），local 一路領先 origin，而這則 WARN 叫人等一個不存在的推送者——
+        # **它在最該動作的時候叫人不要動作。**
+        #
+        # 改成讀 publish 自己的回執，理由是**兩個訊號的雜訊程度不一樣**：「local 領先」
+        # 單獨看必然有雜訊（剛發布完的那幾十秒本來就會領先）；回執才是第二個獨立訊號。
+        #
+        # **exit 0 那一支不可以再寫「稍等再看」。** 複驗子代理抓到初版在那裡把同一個病
+        # 複製了一份：`publish.py` 沒有草稿時是空輪次、**完全不碰 git**，而
+        # `systems/podcast.py` 的 `staged_paths` 只有 `["data"]`——所以
+        # **非 data/ 的本機 commit 沒有任何排程會即時推走**，它要等下一份草稿
+        # （最快隔天 03:00）才被順帶推上去。叫人等兩分鐘，等到的是 publish.log 裡
+        # 一萬多行「空輪次，不是失敗」。
+        rc, why = latest_receipt()
         base = f"local {local[:7]} 領先 origin {origin[:7]}"
-        if rc and rc[1] not in (0, None):
+        if rc is None:
+            log("WARN", "推送鏈",
+                f"{base}——{why}，判不出 publish 那一側的狀態。push 由 "
+                "com.kenny.kbpublish.podcast 每 60 秒做一次（不是 dashpush，2026-08-20 已退場）")
+        elif rc[1] is None:
+            # 回執沒有 exit 欄位時**不要替它宣稱 exit 0** —— 防禦性判斷防到的結果
+            # 若是編一個值出來，那比不防更糟。
+            log("WARN", "推送鏈",
+                f"{base}——最新回執 {rc[0]} 沒有 exit 欄位，判不出狀態；"
+                "看 ~/outbox/podcast/publish.log 的「回執：」那幾行")
+        elif str(rc[1]) != "0":
             log("WARN", "推送鏈",
                 f"{base}——publish 沒推成功：{rc[0]} exit {rc[1]} @ {rc[2]}。{rc[3]}")
-        elif rc:
-            log("WARN", "推送鏈",
-                f"{base}——最新回執 {rc[0]} exit 0；push 由 kbpublish 每 60 秒做一次，"
-                "稍等再看。超過兩分鐘仍領先就查 ~/outbox/podcast/publish.log")
         else:
             log("WARN", "推送鏈",
-                f"{base}——讀不到回執（~/outbox 未連線？）；"
-                "push 由 kbpublish 每 60 秒做一次，不是 dashpush（2026-08-20 已退場）")
+                f"{base}——最新回執 {rc[0]} exit 0，publish 那一側沒有卡住。"
+                "但 publish 只在 outbox 有草稿時才碰 git、且只 stage data/，"
+                "所以非 data/ 的本機 commit 沒有排程會即時推走——"
+                "它要等下一份草稿（最快隔天 03:00）順帶推上去，要早就自己 push")
 
 
 # --------------------------------------------------- 6. brief 內部一致性
