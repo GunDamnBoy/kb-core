@@ -26,7 +26,23 @@ import datetime as dt
 from kbcore.check import Check, fail, ok, register, skipped, warn
 from kbcore.env import OPTIONAL_BY_LABEL, REQUIRED_BINARIES
 
-MAX_HEARTBEAT_AGE_H = 30
+# **上限是節奏的函數，不是一個數字（2026-08-31 訂正）。**
+# 原本寫死 30 小時。那是日頻那三套的尺：哨兵每天跑，30 = 24 × 1.25，
+# 跟 `sentinel.updated_fresh` 用的是同一個倍數。
+#
+# 但 broker-research 是**週頻**的，它的哨兵 cron 是「每週二」——
+# 正常運作時 heartbeat 的年齡就會走到 168 小時以上，於是這條**每一輪都 FAIL**。
+# 一條永遠紅的檢查，跟沒有這條檢查是同一件事，而且更糟：
+# 2026-08-25 到 08-31 之間它一直喊「看守者自己死了」，
+# 而那八天站台真的停在舊的一期 —— **該被看見的那件事，被一條固定響的警報蓋掉了。**
+#
+# 倍數沿用 1.25，讓日頻的行為完全不變（24 × 1.25 = 30，fixture 照樣觸發）。
+HEARTBEAT_AGE_MULT = 1.25
+FALLBACK_CADENCE_H = 24
+
+
+def _max_heartbeat_age(p):
+    return (p.get("cadence_hours") or FALLBACK_CADENCE_H) * HEARTBEAT_AGE_MULT
 
 
 def _sentinel_alive(p):
@@ -36,19 +52,22 @@ def _sentinel_alive(p):
                     "或 repo 沒同步。**「沒有壞消息」不等於「沒事」**")
     age = (dt.datetime.fromisoformat(p["now"])
            - dt.datetime.fromisoformat(hb["at"])).total_seconds() / 3600
-    if age > MAX_HEARTBEAT_AGE_H:
+    cap = _max_heartbeat_age(p)
+    if age > cap:
         return fail(f"哨兵最後一次執行是 {hb['at']}，已經 {age:.0f} 小時 "
-                    f"（上限 {MAX_HEARTBEAT_AGE_H}）—— 看守者自己死了")
+                    f"（上限 {cap:.0f}）—— 看守者自己死了")
     return ok()
 
 
 register(Check(
     id="watch.sentinel_alive",
-    covers=f"哨兵在 {MAX_HEARTBEAT_AGE_H} 小時內執行過",
+    covers="哨兵在 cadence_hours × 1.25 小時內執行過（日頻 30、週頻 210）",
     blind_to=[
         "哨兵有跑但每次都在同一個地方壞掉、只是壞得很準時",
         "heartbeat 是舊的但被別的東西重新 commit 了一次（時間戳來自 commit 而非執行）",
         "Mac 自己關機時，這條檢查連跑都沒跑——它看不見自己的缺席",
+        "**payload 沒帶 `cadence_hours` 時退回日頻的 24**，於是週頻那一套"
+        "會被日頻的尺量 —— 這條看不出上限是算出來的還是退回來的",
     ],
     run=_sentinel_alive,
     fixture={"now": "2026-08-19T01:00:00+00:00",

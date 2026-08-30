@@ -56,6 +56,14 @@ REQUIRED_BY_LABEL = {
     "com.kenny.kbwatch.chart":     ["git"],
     "com.kenny.kbwatch.research":  ["git"],
     "com.kenny.kbpublish.research": ["git"],
+    # 2026-08-31：**第四次同一形狀。** 每天 06:00 把抽過的 PDF 從 inbox 移到
+    # `~/broker-research/filed/<YYYY-MM>/`，跑的是 venv python ＋
+    # `scripts/research/file_reports.py`。整支沒有 `subprocess`、沒有
+    # `shutil.which`、沒有 `os.system` —— **空陣列不是「還沒想」，是「想過了，
+    # 答案是零」**（同 `kbprefetch.chart`）。
+    # 它從裝上去到 08-31 都沒被登記，於是 `watch.external_binaries` 一直 FAIL，
+    # 而 FAIL 的看門狗不更新 heartbeat。
+    "com.kenny.kbfile.research":   [],
     # 2026-08-24：**第三次同一形狀。** 這一支已經裝在機器上（`~/Library/LaunchAgents/`
     # 有 `com.kenny.kbpublish.convergence.plist`），但沒登記進來 ——
     # `watch.external_binaries` 對「不在 REQUIRED_BY_LABEL 裡」是 FAIL，

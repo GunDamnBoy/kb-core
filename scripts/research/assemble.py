@@ -429,6 +429,11 @@ def build_stances(digest_dir, repo):
                 items.append({
                     "id": sid, "week": dg.get("week"), "slug": r["slug"],
                     "broker": r.get("broker"), "title": r.get("title"),
+                    # 標題帶到哪裡，來源就要帶到哪裡 —— 理由與 `systems/research.py`
+                    # 的 `index_entry` 同一條（那裡寫了整段）。這一份 145 列
+                    # 全部缺這個欄位，是 2026-08-31 之前站台不部署的大宗。
+                    "title_source": r.get("title_source"),
+                    "title_confident": r.get("title_confident"),
                     "date": r.get("date"), "due": due,
                     "theme": st.get("theme"), "tags": r.get("tags") or [],
                     "quote": st.get("quote"), "quote_zh": st.get("quote_zh"),

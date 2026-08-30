@@ -26,6 +26,7 @@ from kbcore.env import survey  # noqa: E402
 from kbcore.repo import check_destination  # noqa: E402
 from kbcore.report import report, run_all  # noqa: E402
 from kbcore.result import Exit  # noqa: E402
+from kbcore.system import get as get_system  # noqa: E402
 
 HEARTBEAT = "sentinel/heartbeat.json"
 
@@ -79,9 +80,14 @@ def main(argv) -> int:
         except json.JSONDecodeError:
             hb = None
 
+    # **節奏由系統自己宣告**，跟 `tools/sentinel.py` 同一個來源（`System`）。
+    # 沒有這一欄的話 `watch.sentinel_alive` 會退回日頻的 24 小時，
+    # 而週頻那一套的哨兵一週才跑一次 —— 它會每一輪都紅（2026-08-31 訂正）。
+    sysdef = get_system(system_id)
     payload = {
         "now": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "heartbeat": hb,
+        "cadence_hours": sysdef.cadence_hours if sysdef else None,
         "drift": code_drift(),
         "env": survey(),
     }

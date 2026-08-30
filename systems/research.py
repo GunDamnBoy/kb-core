@@ -185,6 +185,17 @@ def index_entry(doc: dict) -> dict:
             "tags": r.get("tags") or [],
             "chars": r.get("summary_chars", 0),
             "headline": _headline(r.get("summary", "")),
+            # **標題帶到哪裡，來源就要帶到哪裡（2026-08-31 加）。**
+            # `verify_site_data` 走整棵樹找「同時有 slug 與 title 的物件」，
+            # 缺 `title_source` 一律判「標題可能是檔名而沒有人知道」——
+            # 它分不出「來源不明」與「這一層沒帶這個欄位」。
+            #
+            # 而那道檢查跑在 `deploy.yml` 的**上傳之前**，所以這個缺欄位
+            # 讓 GitHub Pages 從 2026-08-23 起整整八天沒有部署過：
+            # publish exit 0、git push 成功、本機與 origin 同一顆 commit，
+            # **三個訊號全綠，而讀者看到的還是 8/23 的站台。**
+            "title_source": r.get("title_source"),
+            "title_confident": r.get("title_confident"),
         } for r in doc.get("reports") or []],
         "file": f"data/{doc['date']}.json",
     }
