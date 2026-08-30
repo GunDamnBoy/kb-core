@@ -10,9 +10,34 @@
    **規則沒寫死等於交給運氣**，所以規則寫在 anchors、計算寫在這裡。
 2. **圖表由 chartkit 渲染**，撰寫者只給規格。同一張圖不會有兩套畫法。
 3. **`file_url` 由檔名組出來**，不由撰寫者填 —— 那是機械的事。
+
+## 已經畫過的圖不重畫（2026-08-31 加）
+
+**規格沒變就沿用磁碟上那一張，連渲染都不跑。** 判準是規格本身的 sha256
+（不含 `png`／`svg`／`bytes`／`render_error` 這幾個渲染產物），存成
+`charts/<base>.spec.sha`；三個檔都在而且指紋對得上就沿用。
+
+為什麼要有這條 —— 2026-08-30 那一輪的實況：
+
+- 這支**每次組檔都把整期所有報告的圖重畫一次**，包含幾週前就發布過的。
+- 每日五圖那邊 08-29 改了 `chartkit.py`、08-30 改了 `chart/anchors.json`，
+  於是 `timeseries` 的輸出換了一個位元組數（129,550 → 132,268）。
+- 規格一字沒動，`bytes` 卻變了 → 不可改寫守衛判定「已發布的內容被改了」
+  → W35 exit 11，連帶那兩個未提交的圖檔把 W34 卡在 exit 15。
+
+**渲染本身是決定性的**（同一份規格連畫兩次 md5 相同），所以那不是雜訊，
+是上游改版倒灌進已發布的期別。這次只中一張 —— **下次改到 `grouped_bar`，
+W34 那 25 份會一起被守衛指名。**
+
+**要強制重畫就刪掉那張的 `.png`**（不是刪 `.spec.sha`）：檔案不在就一定會畫。
+刪 `.spec.sha` 反而會走下面那條認養，把現有的圖當成最新的收下。
+
+**沒有 `.spec.sha` 但 png／svg 都在 → 認養**（那是這條規則上線前畫的圖），
+並把張數印出來。認養的正確性建立在「此刻磁碟上那張圖就是最近一次渲染的結果」——
+2026-08-31 上線時成立，因為前一輪剛把兩期全部重畫並發布過。
 """
 from __future__ import annotations
-import argparse, datetime as dt, glob, json, os, re, shutil, sys, urllib.parse
+import argparse, datetime as dt, glob, hashlib, json, os, re, shutil, sys, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _paths  # noqa: E402   路徑只有一個家，見該檔的檔頭
@@ -81,14 +106,51 @@ def _fmt_for(spec):
     return "{:,.2f}" if m < 2 else "{:,.1f}"
 
 
+RENDER_OUTPUTS = ("png", "svg", "bytes", "render_error")
+
+
+def spec_fingerprint(spec):
+    """規格的指紋。**不含渲染產物** —— 否則它會跟著自己變，永遠對不上。
+
+    比對的是撰寫者給的那份規格，不是畫出來的那張圖：**chartkit 改版不該
+    讓已發布的圖被判成「內容變了」**（見檔頭）。
+    """
+    body = {k: v for k, v in spec.items() if k not in RENDER_OUTPUTS}
+    return hashlib.sha256(json.dumps(
+        body, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
 def render_charts(part, ex, outdir):
-    """規格 → PNG／SVG。**渲染失敗不中止整期**，記進 chart 的 `render_error`。"""
+    """規格 → PNG／SVG。**渲染失敗不中止整期**，記進 chart 的 `render_error`。
+
+    回 `(重畫, 沿用, 認養)` 三個 base 清單 —— **呼叫端要印出來**：
+    只驗「位元組數有沒有變」的話，「沒生效」與「生效但沒效果」長得一模一樣。
+    """
     os.environ.setdefault("CHART_REPO", "/tmp")
     import chartkit as C
     F = C.Chart.__dataclass_fields__
-    made = []
+    made, reused, adopted = [], [], []
     for i, spec in enumerate(part.get("charts") or [], 1):
         base = f"{part['slug']}-{i}"
+        png = os.path.join(outdir, base + ".png")
+        svg = os.path.join(outdir, base + ".svg")
+        sig = os.path.join(outdir, base + ".spec.sha")
+        fp = spec_fingerprint(spec)
+        if os.path.exists(png) and os.path.exists(svg):
+            was = None
+            if os.path.exists(sig):
+                was = open(sig, encoding="utf-8").read().strip()
+            else:
+                # 認養：這條規則上線前畫的圖，收下它當作最新的（見檔頭）
+                open(sig, "w", encoding="utf-8").write(fp + "\n")
+                was, _ = fp, adopted.append(base)
+            if was == fp:
+                spec["png"] = os.path.basename(png)
+                spec["svg"] = os.path.basename(svg)
+                spec["bytes"] = os.path.getsize(png)
+                reused.append(base)
+                continue
         # **只覆寫規格真的給了的欄位。**
         # 原本這裡先 `{k: None for k in F}` 把每個欄位塞成 None ——
         # 那等於把 `Chart` dataclass 二十三個設計好的預設值全部抹掉，
@@ -119,10 +181,14 @@ def render_charts(part, ex, outdir):
             spec["png"] = os.path.basename(out["png"])
             spec["svg"] = os.path.basename(out["svg"])
             spec["bytes"] = os.path.getsize(out["png"])
+            open(sig, "w", encoding="utf-8").write(fp + "\n")
             made.append(base)
         except Exception as e:
             spec["render_error"] = f"{type(e).__name__}: {e}"
-    return made
+            # 畫失敗就不要留指紋 —— 留了下一輪會沿用一張不存在的圖
+            if os.path.exists(sig):
+                os.remove(sig)
+    return made, reused, adopted
 
 
 def main(argv=None):
@@ -181,6 +247,7 @@ def main(argv=None):
     if not a.no_charts:
         os.makedirs(cdir, exist_ok=True)
     reports, warn = [], []
+    n_made, n_reused, n_adopted = 0, 0, 0
     for slug, d in sorted(ex.items(), key=lambda kv: (kv[1]["date"], kv[0]), reverse=True):
         p = parts[slug]
         n, t = count(p["summary"]), tier_of(d["pages"])
@@ -189,7 +256,9 @@ def main(argv=None):
             warn.append(f"{slug} {n} < {lo} **不足**")
         elif n > hi:
             warn.append(f"{slug} {n} > {hi} 超出")
-        made = [] if a.no_charts else render_charts(p, d, cdir)
+        made, reused, adopted = ([], [], []) if a.no_charts else render_charts(p, d, cdir)
+        n_made, n_reused, n_adopted = (n_made + len(made), n_reused + len(reused),
+                                       n_adopted + len(adopted))
         src = d["source_file"]
         reports.append({
             "slug": slug, "broker": d["broker"], "product": d["product"],
@@ -205,7 +274,8 @@ def main(argv=None):
         })
         print(f"  {slug[:46]:<48} {n:>5} 字（目標 {t['target']}）"
               f"　立場 {len(p.get('stances') or [])}"
-              f"　圖 {len(made)}/{len(p.get('charts') or [])}"
+              f"　圖 {len(made) + len(reused)}/{len(p.get('charts') or [])}"
+              f"{('（沿用 %d）' % len(reused)) if reused else ''}"
               f"　標籤 {len(p.get('tags') or [])}")
 
     prev = os.path.join(O, f"{a.week}.json")
@@ -251,8 +321,11 @@ def main(argv=None):
                             live.add(c[k])
         live |= {c[k] for r in reports for c in r["charts"]
                  for k in ("png", "svg") if c.get(k)}
+        # 指紋檔跟著它那張圖一起活 —— 不併進來的話，圖被清掉之後
+        # `.spec.sha` 會安靜地留在原地，而下一張同名的圖會沿用到它。
+        live |= {os.path.splitext(f)[0] + ".spec.sha" for f in live}
         orph = sorted(f for f in os.listdir(cdir)
-                      if f.endswith((".png", ".svg")) and f not in live)
+                      if f.endswith((".png", ".svg", ".spec.sha")) and f not in live)
         if orph:
             print(f"\n**{len(orph)} 個孤兒圖檔**（不在這一期 digest 裡，"
                   f"但仍在 {cdir}）：\n    " + "、".join(orph[:8])
@@ -266,6 +339,10 @@ def main(argv=None):
     print(f"\n{len(reports)} 份｜精華合計 {tot:,} 字｜立場 "
           f"{sum(len(r['stances']) for r in reports)} 筆｜圖 {ncharts} 張"
           + (f"（**{len(err)} 張渲染失敗**）" if err else ""))
+    if not a.no_charts:
+        print(f"  圖：重畫 {n_made}　沿用 {n_reused}　"
+              + (f"**首次認養 {n_adopted}**" if n_adopted else "認養 0")
+              + "　（規格沒變就不重畫，見檔頭；要強制重畫刪掉那張的 .png）")
     for e in err[:4]:
         print("   ", e)
     if warn:
