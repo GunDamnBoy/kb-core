@@ -15,7 +15,8 @@
 
 （2026-08-24 訂正兩次：先是從排程副本收回一句「管線指令跑在使用者的 Mac 上」，
 當晚那一輪實跑就回報**那句話在這個環境是錯的**。**副本比正本新，不代表副本是對的** ——
-收回來之前要先驗，而那一次沒驗。）
+收回來之前要先驗，而那一次沒驗。2026-08-31 補記：排程副本一直沒跟上這次訂正，
+那一輪是靠「先讀正本」才沒有踩到。**這份副本從 2026-08-31 起與正本逐字相同。**）
 
 ## 這一期是哪一週
 
@@ -27,7 +28,7 @@
 **取昨天，這條規則就不隨排程時間改變。**
 
 ```
-~/.venvs/kb/bin/python -c "import datetime as d;print('%d-W%02d'%(d.date.today()-d.timedelta(1)).isocalendar()[:2])"
+python3 -c "import datetime as d;print('%d-W%02d'%(d.date.today()-d.timedelta(1)).isocalendar()[:2])"
 ```
 
 手動觸發時如果要補的是更早的一週，直接把週次寫死在指令裡。
@@ -58,10 +59,10 @@
 ## 第 1 步：入庫（純程式，你不要自己讀 PDF）
 
 ```
-~/.venvs/kb/bin/python ~/kb-core/scripts/research/extract.py \
+python3 ~/kb-core/scripts/research/extract.py \
   "/Users/macmini/Library/CloudStorage/GoogleDrive-haonung.chiang@gmail.com/我的雲端硬碟/Report Inbox"
-~/.venvs/kb/bin/python ~/kb-core/scripts/research/build_index.py
-~/.venvs/kb/bin/python ~/kb-core/tools/research_verify.py
+python3 ~/kb-core/scripts/research/build_index.py
+python3 ~/kb-core/tools/research_verify.py
 ```
 
 **沒有新報告就回報「本週無新報告」並結束，不要重跑上一期。**
@@ -99,6 +100,14 @@
 `research_verify` 這時第 2 層那幾條會是 **SKIPPED 不是 PASS**（還沒做）。**有 FAIL 就停在這裡**
 —— 抽取層的問題不會因為往下做而變好，只會被寫進盤點裡。
 
+**第一頁是圖檔的那種會擋整批（2026-08-30 遇到）。** 高盛《Global Semis: CHIPS IV》
+第一頁只有浮水印，剃完 0 字元；日期辨識**刻意只讀第一頁**（避免抓到引用文獻的日期），
+於是認不出日期、slug 成了 `undated-…`，而 `build_index.py` 對「辨識不全」的反應是
+**拒絕替整批建索引**（exit 10）。全文其實出現 29 次那份報告的日期 —— 所以那是規則
+的邊界不是資料的問題，但改日期辨識會回頭動到 slug（已發布報告的身分）。
+**當輪的處置**：把那一份的抽取結果 `mv` 到 `~/broker-research/_pending/`（所有 repo 之外），
+原始 PDF 留在 inbox 不要動，其餘幾份照常走完，並在回報裡具名列出來交給使用者裁決。
+
 ## 封存：**不歸你管，但要知道它在**
 
 抽過的 PDF 會被移到 `~/broker-research/filed/<YYYY-MM>/`（依**報告自己的日期**分月，
@@ -127,7 +136,7 @@
 
 ```
 for s in ~/broker-research/extracted/*.json; do
-  ~/.venvs/kb/bin/python ~/kb-core/scripts/research/dossier.py "$(basename "$s" .json)"
+  python3 ~/kb-core/scripts/research/dossier.py "$(basename "$s" .json)"
 done
 ```
 
@@ -173,12 +182,16 @@ done
 它跑的是跟發布閘門同一套比對規則。**綠了才回報。**
 上一輪十一個子代理各自寫了一次同一支比對腳本，那支現在在 `tools/` 底下。
 
+**順便叫它回報「這份報告的核心主張一句話」。** 主代理不讀報告內文，
+而第 4 步的 `crosscut` 要它同時看過所有報告才寫得出來 ——
+沒有這一句，跨券商分歧只能靠翻十份精華全文湊出來。
+
 ## 第 4 步：組檔
 
 ```
-~/.venvs/kb/bin/python ~/kb-core/scripts/research/assemble.py <YYYY-Www>
+python3 ~/kb-core/scripts/research/assemble.py <YYYY-Www>
 # 寫好 crosscut／watch／notes 之後，再跑一次：
-~/.venvs/kb/bin/python ~/kb-core/scripts/research/assemble.py <YYYY-Www> --publish
+python3 ~/kb-core/scripts/research/assemble.py <YYYY-Www> --publish
 ```
 
 它做六件機械的事，**沒有一件由撰寫者填**：覆寫 `summary_chars`、渲染圖表、
@@ -219,10 +232,15 @@ publish 每 60 秒收一次，第一次組檔就交出去的話，
 `crosscut` 的收錄標準只有一條：**兩家對同一件事給了不同答案，而且答案寫得出來。**
 沒有分歧就寫「本週無」。**不要為了有東西寫而把「都看多」寫成分歧。**
 
+**一整批都是同一家的時候，這一格會薄，那不是你偷懶。** 2026-08-30 那一期
+十一份裡高盛佔八份 —— 央行那條線上高盛一家講了美國、英國、日本三個地區，
+沒有第二家可以對照。**把「這一格薄的來源是這一批的組成」寫進去**，
+比硬湊一條分歧誠實，也比留白有用。
+
 ## 第 5 步：閘門
 
 ```
-~/.venvs/kb/bin/python ~/kb-core/tools/research_verify.py ~/broker-research/extracted
+python3 ~/kb-core/tools/research_verify.py ~/broker-research/extracted
 ```
 
 **全綠才算完成。**（`summary_length` 出 WARN 不擋，但要在回報裡說是哪幾份、超出多少。）
@@ -243,6 +261,11 @@ log 會印一行「改寫 …，系統的 republish_rule 判定這是允許的�
 那條守衛擋的正是「已經給人看過的東西被悄悄換掉」。回報給使用者，
 由他決定要不要 `git rm` 那一期重發（那會留下一筆 revert commit，
 **那筆紀錄就是要有人看得見**）。
+
+**被擋下來的時候先逐欄比對，不要先猜。** 2026-08-30 實測：回執指名一份，
+逐欄比完只有 `charts[0].bytes` 一個欄位不同（129,550 → 132,268），
+標題、數值、`grounding`、檔名全部一字未動 —— **那是上游 chartkit 改版，
+不是內容被改。** 知道是哪一個欄位，處置才會對；只讀回執會以為是精華被動過。
 
 > ~~已知的一次：2026-08-22 整批換抽取器，花旗油品月報有一條 grounding
 > 在新的抽取結果裡對不上……W34 下一次組檔會因此被 `append_only` 擋一次，
@@ -270,6 +293,11 @@ log 會印一行「改寫 …，系統的 republish_rule 判定這是允許的�
 跑完幾分鐘後看一眼 `~/outbox/research/<週日>.receipt.json`：
 **exit 0 才算上線；沒有回執代表 publish 根本沒跑**，那跟「回執說失敗」是兩件事。
 
+**exit 15（worktree-dirty）是連鎖故障，不是獨立故障。** 2026-08-30：W35 被 exit 11
+擋下之後，那次重製留在 repo 的兩個圖檔（不在該期 `staged_paths` 底下）
+讓下一期的 rebase 過不去 —— 回執自己寫著「**重跑不會好**」。
+**先解掉源頭那一期，兩期會一起通。**
+
 ## 這一輪不做的事
 
 - **不跑任何 git 指令。**
@@ -283,7 +311,7 @@ log 會印一行「改寫 …，系統的 republish_rule 判定這是允許的�
 
 收了幾份、每份的券商與日期、**抽取器是哪一支**（兩軌對同一份檔可能給不同答案）、
 剃除佔比與辨識的計次差距、有沒有孤兒、**每份的精華字數與它的目標區間**、
-畫了幾張圖（以及有沒有渲染失敗）、寫了幾筆立場與幾條 `crosscut`、
+畫了幾張圖（以及有沒有渲染失敗、**沿用了幾張**）、寫了幾筆立場與幾條 `crosscut`、
 `research_verify` 的完整結果，以及**你判斷不了而跳過的東西**。
 
 最後交出兩樣：`~/broker-research/digest/<YYYY-Www>.html`（本機、圖已內嵌）
