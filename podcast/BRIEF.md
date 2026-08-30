@@ -2,7 +2,7 @@
 system: podcast-knowledge-digest
 budget:
   tokens: 5000
-  source: "5,526 字元／~5,024 token（比值 1.1）。**改本檔就重量一次** —— `python3 tools/repo_check.py .`。量測史與預算由來見 `skills/maintain/podcast/MODIFY.md`。**超過就是要砍，不是要調高。**"
+  source: "比值 1.1。**改本檔就重量一次** —— `python3 tools/repo_check.py .`。**這裡不記當前值**：量測紀錄長在被量的東西裡面，每量一次就把它推近上限一點（08-23 那筆佔了預算的 8.6%，而當時超標只有 315 token）。量測史與預算由來見 `skills/maintain/podcast/MODIFY.md`。**超過就是要砍，不是要調高。**"
 ---
 
 # Podcast 知識庫摘譯｜什麼是對的產出
@@ -158,8 +158,8 @@ budget:
 
 ~~判定到期由哨兵開 issue。~~ **這一句沒有執行者**（2026-08-23 標；哨兵實際印 ⏭️ 未執行，
 且帳本形狀與它不相容，細節在 `MAINTENANCE.md` 第 6 節）。實際在看的是發布閘門的
-`podcast.ledger_no_overdue`，**而它對沒有到期日的舊項目是瞎的** ——
-08-23 量測 74 條裡 64 條觀察中、52 條沒有到期日。**綠燈不等於帳本乾淨。**
+`podcast.ledger_no_overdue`，**而它對沒有到期日的舊項目是瞎的**（`due` 自 08-22 起才強制）。
+現況條數一律看 `healthcheck.py` 的記分板，**這裡不記數字**。**綠燈不等於帳本乾淨。**
 （第七節第五條 08-22 才標過同型的洞，隔一節又寫了一次 ——
 **寫「由某某負責」之前先確認某某真的在跑。**）
 
