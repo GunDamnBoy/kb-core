@@ -602,6 +602,26 @@ def check_observations():
 
 
 # ------------------------------------------------------------- 5. 推送鏈（唯讀）
+def latest_receipt():
+    """最新一份 publish 回執的 (日期, exit, stage, detail)。讀不到回 None。
+
+    **回執每輪都會被覆寫，所以它只講得出最後一輪。** 要看歷史去
+    `~/outbox/podcast/publish.log` 的「回執：」那幾行——那是唯一有歷史的地方，
+    而「同一個 stage 連三輪」與「重試中」在單一份回執上長得一模一樣。
+    """
+    if not OUTBOX:
+        return None
+    files = sorted(glob.glob(os.path.join(OUTBOX, "podcast", "20*.receipt.json")))
+    if not files:
+        return None
+    try:
+        r = json.load(open(files[-1], encoding="utf-8"))
+    except Exception:
+        return None
+    return (os.path.basename(files[-1]).split(".")[0],
+            r.get("exit"), r.get("stage", ""), r.get("detail", ""))
+
+
 def check_push():
     if not REPO:
         return
@@ -633,8 +653,31 @@ def check_push():
     elif local == origin:
         log("PASS", "推送鏈", f"local 與 origin 同雜湊 {local[:7]}")
     else:
-        log("WARN", "推送鏈",
-            f"local {local[:7]} 領先 origin {origin[:7]}——dashpush 每 180 秒推一次，稍等再看")
+        # **push 的執行者是 `com.kenny.kbpublish.podcast`（每 60 秒），不是 dashpush。**
+        # dashpush 在 2026-08-20 重建時就退場了（殘骸在
+        # `chart-of-the-day/tools/_to_delete/dashpush-auto-push.sh`，九支 launchd 裡沒有它），
+        # 而這一行一直叫人「稍等再看」——**它在最該動作的時候叫人不要動作**。
+        # 2026-08-31 踩到：publish 卡在 `exit 15 @ worktree-dirty` 兩個半小時
+        # （兩個非 data/ 的檔案沒提交、擋住 rebase），local 一路領先 origin，
+        # 而這則 WARN 說的是「等一個不存在的推送者」。
+        #
+        # 現在改成去讀 publish 自己的回執，理由是**兩個訊號的雜訊程度不一樣**：
+        # 「local 領先」單獨看必然有雜訊（publish 每 60 秒才跑一次，剛發布完的那幾十秒
+        # 本來就會領先）；回執非 0 才是第二個獨立訊號。兩個同時成立才值得叫人動手，
+        # 而且此時該講的是**成因**，不是「再等等」。
+        rc = latest_receipt()
+        base = f"local {local[:7]} 領先 origin {origin[:7]}"
+        if rc and rc[1] not in (0, None):
+            log("WARN", "推送鏈",
+                f"{base}——publish 沒推成功：{rc[0]} exit {rc[1]} @ {rc[2]}。{rc[3]}")
+        elif rc:
+            log("WARN", "推送鏈",
+                f"{base}——最新回執 {rc[0]} exit 0；push 由 kbpublish 每 60 秒做一次，"
+                "稍等再看。超過兩分鐘仍領先就查 ~/outbox/podcast/publish.log")
+        else:
+            log("WARN", "推送鏈",
+                f"{base}——讀不到回執（~/outbox 未連線？）；"
+                "push 由 kbpublish 每 60 秒做一次，不是 dashpush（2026-08-20 已退場）")
 
 
 # --------------------------------------------------- 6. brief 內部一致性
