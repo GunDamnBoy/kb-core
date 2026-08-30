@@ -57,6 +57,8 @@ cd /Users/macmini/kb-core && python3 -m py_compile tools/*.py checks/*.py system
 - 檢查自檢（fixture 與 near_miss 兩側）0 失敗：
   `python3 -c "import sys;sys.path.insert(0,'.');import checks,systems;from kbcore.report import selftest;d=selftest();print(len(d));[print(x) for x in d]"`
 - `python3 scripts/chart/build_series.py --selftest`
+- `python3 scripts/chart/fetch.py --selftest-cache`（合併守衛，不連外）
+- `python3 scripts/chart/fetch_tw_price.py --selftest-offline`（增量月份窗口，不連外）
 - `python3 tools/chart_verify.py /Users/macmini/chart-of-the-day` 對最新一期
   沒有非預期的 FAIL；改了檢查規則就確認它報的是**預期的那幾筆**，
   並拿一期舊封存回測看它有沒有反應。

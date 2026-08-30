@@ -87,6 +87,26 @@ def _months_back(n: int) -> list:
     return list(reversed(out))
 
 
+def _months_since(iso_date: str, cap: int) -> list:
+    """從 `iso_date` 所在的那個月一路到本月，最多 `cap` 個月。
+
+    **含 `iso_date` 自己那個月**，不是從下個月開始 —— 證交所當月的資料每天都在長，
+    而且會補前幾天的更正，只抓下個月起會漏掉末日那天之後、月底之前的那幾筆。
+    """
+    try:
+        y, m = int(iso_date[:4]), int(iso_date[5:7])
+    except (ValueError, IndexError):
+        return []
+    today = datetime.date.today()
+    out = []
+    while (y, m) <= (today.year, today.month):
+        out.append((y, m))
+        m += 1
+        if m == 13:
+            y, m = y + 1, 1
+    return out[-cap:] if cap and len(out) > cap else out
+
+
 def _twse_month(code: str | None, y: int, m: int) -> list:
     """回 [(iso_date, close), ...]；非交易月回空 list（那不是錯誤）。"""
     ym = f"{y:04d}{m:02d}"
@@ -127,8 +147,26 @@ def _tpex_month(code: str, y: int, m: int) -> list:
     return out
 
 
-def series(ident: str, months: int = 24) -> dict:
-    """ident：`2330`／`2330.TW`／`TAIEX`／`^TWII`／`8069.TWO`。回傳與 fetch.get 相同的形狀。"""
+def series(ident: str, months: int = 24, have_through: str = "") -> dict:
+    """ident：`2330`／`2330.TW`／`TAIEX`／`^TWII`／`8069.TWO`。回傳與 fetch.get 相同的形狀。
+
+    ## 增量取數（2026-08-30 加）
+
+    `have_through` 給了快取的末日，就只補**那個月起**到本月，而不是每天重下 24 個月。
+
+    **為什麼要改**：2026-08-30 量到六個台股代號（`^TWII`、`2330`、`2317`、`2344`、
+    `2382`、`2408`）× 24 個月 ＝ **每天 144 次證交所請求**，而
+    `anchors.rate_limits` 只訂了「每次間隔 1 秒」，沒有訂總量、也沒有對
+    `stat != "OK"` 退避。當天壞掉的正是抓取順序的**最後兩個**，而且嚴重度隨順序遞增：
+    `2382` 只有尾端兩個月回空（安靜，序列變短），`2408` 24 個月全空（`series()` 拋錯，大聲）。
+    前四個完好。**那是累積節流的形狀，不是代號的形狀。**
+    增量之後同樣六條約 6–8 次請求。
+
+    **退回全量是刻意的預設**：增量一筆都沒拿到時（可能是節流、也可能是快取末日
+    落在一段長假裡）就整個重抓，寧可慢也不要回一份殘缺的。
+    呼叫端 `fetch.get()` 另外還有「只能長不能縮」的合併守衛，所以最壞情況是白跑一趟，
+    **不會把快取弄短**。
+    """
     ident = ident.strip()
     if ident in ("TAIEX", "^TWII"):
         kind, code = "index", None
@@ -137,14 +175,25 @@ def series(ident: str, months: int = 24) -> dict:
     else:
         kind, code = "twse", ident.split(".")[0]
 
-    rows = []
-    for y, m in _months_back(months):
-        try:
-            rows += _tpex_month(code, y, m) if kind == "tpex" else _twse_month(code, y, m)
-        except RuntimeError as e:
-            # 單月失敗不該讓整條序列消失，但**要讓呼叫端知道有洞**
-            print(f"    ⚠ {ident} {y}-{m:02d} 取數失敗：{e}", file=sys.stderr)
-        time.sleep(1.0)
+    def pull(ms: list) -> list:
+        out = []
+        for y, m in ms:
+            try:
+                out += _tpex_month(code, y, m) if kind == "tpex" else _twse_month(code, y, m)
+            except RuntimeError as e:
+                # 單月失敗不該讓整條序列消失，但**要讓呼叫端知道有洞**
+                print(f"    ⚠ {ident} {y}-{m:02d} 取數失敗：{e}", file=sys.stderr)
+            time.sleep(1.0)
+        return out
+
+    incremental = _months_since(have_through, months) if have_through else []
+    rows = pull(incremental) if incremental else []
+    if not rows:
+        if incremental:
+            print(f"    ⚠ {ident} 增量（{incremental[0][0]}-{incremental[0][1]:02d} 起 "
+                  f"{len(incremental)} 個月）一筆都沒拿到，退回全量重建 {months} 個月",
+                  file=sys.stderr)
+        rows = pull(_months_back(months))
     rows.sort(key=lambda r: r[0])
     seen, d, v = set(), [], []
     for a, b in rows:
@@ -156,8 +205,49 @@ def series(ident: str, months: int = 24) -> dict:
     return {"id": ident, "source": src, "d": d, "v": v}
 
 
+def selftest_offline() -> int:
+    """月份窗口的純邏輯自檢 —— **不連外**，所以沙箱裡也驗得了。
+
+    增量取數的錯法是安靜的（少抓一個月＝快取少一段，而數字看起來都正常），
+    所以窗口計算要有自己的回歸案例，不能只靠「跑得動」。
+    """
+    today = datetime.date.today()
+    rc = 0
+
+    def eq(label, got, want):
+        nonlocal rc
+        if got != want:
+            print(f"  ✗ {label}：得到 {got}，預期 {want}"); rc = 1
+        else:
+            print(f"  ✓ {label}")
+
+    # 1. 含末日那一個月，不是從下個月開始 —— 漏掉它會少掉月中那幾筆
+    eq("_months_since 含末日當月",
+       _months_since(f"{today.year}-{today.month:02d}-15", 24), [(today.year, today.month)])
+    # 2. 跨年
+    eq("_months_since 跨年", _months_since("2025-11-20", 24)[:3],
+       [(2025, 11), (2025, 12), (2026, 1)])
+    # 3. 一路數到本月為止，不會多數到未來
+    ms = _months_since("2026-06-30", 24)
+    eq("_months_since 末項是本月", ms[-1], (today.year, today.month))
+    # 4. cap 生效（快取末日很舊時不要一次拉一百個月）
+    eq("_months_since 受 cap 限制", len(_months_since("2020-01-01", 6)), 6)
+    # 5. 壞字串回空 list → 呼叫端會走全量那條，不會拋
+    eq("_months_since 壞輸入回空", _months_since("not-a-date", 24), [])
+    eq("_months_since 空字串回空", _months_since("", 24), [])
+    # 6. 全量窗口沒被動到
+    eq("_months_back 仍是舊→新且末項為本月",
+       (_months_back(3)[-1], len(_months_back(3))), ((today.year, today.month), 3))
+    # 7. 增量真的比全量省：末日在本月時只剩 1 個月
+    eq("增量請求數 << 全量",
+       (len(_months_since(today.isoformat(), 24)), len(_months_back(24))), (1, 24))
+    print("  離線邏輯自檢：" + ("全部通過" if rc == 0 else "★ 有錯"))
+    return rc
+
+
 def selftest() -> int:
     """對三個端點各抓一個月，核對形狀與量級。**跑得動不等於對，要看數字合不合理。**"""
+    rc0 = selftest_offline()
     today = datetime.date.today()
     y, m = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
     rc = 0
@@ -179,13 +269,16 @@ def selftest() -> int:
     print("  · 加權指數應在四萬多點、台積電四位數、元太三位數以內——量級不對就是欄位取錯")
     print("  · 日期年份必須是西元且等於查詢月份，偏 1911 年代表民國年沒轉換")
     print("  · 櫃買回空多半是被節流不是沒資料，重跑看看")
-    return rc
+    return rc or rc0
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
+    if "--selftest-offline" in a:            # 不連外，沙箱裡驗得了
+        sys.exit(selftest_offline())
     if not a or a[0] == "--selftest":
         sys.exit(selftest())
     months = int(a[a.index("--months") + 1]) if "--months" in a else 24
-    s = series(a[0], months)
+    have = a[a.index("--have-through") + 1] if "--have-through" in a else ""
+    s = series(a[0], months, have)
     print(f"{s['id']} | {s['source']} | {len(s['d'])} 點 | {s['d'][0]} ~ {s['d'][-1]} | 末值 {s['v'][-1]:,.2f}")

@@ -375,6 +375,22 @@ register(Check(
 
 
 # ── 8. 序列新鮮度 ───────────────────────────────────────────────────
+def _weekdays_after(last: "dt.date", now: "dt.date") -> int:
+    """`last` 之後、到 `now` 為止有幾個平日。**只扣週末，不認國定假日。**
+
+    邊界刻意這樣訂：末日就是今天回 0，末日是昨天（平日）回 1。
+    上限一年，避免月頻資料誤走這條時把迴圈拉爆。
+    """
+    if now <= last:
+        return 0
+    n, d = 0, last + dt.timedelta(days=1)
+    while d <= now and n <= 400:
+        if d.weekday() < 5:
+            n += 1
+        d += dt.timedelta(days=1)
+    return n
+
+
 def _freshness(p):
     F = _A(p, "freshness")
     now = dt.datetime.fromisoformat(p["now"]).astimezone(TPE).date()
@@ -384,6 +400,9 @@ def _freshness(p):
     weekly_ids = F.get("weekly_release_series") or {}
     since_wk = F.get("weekly_release_from") or "9999-12-31"
     weekly_on = bool(weekly_ids) and p["doc"].get("date", "") >= since_wk
+    # 日頻改以交易日計，帶生效日；生效日之前的封存維持日曆日判定（舊期不回溯）。
+    trading_on = bool(F.get("daily_counts_trading_days")) and \
+        p["doc"].get("date", "") >= (F.get("trading_days_from") or "9999-12-31")
     day_bad, day_warn, mon_bad, mon_warn, wk_bad, wk_warn = [], [], [], [], [], []
     for c in _charts(p["doc"]):
         spec_id = {sp.get("name"): sp.get("id")
@@ -430,10 +449,17 @@ def _freshness(p):
                 elif months >= F["monthly_warn_periods"]:
                     mon_warn.append(f"{tag}（落後 {months} 期）")
             else:
-                if gap_days >= F["daily_fail_days"]:
-                    day_bad.append(f"{tag}（落後 {gap_days} 天）")
-                elif gap_days >= F["daily_warn_days"]:
-                    day_warn.append(f"{tag}（落後 {gap_days} 天）")
+                # **日頻用交易日數，不是日曆日數**（2026-08-30，理由在
+                # `anchors.freshness.daily_trading_days_source`）。FRED 慢一個交易日，
+                # 所以日曆日在每個週末與週一都必響 —— 近十期七期 WARN，而資料完全正常。
+                # 換尺之後週末歸零，週三只有週一的資料仍然 WARN。門檻數字不動。
+                gap, unit = gap_days, "天"
+                if trading_on:
+                    gap, unit = _weekdays_after(dt.date.fromisoformat(last), now), "個交易日"
+                if gap >= F["daily_fail_days"]:
+                    day_bad.append(f"{tag}（落後 {gap} {unit}）")
+                elif gap >= F["daily_warn_days"]:
+                    day_warn.append(f"{tag}（落後 {gap} {unit}）")
     if day_bad or mon_bad or wk_bad:
         return fail("；".join(day_bad + mon_bad + wk_bad) + " —— 硬失敗，不得發布")
     if day_warn or mon_warn or wk_warn:
@@ -445,8 +471,13 @@ def _freshness(p):
 register(Check(
     id="chart.series_freshness",
     covers="每條 series 的末日與今天的距離，日頻／月頻／週頻發布各一套門檻（值在 anchors.freshness）。"
+           "日頻自 anchors.freshness.trading_days_from 起改以**交易日**計（只扣週末）。"
            "序列形狀認 `dates`（實際產出的那一種）與 `data`／`points`（手工序列）兩種",
     blind_to=[
+        "**國定假日**——交易日只扣週末，台美行事曆不同，連假之後仍會多算一到兩個交易日"
+        "（`anchors.freshness.trading_days_blind_to` 記著這個限制與不引入行事曆的理由）",
+        "**生效日之前的封存走的是舊的日曆日尺**，同一份資料在新舊尺下判定不同，"
+        "回測舊期時不要拿新尺去讀那些 WARN",
         "**週頻發布只認得出 series_spec 裡有 id 的序列**——手工序列（沒有 spec）會回頭走日頻門檻，"
         "而週頻那兩條若被寫成手工序列就會照舊硬失敗",
         "**這份週頻清單是人工登錄的**——FRED 改了某條的發布頻率，這裡不會自己知道",
@@ -464,31 +495,39 @@ register(Check(
                                        "monthly_warn_periods": 2, "monthly_fail_periods": 3,
                                        "weekly_warn_periods": 2, "weekly_fail_periods": 3,
                                        "weekly_release_from": "2026-01-01",
+                                       "daily_counts_trading_days": True,
+                                       "trading_days_from": "2026-08-31",
                                        "weekly_release_series": {"DTWEXBGS": "H.10 每週一"}}},
-             "now": "2026-08-20T12:00:00+08:00",
+             "now": "2026-09-01T12:00:00+08:00",
              # **fixture 用的是實際產出的 `dates`／`values` 形狀**，不是 `data`。
              # 舊 fixture 用 `data`，於是自檢照樣觸發、照樣 selftest OK，
              # 而真實資料一條都讀不到 —— fixture 對得上程式、對不上產出。
-             "doc": {"date": "2026-08-20", "charts": [
+             "doc": {"date": "2026-09-01", "charts": [
                  {"slug": "x", "series": [
                      {"name": "s", "dates": ["2026-08-01", "2026-08-10"], "values": [1, 2]}]},
-                 # 週頻那一條：落後 43 天＝6 期，週頻門檻也擋得下來
+                 # 週頻那一條：落後 55 天＝7 期，週頻門檻也擋得下來
                  {"slug": "w", "series_spec": [{"id": "DTWEXBGS", "name": "美元指數"}],
                   "series": [{"name": "美元指數",
                               "dates": ["2026-07-01", "2026-07-08"], "values": [1, 2]}]}]}},
+    # **合格側刻意跨過一個週末**：`x` 末日 2026-08-28（週五），now 是 2026-09-01（週二），
+    # 日曆日 4 天照舊制是 WARN，交易日只有 08-31 與 09-01 兩天……不對，是 2 天，
+    # 所以 `x` 用 08-31（週一）→ 交易日 1 天 → PASS。**這一組就是新舊兩把尺會給出不同答案的地方**，
+    # 拿掉它等於讓交易日那條路沒有人驗。`w` 那一條維持原本的用意：
+    # 落後 6 天，照日頻是硬失敗，照週頻是 0 期 —— 週頻規則就是為它加的。
     near_miss={"anchors": {"freshness": {"daily_warn_days": 2, "daily_fail_days": 5,
                                          "monthly_warn_periods": 2, "monthly_fail_periods": 3,
                                          "weekly_warn_periods": 2, "weekly_fail_periods": 3,
                                          "weekly_release_from": "2026-01-01",
+                                         "daily_counts_trading_days": True,
+                                         "trading_days_from": "2026-08-31",
                                          "weekly_release_series": {"DTWEXBGS": "H.10 每週一"}}},
-               "now": "2026-08-20T12:00:00+08:00",
-               # **合格側的重點在 `w`**：落後 6 天，照日頻是硬失敗，照週頻是 0 期 —— 這條規則就是為它加的。
-               "doc": {"date": "2026-08-20", "charts": [
+               "now": "2026-09-01T12:00:00+08:00",
+               "doc": {"date": "2026-09-01", "charts": [
                    {"slug": "x", "series": [
-                       {"name": "s", "dates": ["2026-08-19", "2026-08-20"], "values": [1, 2]}]},
+                       {"name": "s", "dates": ["2026-08-28", "2026-08-31"], "values": [1, 2]}]},
                    {"slug": "w", "series_spec": [{"id": "DTWEXBGS", "name": "美元指數"}],
                     "series": [{"name": "美元指數",
-                                "dates": ["2026-08-07", "2026-08-14"], "values": [1, 2]}]}]}},
+                                "dates": ["2026-08-19", "2026-08-26"], "values": [1, 2]}]}]}},
     suite="chart",
 ))
 

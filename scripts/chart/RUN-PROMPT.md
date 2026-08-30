@@ -68,5 +68,8 @@ FAIL 與 SKIPPED 逐條列出）、回執的 exit code。
 **收尾必做。** 規則在 `metrics/MEASURE.md`，**那是正本，這裡不抄** ——
 這一段曾經被抄成三份，然後工具加了 `--until-receipt` 而三份都沒跟上。
 
-這一套的系統 id 是 `chart`。
+這一套的系統 id 是 `chart`，**要寫的是 sidecar `~/outbox/chart/<今天>.usage.json`**
+（`until` 取日檔的 `window.to`，`transcript` 是這一場自己的主逐字稿絕對路徑）。
+2026-08-30 盤過：chart 有 6 列 `sidecar`、4 列 `commit`，差別不在忙不忙，
+在於**這一步以前不在任何文件裡**。做完去 `usage.csv` 確認最後一列的 `bounded` 是 `sidecar`。
 

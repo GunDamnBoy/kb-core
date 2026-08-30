@@ -393,7 +393,10 @@ def _route_and_fetch(ident: str, since: str, path: str) -> dict:
     if src == "tw":
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import fetch_tw_price as TW
-        return TW.series(ident)
+        # 快取的末日交給它做增量：每天重下 24 個月是 2026-08-30 那場證交所節流的成因
+        # （六個代號 ×24 個月＝144 次請求）。快取空的時候 `have_through` 是空字串，
+        # 它自己會走全量那條。
+        return TW.series(ident, have_through=cached_last(path))
 
     if src == "tiingo":
         return tiingo(ident, since)
@@ -415,8 +418,62 @@ def _route_and_fetch(ident: str, since: str, path: str) -> dict:
         return yahoo(ident)
 
 
+class SeriesRegressed(RuntimeError):
+    """來源這次回的末日比快取還舊 —— 大聲失敗，而不是把快取覆寫成比較短的那一份。"""
+
+
+def read_cache(path: str) -> tuple[list, list]:
+    """讀快取的 (dates, values)。檔不存在或壞掉回兩個空 list —— 讀不到不是錯誤。"""
+    if not os.path.exists(path):
+        return [], []
+    d, v = [], []
+    try:
+        with open(path, encoding="utf-8") as f:
+            next(f); next(f)                     # 檔頭兩行
+            for line in f:
+                a, _, b = line.strip().partition(",")
+                if a and b:
+                    d.append(a); v.append(float(b))
+    except (StopIteration, ValueError, OSError):
+        return [], []
+    return d, v
+
+
+def cached_last(path: str) -> str:
+    """快取的末日，沒有就回空字串。增量取數靠它決定從哪個月開始補。"""
+    d, _ = read_cache(path)
+    return d[-1] if d else ""
+
+
 def get(ident: str, since: str = "2015-01-01", use_cache: bool = True) -> dict:
-    """自動判斷來源。路由優先序：快取檔頭記錄的來源 → 字串啟發式 → FRED 400 時回退 Yahoo。"""
+    """自動判斷來源。路由優先序：快取檔頭記錄的來源 → 字串啟發式 → FRED 400 時回退 Yahoo。
+
+    ## 寫回快取的規矩：**只能長，不能縮**（2026-08-30 加）
+
+    原本這裡是 `open(path, "w")` 整檔覆寫，於是**來源回一份比較短的序列時，
+    快取裡的歷史就被刪掉了，而且沒有任何訊號**。2026-08-30 實測到兩個不同的入口：
+
+    1. **來源安靜地回空。** `fetch_tw_price._twse_month()` 在 `stat != "OK"` 或
+       沒有 `data` 時回空 list（註解寫著「非交易月回空 list，那不是錯誤」——
+       對「上個月」而言那句話是對的，對「這個月」就不是）。`2382.TW` 的七、八兩個月
+       整段回空，於是重建出 441 點、末日 2026-06-30 的序列，覆寫掉原本到 08-25 的 483 點。
+       **08-26 已發布的 `taiex-quarter-line-without-the-king` 畫得出廣達到 08-25，
+       08-30 的快取卻只到 06-30** —— 資料是被我們自己刪掉的。
+       而預抓把它算成 `ok`，因為 `series()` 沒有拋錯。
+    2. **`since` 被當成截斷。** `build_series.materialize()` 會用圖上寫的 `since`
+       呼叫這支（例如 `get("SOXQ", since="2026-05-29")`）。當天若預抓已經跑過，
+       檔頭日期相同會走上面那條快取捷徑而逃過一劫；**預抓沒跑的那天就會把
+       整條 SOXQ 的歷史截成三個月**。這一條到 2026-08-30 為止沒有真的發生過，
+       但它跟第 1 條是同一個洞的兩張臉。
+
+    所以改成：**先與快取取聯集（同日以新的為準）再寫**，聯集只會變長不會變短；
+    寫完之後如果**來源的末日比快取舊**，拋 `SeriesRegressed`。
+    兩件事順序不能反 —— 先寫再拋，資料才保得住而失敗仍然是大聲的。
+
+    **「大聲的失敗保護了快取，安靜的失敗銷毀了快取」是這次要反過來的那件事。**
+    `2408.TW` 全月皆空 → `series()` 拋錯 → 這裡的寫入根本沒執行 → 快取完好；
+    `2382.TW` 只有尾端兩個月空 → 沒拋錯 → 快取被覆寫。同一場故障，兩種下場。
+    """
     os.makedirs(CACHE, exist_ok=True)
     safe = ident.replace("^", "_").replace("=", "-").replace("/", "-")
     path = os.path.join(CACHE, f"{safe}.csv")
@@ -425,22 +482,91 @@ def get(ident: str, since: str = "2015-01-01", use_cache: bool = True) -> dict:
         with open(path, encoding="utf-8") as f:
             head = f.readline().strip()
         if head.startswith("#") and today in head:
-            d, v = [], []
-            with open(path, encoding="utf-8") as f:
-                next(f); next(f)
-                for line in f:
-                    a, b = line.strip().split(",")
-                    d.append(a); v.append(float(b))
+            d, v = read_cache(path)
             return {"id": ident, "source": "cache", "d": d, "v": v}
 
     s = _route_and_fetch(ident, since, path)
 
+    old_d, old_v = read_cache(path)
+    merged = dict(zip(old_d, old_v))
+    merged.update(zip(s["d"], s["v"]))           # 同一天以這次取到的為準
+    dates = sorted(merged)
+
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"# {ident} | {s['source']} | fetched {today}\n")
         f.write("date,value\n")
-        for a, b in zip(s["d"], s["v"]):
-            f.write(f"{a},{b}\n")
-    return s
+        for a in dates:
+            f.write(f"{a},{merged[a]}\n")
+
+    if old_d and s["d"] and s["d"][-1] < old_d[-1]:
+        raise SeriesRegressed(
+            f"{ident} 來源末日 {s['d'][-1]} 比快取的 {old_d[-1]} 還舊"
+            f"（來源 {len(s['d'])} 點、快取 {len(old_d)} 點）—— "
+            "快取已保留聯集不會變短，但這條序列今天不可信，不要用。"
+            "多半是來源對最近幾期回空而不是回錯誤碼（SOURCES.md：空不是「沒有資料」，是被擋）")
+
+    return {"id": ident, "source": s["source"], "d": dates,
+            "v": [merged[a] for a in dates]}
+
+
+def selftest_cache() -> int:
+    """合併守衛的回歸案例 —— **不連外**（來源用假的），所以沙箱裡也驗得了。
+
+    五個案例各自對應一個真實或差一點就發生的坑，**不要為了精簡把哪一個拿掉**：
+    案例 2 是 `2382.TW` 2026-08-30 那次（快取被砍掉 42 個交易日），
+    案例 3 是 `build_series` 帶 `since` 呼叫時的同一個洞（還沒真的發生過），
+    案例 5 保證守衛不會把「第一次取數」誤判成倒退。
+    """
+    import tempfile
+    global CACHE, _route_and_fetch
+    tmp = tempfile.mkdtemp()
+    real_cache, real_fetch = CACHE, _route_and_fetch
+    CACHE = tmp
+    path = os.path.join(tmp, "TEST.csv")
+    ok = True
+
+    def fake(rows):
+        d = [r[0] for r in rows]; v = [r[1] for r in rows]
+        return lambda ident, since, p: {"id": ident, "source": "fake", "d": d, "v": v}
+
+    def chk(cond, msg):
+        nonlocal ok
+        print(("  ✓ " if cond else "  ✗ ") + msg)
+        ok = ok and bool(cond)
+
+    try:
+        _route_and_fetch = fake([("2026-06-01", 1.0), ("2026-07-01", 2.0), ("2026-08-01", 3.0)])
+        s = get("TEST", use_cache=False)
+        chk(len(s["d"]) == 3, "1／初次取數建立快取（3 點）")
+
+        _route_and_fetch = fake([("2026-06-01", 1.0)])
+        try:
+            get("TEST", use_cache=False)
+            chk(False, "2／末日倒退應該拋 SeriesRegressed")
+        except SeriesRegressed:
+            chk(True, "2／末日倒退拋 SeriesRegressed（2382.TW 那一次）")
+        d, _ = read_cache(path)
+        chk(len(d) == 3 and d[-1] == "2026-08-01", "2／而快取沒有被縮短")
+
+        _route_and_fetch = fake([("2026-08-01", 3.5)])
+        get("TEST", use_cache=False)
+        d, v = read_cache(path)
+        chk(len(d) == 3, "3／since 造成的短序列不縮快取、也不拋錯")
+        chk(v[-1] == 3.5, "3／同一天以這次取到的值為準")
+
+        _route_and_fetch = fake([("2026-08-01", 3.5), ("2026-09-01", 4.0)])
+        s = get("TEST", use_cache=False)
+        d, _ = read_cache(path)
+        chk(len(d) == 4 and d[-1] == "2026-09-01", "4／新資料照常寫入")
+        chk(len(s["d"]) == 4, "4／回傳的是合併後的完整序列")
+
+        _route_and_fetch = fake([("2026-01-01", 9.0)])
+        s = get("NEW", use_cache=False)
+        chk(len(s["d"]) == 1, "5／空快取第一次取數不被誤判為倒退")
+    finally:
+        CACHE, _route_and_fetch = real_cache, real_fetch
+    print("合併守衛自檢：" + ("全部通過 ✓" if ok else "★ 有錯"))
+    return 0 if ok else 1
 
 
 def rebase(s: dict, base_date: str = None) -> dict:
@@ -507,6 +633,8 @@ if __name__ == "__main__":
         sys.exit(0 if k else 1)
     if "--check-key" in sys.argv:
         sys.exit(check_key())
+    if "--selftest-cache" in sys.argv:
+        sys.exit(selftest_cache())
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     since = "2015-01-01"
     if "--since" in sys.argv:

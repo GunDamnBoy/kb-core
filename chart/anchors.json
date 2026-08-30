@@ -150,6 +150,10 @@
   "monthly_detection": "日期全部以每月 1 號標記",
   "weekly_warn_periods": 2,
   "weekly_fail_periods": 3,
+  "daily_counts_trading_days": true,
+  "trading_days_from": "2026-08-31",
+  "daily_trading_days_source": "**日頻的落後要用交易日數，不是日曆日數。** 2026-08-30 盤了近十期的 `chart_verify`：`chart.series_freshness` **七期 WARN、三期 PASS**（PASS 的是 08-21、08-25、08-27）。原因是結構性的——FRED 日頻慢一個交易日，於是週六必然落後 2 個日曆日、週日與週一落後 3 個，而 `daily_warn_days=2` 用日曆日在量，**每個週末與週一都必響，資料卻完全正常**。\n這與 `weekly_release_source` 是同一題（「同一份規範自己禁止自己」），只是那次只替 H.10 那兩條解掉，沒有推廣到一般日頻。**一條七成時間都在響的 WARN，跟一條永遠 SKIPPED 的檢查是同一種失效**：真的落後四天那天，看起來跟平常一模一樣。\n改法是把 gap 換成「末日之後、到今天為止有幾個平日」。實測換算：週日 08-30 對 FRED 末日 08-27 → 日曆 3 天、交易日 1 天（只有 08-28）→ 由 WARN 轉 PASS；而 2026-08-26（週三）對末日 08-24 → 交易日 2 天 → **仍然 WARN**，因為週三只有週一的資料本來就是落後兩個交易日。**假警報消失，牙齒還在。**\n門檻數字（`daily_warn_days`／`daily_fail_days`）不動，只換量尺。帶 `trading_days_from` 是照維護規矩「新硬規則帶生效日」，之前的封存維持日曆日判定。",
+  "trading_days_blind_to": "**只扣週末，不認國定假日。** 台美行事曆不同（美國 Labor Day、台灣春節連假），連假之後這條仍會多算一到兩個交易日。要再進一步就得有行事曆，而那是一個新的外部相依——2026-08-30 決定先不引入，把限制寫在這裡。",
   "weekly_release_from": "2026-08-22",
   "weekly_release_series": {
    "DTWEXBGS": "聯準會 H.10，每週一發布上一週的每日觀測",
@@ -382,7 +386,7 @@
   ],
   "source": "2026-08-20 拿 13 天 65 張圖機械盤出來的，先前不在任何文件裡。**這張表不存在的時候，「series 是空的」看起來就像資料掉了**——我自己在盤點時就這樣誤判過一次：只找 `series`，於是 18 張非折線圖全被算成沒有資料，而它們的資料一直都在 `pts`／`cats`／`matrix` 裡。`series_spec` 只出現在 24/47 張 timeseries 與 3/5 張 range_area，**不是每張圖都有**。",
   "markers_note": "`marker` 只有日期軸圖型畫得出來（timeseries／range_area）；類別軸圖型的錨點改寫進 `note`，**不要硬塞**。",
-  "range_area_is_heavy": "range_area 的 option 中位 24,570 字元，是所有圖型裡最大的（其次 timeseries 5,934）。credit-spreads 一張就佔 49 KB（3 年 × 2 條日資料共 1,569 點）——不存 option 之後這一項會直接消失。",
+  "range_area_is_heavy": "range_area 的 option 中位 24,570 字元，是所有圖型裡最大的（其次 timeseries 5,934）。credit-spreads 一張就佔 49 KB（3 年 × 2 條日資料共 1,569 點）。**這一句原本結尾是「不存 option 之後這一項會直接消失」——那個前提從來沒有成立過**（2026-08-30 更正）：08-20 深夜的改判是兩軌都留、`stored_option` 改回 true，而這句話留在原地。實測 23 份封存日檔每一份 5/5 張圖都有 option，近十期佔檔案 21–23%。所以 range_area 的體積不會消失，它就是要被算進 `anchors.size` 的預算裡 —— 2026-08-30 那期 232 KB，離 `json_warn_kb` 250 只剩 18 KB。",
   "_pick": {
    "_": "**選型是先問資料長什麼形狀，不是先問哪張好看。** 這張表是給撰寫者用的判準，上面那些 `data` 欄位是給程式用的。兩者一起改。",
    "一條或多條隨時間變化的量": "timeseries",

@@ -49,6 +49,67 @@ def sib(name):
     return p if os.path.isdir(p) else os.path.expanduser("~/" + name)
 
 
+def _stale(ser, anchors, today):
+    """把預抓涵蓋的序列照**各自的**門檻分成硬失敗與警示兩堆。回 (bad, warn)。
+
+    ## 為什麼不是「末日最舊的五條」
+
+    舊寫法是 `sorted(ser, key=last)[:5]`，**按字串排序的原始日期**。
+    2026-08-30 實測它的後果：印出來的五條是 `2382.TW`（06-30）與四條月頻
+    FRED 序列（CPIAUCSL／CPILFESL／PAYEMS／PCEPI，全部 07-01）——
+    **那四條對月頻門檻完全正常**，卻把真正硬失敗的 `^TWOII`（07-17、落後 44 天）
+    擠到第六名，於是它**一次都沒有被印出來**。
+    不是「沒有標示出來」，是根本沒出現在畫面上。
+
+    同一天還有第二條同樣安靜的：`2382.TW` 出現了，但它跟旁邊四條月頻序列
+    **長得一模一樣**（都只是一行 `last=`），讀的人分不出誰正常誰壞掉。
+
+    門檻一律從 `anchors.freshness` 讀，日／週／月三套各自判 —— **這裡不抄數字**。
+    日頻的交易日換算直接用 `checks.chart._weekdays_after`，
+    **不在這裡再寫一份**：兩份實作遲早會漂，而漂的那天 prep 與檢查會給出不同答案。
+    """
+    F = (anchors or {}).get("freshness") or {}
+    weekly_ids = F.get("weekly_release_series") or {}
+    try:
+        sys.path.insert(0, KBCORE)
+        from checks.chart import _weekdays_after
+    except Exception:                                    # noqa: BLE001
+        _weekdays_after = None
+    trading_on = bool(F.get("daily_counts_trading_days")) and \
+        today >= (F.get("trading_days_from") or "9999-12-31") and _weekdays_after
+    bad, warn = [], []
+    now = dt.date.fromisoformat(today)
+    for s in ser:
+        last = str(s.get("last") or "")
+        if len(last) < 10:
+            continue
+        try:
+            ld = dt.date.fromisoformat(last[:10])
+        except ValueError:
+            continue
+        gap = (now - ld).days
+        sid = s.get("id")
+        if last.endswith("-01"):                          # 月頻以每月 1 號標記
+            n, unit = gap // 30, "期（月頻）"
+            hi, lo = F.get("monthly_fail_periods", 3), F.get("monthly_warn_periods", 2)
+        elif sid in weekly_ids:
+            n, unit = gap // 7, "期（週頻發布）"
+            hi, lo = F.get("weekly_fail_periods", 3), F.get("weekly_warn_periods", 2)
+        else:
+            if trading_on:
+                n, unit = _weekdays_after(ld, now), "個交易日"
+            else:
+                n, unit = gap, "個日曆日"
+            hi, lo = F.get("daily_fail_days", 5), F.get("daily_warn_days", 2)
+        if n >= hi:
+            bad.append((s, f"落後 {n} {unit}，≥ 硬失敗門檻 {hi}"))
+        elif n >= lo:
+            warn.append((s, f"落後 {n} {unit}，≥ 警示門檻 {lo}"))
+    bad.sort(key=lambda t: str(t[0].get("last")))
+    warn.sort(key=lambda t: str(t[0].get("last")))
+    return bad, warn
+
+
 def load(path, what):
     """讀不到就說出來並回 None。**讀不到與「裡面是空的」是兩件事。**"""
     if not os.path.exists(path):
@@ -171,9 +232,27 @@ def main(argv):
                   "並在 `about.run` 說明")
         ser = pre.get("series") or []
         if ser:
-            print(f"　涵蓋 {len(ser)} 條，末日最舊的五條：")
-            for s in sorted(ser, key=lambda x: str(x.get("last", "")))[:5]:
-                print(f"　　{s.get('id','?'):<14}n={s.get('n','?'):<6}last={s.get('last','?')}")
+            bad, warn = _stale(ser, anchors, day)
+            print(f"　涵蓋 {len(ser)} 條，其中 **{len(bad)} 條硬失敗**、{len(warn)} 條警示")
+            # 硬失敗逐條列，**這是這一段存在的理由**：它們在 `ok` 清單裡，
+            # 不列出來就跟正常的序列長得一模一樣。
+            for s, why in bad:
+                print(f"　　**不能用**　{s.get('id','?'):<14}n={s.get('n','?'):<6}"
+                      f"last={s.get('last','?')}　{why}")
+            # 警示只給摘要。**逐條列會反過來蓋掉硬失敗**——2026-08-30 實測，
+            # 那天警示有 32 條（多數只是日曆日在週末必然落後 2–3 天），
+            # 三條真的不能用的被埋在中間。
+            if warn:
+                byday = {}
+                for s, _why in warn:
+                    byday.setdefault(str(s.get("last")), []).append(str(s.get("id")))
+                print(f"　　警示 {len(warn)} 條（要在 subtitle 或 note 寫出基準日）：")
+                for k in sorted(byday):
+                    ids = byday[k]
+                    head = "、".join(ids[:6]) + (f" 等 {len(ids)} 條" if len(ids) > 6 else "")
+                    print(f"　　　末日 {k}：{head}")
+            if not bad and not warn:
+                print("　　（沒有任何一條落後到警示以上）")
     print()
 
     # ── 三大數據：整份原樣 ────────────────────────────────

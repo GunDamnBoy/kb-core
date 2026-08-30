@@ -126,7 +126,13 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
   不是另一份清單。對上游最新一天的實檔比對。
 - 五個 slot、theme 不重複、slot 1／2／4 當天性、重製圖 `provenance.inspired_by` 必填。
 - 取數限制與代理表：`SOURCES.md` vs `anchors.proxies`／`anchors.rate_limits`。
-- QA 旗標分類法與處置：`anchors.quality` vs 近幾期的 `about.qa_disposition`。
+- **快取有沒有變短。** 2026-08-30 抓到的那一類：來源對最近幾期回空而不是回錯誤碼，
+  取數層整檔覆寫，於是快取被砍掉一段而預抓照樣算 `ok`。
+  查法是拿一期舊封存畫得出來的序列末日，跟今天 `data/series/*.csv` 的末日比 ——
+  **舊期畫得出來、今天畫不出來，就是快取退化了，不是來源今天才壞。**
+  守衛在 `fetch.get()`（只能長不能縮），回歸案例 `fetch.py --selftest-cache`。
+- QA 旗標分類法與處置：`anchors.quality` vs 近幾期的 `about.qa_dispositions`
+  （2026-08-30 更正欄位名，這裡原本寫單數 `qa_disposition`，照它 grep 一筆都找不到）。
 - 三大月度數據發布日規則：`anchors.structure.release_day`。
 - 圖型選用與多樣性、歷史錨點措辭（`anchors.history_limits`：
   BAML 只有近三年、SOXQ 只回到 2021）。

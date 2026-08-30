@@ -145,7 +145,9 @@ python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 
 ### 6. 出圖
 
-兩軌**從同一份 spec 渲染**，日檔不存 option（值在 `anchors.rendering`）。
+兩軌**從同一份 spec 渲染**，而 `render_day.py` 會把算出來的 option 一起寫回日檔
+（`anchors.rendering.stored_option` 是 true）——**那是 `chart.option_matches_spec` 的驗證對象，
+不要拿掉**。2026-08-30 更正：這一行原本寫「日檔不存 option」，而實測 23 份封存**每一份都有**。
 
 **首次使用任何一種新圖型的當天，一定要實載網頁看一眼** ——
 檢查程式只檢查欄位齊不齊，不會把資料餵進 ECharts。
@@ -165,6 +167,10 @@ python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 **`/tmp` 的檔案會跨輪次殘留，而寫檔失敗與執行成功是兩件獨立的事。**
 
 寫完用 `wc -c` 確認落地。
+
+`window.to` 寫**秒精度**的 ISO8601（`2026-08-30T11:51:00+08:00`），不要用分精度。
+它是 `metrics/MEASURE.md` 的上界來源之一，格式一致才比得起來 ——
+2026-08-30 那期就寫成了 `11:51+08:00`，是唯一一份不同格式的封存。
 
 **完成條件**：`wc -c` 的位元組數與預期相符，且 JSON 可被 `json.load` 讀開。
 
@@ -194,10 +200,24 @@ QA 旗標與處置、降級與理由、以及下一輪要修的事。
 **不要拿 PNG 的 mtime 當量測** —— 2026-08-22 實測五張 PNG 的 mtime 全被掛載層
 改寫成同一個晚於實際出圖的時刻，而 08-21 的報告正是拿它當「量測」。
 
-**用量那一段在排程 prompt（`scripts/chart/RUN-PROMPT.md`）的最後一節**，
-這裡不重複寫一份 —— 但**讀完這份 SKILL 不等於這一輪做完了**，回報前要回去把它跑掉。
+**用量的規則在 `metrics/MEASURE.md`，那是正本，這裡不抄。**
+但有一個**動作**這裡要寫，因為它從來沒有寫在任何地方：
 
-**完成條件**：報告裡每一個時間數字都能指出是量到的還是估的，估的標 `~`。
+**收尾要寫 sidecar `~/outbox/chart/<今天>.usage.json`**，四個必填欄位加 `until`，
+格式與各欄的意義去 `MEASURE.md` 看（那是它唯一的家）。三件事只有輪次自己知道，
+所以只有輪次寫得出來：`since`（這一輪的第一個時刻）、`until`（＝日檔的 `window.to`）、
+`transcript`（**這一場自己的主逐字稿絕對路徑**，用 `Glob` 找
+`…/local_<uuid>/.claude/projects/*/*.jsonl`，取不在 `subagents/` 底下的那一個）。
+系統 id 是 `chart`。寫完等 `com.kenny.kbusage`（每 600 秒）撿走，檔案消失就是進帳了。
+
+**為什麼要明寫**：2026-08-30 盤 `usage.csv`，chart 有 **6 列 `sidecar`、4 列 `commit`**。
+sidecar 是可信度最高的那一級，`commit` 切的是 publish 成功的時刻、會偏晚。
+差別不在於那幾天比較忙，而在於**這一步以前不在任何文件裡**，
+六列是輪次自己讀完 `MEASURE.md` 之後決定寫的，四列是沒決定寫的。
+**一個每天都要靠執行者自己想起來的步驟，就是一個每天都在賭的步驟。**
+
+**完成條件**：報告裡每一個時間數字都能指出是量到的還是估的，估的標 `~`；
+且 `usage.csv` 的最後一列是今天的 chart、`bounded` 欄是 `sidecar`。
 
 ---
 

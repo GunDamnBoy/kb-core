@@ -32,15 +32,29 @@ budget:
 
 ### 一份 spec，兩個渲染器
 
-靜態軌（PNG／SVG）與互動軌（網頁）**從同一份 spec 出圖**，日檔**不存 ECharts option**。
+靜態軌（PNG／SVG）與互動軌（網頁）**從同一份 spec 出圖**，而日檔**把算出來的 option 一起存下來**
+（`anchors.rendering.stored_option`）。
 
 理由是舊制的頭號缺陷：**雙軌漂移**——改了靜態軌忘了互動軌。
 最嚴重的一次是瀑布圖在網頁上每根從 0 往上長，**圖上的結論與 `takeaway` 相反，
 卻不丟任何例外**。兩種錯的代價不對稱：雙軌漂移是正確性失效，
 而「舊圖用新版渲染器重畫會有樣式差異」只是版本問題——所以 `about` 記 `renderer_version`。
 
-**2026-08-05 至 08-17 那 13 天存了 option**，歷史不改寫，所以渲染層吃兩種方言：
-有 option 就用它，沒有就從 spec 現算。
+**存 option 不是為了省事，是為了讓漂移驗得到**：檢查 `chart.option_matches_spec`
+問的正是「這份 option 有沒有忠實地把 spec 編碼進去」，四條斷言在
+`anchors.rendering.drift_assertions`，每一條都是從真實事故反推的。**沒有 option 就沒有東西可以驗。**
+
+> **2026-08-30 更正。** 這一段原本寫著「日檔不存 option」與「2026-08-05 至 08-17 那 13 天存了 option，
+> 所以渲染層吃兩種方言」。**兩句都是錯的，而且錯了十天沒有人發現。**
+> 實測 23 份封存日檔：**每一份的 5 張圖都有 option**（近十期穩定佔檔案的 21–23%，
+> 08-06 那期到 50%）。正確的沿革在 `CHANGELOG` 2026-08-20 深夜〈架構改判：兩軌都留〉——
+> `stored_option` 當時就從 false 改回 true、`chart.no_stored_option` 換成 `chart.option_matches_spec`，
+> **而 anchors 與程式跟上了，這份沒有。**
+> 危險的不是文字錯，是**這份是「什麼算對的產出」的正本**：照它做把 option 拿掉，
+> 那四條斷言會整組失效，而失效的樣子是「檢查全綠」。
+
+那 13 天真正的另一種方言是**序列化格式**（compact vs `indent=1`），
+見 `anchors.rendering.legacy_json_format`。
 
 ### 資料欄位逐圖型不同
 

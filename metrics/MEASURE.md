@@ -22,7 +22,7 @@
 | 執行者 | 何時 | 做什麼 |
 |---|---|---|
 | `com.kenny.kbscan` | 每天 12:00 | **主線**。`tools/usage_scan.py` 掃前一天，三個界線全部從外面量出來 |
-| `com.kenny.kbusage` | 每 600 秒 | 輪次若寫了 sidecar 就撿走（最準的一條，但目前只有 advisory 的正本有這一步） |
+| `com.kenny.kbusage` | 每 600 秒 | 輪次若寫了 sidecar 就撿走（最準的一條） |
 | `com.kenny.kbgaps` | 每天 12:10 | 缺列哨兵：查前一天**有回執卻沒有列**的系統，寫進 `~/.kbusage/gaps.md`。**只報不補** |
 
 **為什麼主線不是 sidecar**：sidecar 要求七套的執行指示各自帶一步，而 2026-08-24 查證
@@ -63,6 +63,13 @@
 - `until`：那一輪**交出草稿**的時刻 —— 也就是寫進日檔 `window.to` 的那一個值。
   理由見下一節。
 - `transcript`：**那一場自己的主逐字稿絕對路徑**，不是最新的那一份。
+
+**哪幾套真的在寫 sidecar，看 `usage.csv` 的 `bounded` 欄，不要看這份怎麼寫**（2026-08-30 盤過一次）：
+advisory 4 列 `sidecar`／7 列 `window`，chart 6 列 `sidecar`／4 列 `commit`，
+podcast 9 列全 `commit`，broker-research `commit` 與 `manual` 各 1，convergence 1 列 `commit`。
+**chart 那四列 `commit` 是它的執行指示沒有寫這一步、而那幾天的輪次沒有自己想起來** ——
+2026-08-30 已把那一步寫進 `skills/chart/SKILL.md` 第 9 步與 `scripts/chart/RUN-PROMPT.md`。
+**一個每天都要靠執行者自己想起來的步驟，就是一個每天都在賭的步驟。**
 
 ### 為什麼路徑由輪次寫，而不是腳本去找
 
@@ -168,7 +175,7 @@
 | 值 | 出處 | 已知弱點 |
 |---|---|---|
 | `sidecar` | 輪次自己寫的交草稿時刻 | 要求執行副本帶著那一步 |
-| `window` | 已發布日檔裡的 `window.to` | **七套裡只有 advisory 的日檔帶它** |
+| `window` | 已發布日檔裡的 `window.to` | 帶它的是 advisory 與 chart（chart 自 2026-08-25 起每期都有），其餘五套沒有 |
 | `commit` | 日檔當天最早的那顆 commit | 那是 **publish 成功**的時刻，不是交草稿的時刻 —— 發布卡住的那天會偏晚 |
 | `manual` | 有切，但說不出哪來的 | |
 | `no` | 沒切 | 混著維護對話，**不能拿來做決定** |
