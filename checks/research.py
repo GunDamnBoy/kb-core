@@ -248,11 +248,22 @@ register(Check(
 
 
 # ── 5. 第一頁撐不撐得起「立場」 ──────────────────────────────────────
+def visible_len(s):
+    """`page_one` 塌縮空白之後還剩幾個字元。**這條規則的家在這裡。**
+
+    2026-08-31 起 `extract.py` 的逐檔退路也用它 —— 那支要判「主抽取器是不是
+    把第一頁抽成空的」，判準必須跟這條檢查**逐字相同**。
+    兩個長得很像的實作，會在某一天給出不同的答案，而那天沒有人會發現。
+    （`check_part.py` 借用 `_norm` 是同一條理由。）
+    """
+    return len(re.sub(r"\s+", " ", s or "").strip())
+
+
 def _page_one(p):
     lo = _A(p, "page_one_is_the_thesis", "min_visible_chars")
     bad = []
     for d in _docs(p):
-        n = len(re.sub(r"\s+", " ", d.get("page_one") or "").strip())
+        n = visible_len(d.get("page_one"))
         if n < lo:
             bad.append(f"{_name(d)} 塌縮空白後只有 {n} 字元")
     if bad:
@@ -890,6 +901,10 @@ register(Check(
         "同一支抽取器的不同版本（`engine` 只記名字不記版本）",
         "整批用同一支、但那一支對這幾份就是抽得不好",
         "只跑第 2 層而沒有重抽的輪次（docs 沿用上一輪的）",
+        "**刻意的混軌與手滑的混軌** —— 2026-08-31 起 `extract.py` 有逐檔退路"
+        "（主抽取器把第一頁抽成空的時換下一支），換過軌的那一份帶著 "
+        "`engine_fallback` 欄位，而這條只數 `engine` 有幾種、不看那個欄位。"
+        "**要分辨哪一種，看 `extract.py` 印的那份具名清單。**",
     ],
     run=_one_engine,
     fixture={"anchors": {},

@@ -46,6 +46,10 @@ import title   # noqa: E402   真實標題的取法，見該檔的檔頭
 
 _KB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 A = json.load(open(os.path.join(_KB, "research", "anchors.json"), encoding="utf-8"))
+sys.path.insert(0, _KB)
+# **「第一頁夠不夠厚」的規則只有一份**，家在那條檢查裡（見該函式的 docstring）。
+# 逐檔退路要判的正是同一件事，自己再寫一次就是第二份會各自漂移的實作。
+from checks.research import visible_len  # noqa: E402
 
 # ── 浮水印：兩種形態都要剃 ────────────────────────────────────────────
 # `pdftotext` 把旋轉文字讀成正的、`pdfplumber` 讀成逐段反轉（連雜湊都整串反轉）。
@@ -96,8 +100,9 @@ def pick_engine():
     return None
 
 
-def raw_pages(path):
-    if ENGINE == "pdftotext":
+def raw_pages(path, engine=None):
+    eng = engine or ENGINE
+    if eng == "pdftotext":
         out = subprocess.run(["pdftotext", "-layout", path, "-"],
                              capture_output=True, text=True, timeout=300).stdout
         pages = out.split("\f")
@@ -107,12 +112,79 @@ def raw_pages(path):
         while pages and not pages[-1].strip():
             pages.pop()
         return pages
-    if ENGINE == "pdfplumber":
+    if eng == "pdfplumber":
         import pdfplumber
         with pdfplumber.open(path) as pdf:
             return [(p.extract_text(layout=True) or "") for p in pdf.pages]
     import pypdf
     return [(p.extract_text() or "") for p in pypdf.PdfReader(path).pages]
+
+
+def engine_available(eng):
+    if eng == "pdftotext":
+        return bool(shutil.which("pdftotext"))
+    try:
+        __import__(eng)
+        return True
+    except ImportError:
+        return False
+
+
+def fallback_if_thin(path, d):
+    """主抽取器把第一頁抽成空的時，**只有這一份**改用下一支抽取器。
+
+    回 `(doc, 換到哪一支或 None)`。
+
+    ## 為什麼需要它
+
+    2026-08-30 高盛《Global Semis: CHIPS IV》：`pdftotext` 對它的第一頁只吐出
+    113 個字元（**全部是浮水印**），剃完剩 0；而 `pdfplumber` 對同一頁吐出 3,390 個字元，
+    報告日期就印在第一行（`EQUITY RESEARCH | August 24, 2026 | 12:06 AM HKT`）。
+
+    日期辨識**只讀第一頁**（刻意的：掃全文會抓到引用文獻的日期），
+    於是這一份認不出日期、slug 成了 `undated-…`，而 `build_index.py` 對
+    「辨識不全」的反應是**拒絕替整批建索引**（exit 10）——
+    **一份讀不到的 PDF 擋掉整輪。**
+
+    > 當時的第一個判斷是「第一頁是圖檔」。那是**看到浮水印以外沒有東西就下的推論，
+    > 沒有換一支抽取器試過**，而它被寫進了 `RUN-PROMPT` 正本當成事實。
+    > 換一支就三千多字元。**「抽不到」與「不存在」在輸出上長得一模一樣。**
+
+    ## 代價，講在前面
+
+    這會讓那一批變成混軌，`research.one_engine` 出 WARN，而**那個 WARN 是對的**：
+    兩軌對旋轉文字、欄位與空白的處理不同，跨份的剃除佔比不再可比。
+
+    收下這個代價是因為：**每一份的 `quote` 與 `grounding` 只跟自己那份的抽取文字
+    比對**，所以份內的正確性不受影響；而另一邊是這份報告根本進不來。
+    **一份完全讀不到的報告，比一份用第二軌讀到、而且把用了哪一軌記下來的報告更糟。**
+
+    換軌的事實記在 `engine`（哪一支）與 `engine_fallback`（為什麼），
+    兩個都會被寫進抽取結果 —— **不留痕的自動退路，跟沒有退路一樣危險。**
+    """
+    lo = A["page_one_is_the_thesis"]["min_visible_chars"]
+    before = visible_len(d.get("page_one"))
+    if before >= lo:
+        return d, None
+    order = A["extract"]["engine_order"]
+    rest = order[order.index(ENGINE) + 1:] if ENGINE in order else []
+    for eng in rest:
+        if not engine_available(eng):
+            continue
+        try:
+            alt = extract(path, engine=eng)
+        except Exception as e:                      # 退路自己炸掉不該拖垮整輪
+            print(f"    （退路 {eng} 失敗：{type(e).__name__}）", file=sys.stderr)
+            continue
+        now = visible_len(alt.get("page_one"))
+        if now >= lo:
+            alt["engine_fallback"] = {
+                "from": ENGINE, "to": eng,
+                "page_one_visible_before": before, "page_one_visible_after": now,
+                "why": f"{ENGINE} 抽到的第一頁塌縮空白後只有 {before} 字元，不足 {lo}",
+            }
+            return alt, eng
+    return d, None
 
 
 def tables_of(path, max_pages=200):
@@ -304,9 +376,9 @@ def slugify(s):
     return re.sub(r"[\s_-]+", "-", s)[:60]
 
 
-def extract(path):
+def extract(path, engine=None):
     base = norm_name(os.path.basename(path)[:-4])
-    pages = raw_pages(path)
+    pages = raw_pages(path, engine)
     npage = len(pages)
 
     # ① 浮水印先剃
@@ -378,7 +450,7 @@ def extract(path):
         "source_file": os.path.basename(path),
         "pages": npage, "claimed_pages": claimed and int(claimed), "issue": issue,
         "sha256": hashlib.sha256(open(path, "rb").read()).hexdigest(),
-        "engine": ENGINE,
+        "engine": engine or ENGINE,
         "extracted_at": dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).isoformat(timespec="seconds"),
         "page_one": p1,
         # **切欄的結果是附加的，不取代 `page_one`。**
@@ -447,10 +519,20 @@ def main(argv=None):
     bad = 0
     fresh_files = set()          # 這一輪**應該存在**的輸出路徑
     written = {}                 # slug → (sha256, source_file)，撞號守衛用
+    fell_back = []
     for p in pdfs:
         d = extract(p)
+        # **抽不到 ≠ 不存在。** 主抽取器把第一頁抽成空的時，這一份換下一支再試一次
+        # （2026-08-31 加，理由見 `fallback_if_thin` 的 docstring）。
+        d, switched = fallback_if_thin(p, d)
+        if switched:
+            fell_back.append((d["slug"], switched, d["engine_fallback"]))
         s = d["strip_report"]
         flag = ""
+        if switched:
+            fb = d["engine_fallback"]
+            flag += (f'\u3000**改用 {switched}**（第一頁 '
+                     f'{fb["page_one_visible_before"]}→{fb["page_one_visible_after"]} 字元）')
         if not d["broker"] or not d["date"]:
             flag = "　**辨識不全**"; bad += 1
         if s["removed_pct"] > 15:
@@ -560,6 +642,17 @@ def main(argv=None):
                 print("  留著。確認過就加 --prune 重跑，或自己刪。"
                       "**留著的話 research_verify 會判 FAIL**，那是對的。")
                 bad += 1
+    # **換過軌的要具名列出來，不能只留在 JSON 裡。**
+    # 這一批因此變成混軌，`research.one_engine` 會出 WARN —— 那個 WARN 是對的，
+    # 而且它**必須繼續叫**（跨份的剃除佔比不再可比）。這裡先說出來，
+    # 是為了讓下一個人分得出「預期中的混軌」與「有人手滑換了整批的抽取器」。
+    if fell_back:
+        print(f"\n**{len(fell_back)} 份改用了退路抽取器**（主抽取器把第一頁抽成空的）：")
+        for slug, eng, fb in fell_back:
+            print(f"    {slug}　{fb['from']} → {eng}"
+                  f"（第一頁 {fb['page_one_visible_before']}→{fb['page_one_visible_after']} 字元）")
+        print("  這一批因此是混軌的，`research.one_engine` 會出 WARN —— **那是預期的，"
+              "不是要去消掉的**。份內的原句與 grounding 不受影響（各比各的抽取文字）。")
     return 10 if bad else 0
 
 
