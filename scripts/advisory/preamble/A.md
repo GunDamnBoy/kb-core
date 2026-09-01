@@ -286,7 +286,7 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 | NYT | `/2026/08/23/world/wheat-price-iran-war-canada.html` | 頁首的 `NEWSLETTER / The World` 標籤 |
 | WSJ | `/tech/ai/data-center-disenchantment-<hash>` | 內文開頭「This is an edition of the WSJ Technology newsletter…」 |
 | WSJ | `/finance/investing/<slug>-<hash>` | 標題尾巴的 `｜ What's News for Aug. 27` —— **路徑與一般文章完全無法區分** |
-| WSJ | `/cio-journal/`、`/cmo-today/`、`/risk-compliance-journal/`、`/logistics-report/` | **這四個路徑前綴整批都是電子報，直接列黑名單**（08-28 實測 `/cio-journal/` 那篇 44 段／8,644 字元，數字完全過門檻，實為「The Morning Download」，夾了六七則不相干導讀＋`Corrections & Amplifications`＋`About Us`） |
+| WSJ | `/cio-journal/`、`/cmo-today/`、`/risk-compliance-journal/`、`/logistics-report/` | **這四個路徑前綴整批都是電子報，直接列黑名單**（08-28 實測 `/cio-journal/` 那篇 44 段／8,644 字元，數字完全過門檻，實為「The Morning Download」，夾了六七則不相干導讀＋`Corrections & Amplifications`＋`About Us`）。 **⚠️ 09-01 再加一個前綴：`/pro/`**（實測 `/pro/cybersecurity/russia-turns-to-sabotage-…`，「Welcome back」開場、多則不相干新聞夾雜、結尾 `About Us` 團隊自介，與上面四個同型）。**注意不要跟 CNBC 的 `/pro/` 混淆**：CNBC 的 `/pro/` 是獨立付費層（訂閱範圍外），WSJ 的 `/pro/` 是電子報（有正文但不是單篇報導）——**兩者都不要成卡，但理由不同、回報時要寫對** |
 | Bloomberg | `/news/articles/2026-08-27/jackson-hole-fed-meeting-warsh-faces-crucial-wall-street-test` | 正文**第一句的自我介紹**（「This is Washington Edition, the newsletter about money, power and politics…」）—— slug 完全看不出來，而它 46 段／8,516 字元 |
 | Bloomberg | `/news/articles/…/fed-chair-warsh-s-jackson-hole-speech-how-can-he-soothe-markets` | Big Take **podcast 頁**：9 段／2,180 字元過門檻，但同一段導讀重複貼兩遍、實質只有約 1,000 字元。認法是正文出現「On today's Big Take podcast」或「Never miss an episode. Follow…」；**slug 結尾沒有 `-podcast`**，靠 slug 過濾抓不到 |
 | The Economist | `/…/checks-and-balance-newsletter-…`、`/the-world-in-brief/<uuid>` | slug 裡的 `-newsletter-`／整段是 UUID |

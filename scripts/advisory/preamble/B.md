@@ -241,13 +241,14 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 | The Economist | 週刊；**週末全站可能只有 1 篇真文章**（其餘是 `the-world-in-brief`、`-newsletter-`、podcast） | 08-30 實測全站窗口內真文章 1 篇 |
 | Oil & Gas Journal | 美東下午之後就不發稿，**週六不發** | 08-30 窗口內 0 篇 |
 | EIA | 週報行事曆：石油週三、天然氣週四 | 08-30 頁面健康、`Next Release: September 2` |
-| CME 各結算表 | 只有交易日有；**但週五結算會在台北週六 12:55 貼出**，那是週末窗口唯一穩定的「新發布」。**輪詢條件用 `document.querySelectorAll('table tr').length > 3`，08-30 實測 500ms 就滿足**（四頁都是），不必等秒數 | 08-30 四頁 TRADE DATE 皆 `Friday, 28 Aug 2026`、頁註 `28 Aug 2026 11:55:00 PM CT` |
+| CME 各結算表 | 只有交易日有；**但週五結算會在台北週六 12:55 貼出**，那是週末窗口唯一穩定的「新發布」。**輪詢條件用 `document.querySelectorAll('table tr').length > 3`，08-30 實測 500ms 就滿足**（四頁都是），不必等秒數 | 08-30 四頁 TRADE DATE 皆 `Friday, 28 Aug 2026`、頁註 `28 Aug 2026 11:55:00 PM CT`。 **⚠️ 2026-09-01 補一條，它擋的是誤判不是失效**：這一頁**未達輪詢條件時 `table tr` 回 0、`body.innerText` 只有約 2 千字元**，看起來像連不上；實測輪詢後 14 列正常。**「0 列」是還沒渲染，不是站方擋你。** 同日另確認 `TRADE DATE` 欄位要當成資料，不要當成今天：台北 09-01 上午讀到的仍是 `Friday, 28 Aug 2026`——**週一的結算要等美東當天收盤後才貼**，所以週二輪拿不到週一結算是節奏，不是故障 |
 | MoneyDJ 編輯稿 | **週末不出**，只有 MOPS 公告轉發流 | 08-30 七個分類窗口內合計 1 則產業稿 |
 | 鉅亨 Anue 台股本體稿 | 週末發稿量極低，`tw_stock` 可能整個窗口只有一批 | 08-30 最新一筆停在 8/29 10:36 |
 | TrendForce 中文站 | 非每日 | 08-30 `/presscenter/news` 最新 08-28 |
 | **Fierce Biotech** | **純工作日出刊** | 08-30 全站最新美東 8/28 13:50 |
 | **STAT News** | 週末只有零星稿，且常是 STAT+ | 08-30 `/feed/` 窗口內僅 1 篇、且是訂閱牆 |
 | **Kitco News** | **純工作日出刊，週末零篇** | 08-31 首頁 68 條 ＋ `/opinion` 34 條、**合計 102 條連結裡 8/29（六）與 8/30（日）各 0 篇**；分佈是 8/24 10、8/25 2、8/26 3、8/27 33、8/28 50 |
+| **LBMA 定盤（`prices.lbma.org.uk/json/gold_*.json`）** | **跟著英國銀行假日休市——那一天沒有定盤，不是端點壞了。** 定盤由 IBA 每個*倫敦交易日* 10:30（AM）與 15:00（PM）各一次；英國放假就整天不定，序列直接跳過那一天。**看到尾端沒有往前走，先查那天是不是英國銀行假日，再懷疑來源。** 2026 的日子：01-01、04-03（耶穌受難日）、04-06（復活節週一）、05-04、05-25（春季）、**08-31（夏季）**；之後還有 12-25、12-28。**這一條同時解釋一個會嚇到人的組合**：美國正常交易、倫敦休市時，**SPDR 有新資料點而 LBMA 沒有**——那不是矛盾，是兩個市場的假日不同步 | 2026-09-01 實測：PM 序列 14,672 筆，2026 六個英國銀行假日**全部缺席**、假日隔天（05-26）有；2025 的三個對照（08-25、05-26、04-21）也全部缺席 |
 
 **⚠️ 生技健護這一組在週日輪會結構性偏薄，這是窗口與出刊日的乘積，不是你採得不好。**
 週日輪的窗口換算美東是**週五 19:00 → 週六 20:30**，完整落在美國週五收盤之後到週六，
@@ -342,7 +343,7 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 | NYT | `/2026/08/23/world/wheat-price-iran-war-canada.html` | 頁首的 `NEWSLETTER / The World` 標籤 |
 | WSJ | `/tech/ai/data-center-disenchantment-<hash>` | 內文開頭「This is an edition of the WSJ Technology newsletter…」 |
 | WSJ | `/finance/investing/<slug>-<hash>` | 標題尾巴的 `｜ What's News for Aug. 27` —— **路徑與一般文章完全無法區分** |
-| WSJ | `/cio-journal/`、`/cmo-today/`、`/risk-compliance-journal/`、`/logistics-report/` | **這四個路徑前綴整批都是電子報，直接列黑名單**（08-28 實測 `/cio-journal/` 那篇 44 段／8,644 字元，數字完全過門檻，實為「The Morning Download」，夾了六七則不相干導讀＋`Corrections & Amplifications`＋`About Us`） |
+| WSJ | `/cio-journal/`、`/cmo-today/`、`/risk-compliance-journal/`、`/logistics-report/` | **這四個路徑前綴整批都是電子報，直接列黑名單**（08-28 實測 `/cio-journal/` 那篇 44 段／8,644 字元，數字完全過門檻，實為「The Morning Download」，夾了六七則不相干導讀＋`Corrections & Amplifications`＋`About Us`）。 **⚠️ 09-01 再加一個前綴：`/pro/`**（實測 `/pro/cybersecurity/russia-turns-to-sabotage-…`，「Welcome back」開場、多則不相干新聞夾雜、結尾 `About Us` 團隊自介，與上面四個同型）。**注意不要跟 CNBC 的 `/pro/` 混淆**：CNBC 的 `/pro/` 是獨立付費層（訂閱範圍外），WSJ 的 `/pro/` 是電子報（有正文但不是單篇報導）——**兩者都不要成卡，但理由不同、回報時要寫對** |
 | Bloomberg | `/news/articles/2026-08-27/jackson-hole-fed-meeting-warsh-faces-crucial-wall-street-test` | 正文**第一句的自我介紹**（「This is Washington Edition, the newsletter about money, power and politics…」）—— slug 完全看不出來，而它 46 段／8,516 字元 |
 | Bloomberg | `/news/articles/…/fed-chair-warsh-s-jackson-hole-speech-how-can-he-soothe-markets` | Big Take **podcast 頁**：9 段／2,180 字元過門檻，但同一段導讀重複貼兩遍、實質只有約 1,000 字元。認法是正文出現「On today's Big Take podcast」或「Never miss an episode. Follow…」；**slug 結尾沒有 `-podcast`**，靠 slug 過濾抓不到 |
 | The Economist | `/…/checks-and-balance-newsletter-…`、`/the-world-in-brief/<uuid>` | slug 裡的 `-newsletter-`／整段是 UUID |
