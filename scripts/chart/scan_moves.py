@@ -25,9 +25,14 @@ BRIEF 把 slot 2（市場異動圖）定義成「程式化掃描：把當日變�
 · **不補資料**：快取沒有就跳過並列在 `missing`，不去抓。
 · **不四捨五入掉樣本數**：每一列都帶 `n`，因為台股快取只回到 2024-09，
   它的分位與美股的分位分母不同 —— **兩個都叫「近三年分位」，但不是同一把尺**。
+  2026-09-01 補：光有 `n` 不夠。表頭當時印的是「近 3 年分位」，
+  而 `^TWII` 那一列其實只有 2.0 年 —— 這句話在上一行寫著，
+  **卻只寫在寫程式的人看的地方，沒有寫在讀表的人看的地方**。
+  現在表頭改印「要求近 N 年」，樣本起日與實際年數逐列標在行尾，
+  短於要求的加 ★ 並在表尾列出（門檻 `SHORT_TOLERANCE_DAYS`）。
 """
 from __future__ import annotations
-import csv, json, os, sys
+import csv, datetime as dt, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _repo  # noqa: E402
@@ -84,13 +89,61 @@ def changes(v: list, w: int, absolute: bool) -> list:
     return out
 
 
+# 首筆比切點晚幾天之內**不算**樣本短。切點那天本來就常常不是觀測日
+# （週末、國定假日、或那條序列剛好沒發布），而三年窗口裡差兩週是 0.4%，
+# 不足以讓它變成「另一把尺」。**這個容差是 2026-09-01 當場逼出來的**：
+# 第一版寫成 `since > cut` 逐字比，`BAMLH0A0HYM2` 首筆 2023-08-29、切點 2023-08-28，
+# 差一天就被標成短樣本 —— 一條在資料正常時也會響的警示，跟沒有警示一樣。
+# 台股農曆年可連休九天，加上前後週末約十一天，所以容差取 14。
+SHORT_TOLERANCE_DAYS = 14
+
+
+def _cut_date(last: str, years: int) -> "dt.date":
+    """要求的切點。**2 月 29 日要退回 28 日**——回推三年會落在平年，
+    直接用字串拼出 `2025-02-29` 再去 parse 會拋 ValueError，
+    而這支每天都在跑，四年一次的例外不該由呼叫端來記得。"""
+    x = dt.date.fromisoformat(last)
+    try:
+        return x.replace(year=x.year - years)
+    except ValueError:
+        return x.replace(year=x.year - years, day=28)
+
+
+def sample_window(d: list, years: int) -> dict:
+    """分位樣本從哪裡起算，以及**它有沒有短於要求**。
+
+    回傳 `i`（起點索引）、`cut`（要求的切點）、`since`（實際起日）、
+    `span_years`（實際跨幾年）、`short_by_days`（首筆比切點晚幾天）、
+    `truncated`（短得足以構成另一把尺，門檻見 `SHORT_TOLERANCE_DAYS`）。
+
+    **`truncated` 是這支唯一說得出「這一列跟別列不是同一把尺」的地方。**
+    2026-09-01 的實例：文字輸出的表頭印「近 3 年分位」，而 `^TWII` 的快取
+    只回到 2024-09-02、實際樣本 2.0 年。本檔開頭的 docstring 從第一版就寫著
+    「兩個都叫『近三年分位』，但不是同一把尺」，`--json` 也逐列帶著 `since` ——
+    **只有人在看的那個文字輸出把 `since` 丟掉了，只留 `n=`**，
+    而 `n` 要先知道一年有幾個交易日才讀得出來。那一天是靠人工發現並繞開的，
+    也就是靠賭的：**一個要靠讀者自己心算才發現的錯，就是一個每天都在賭的錯。**
+    """
+    cut = _cut_date(d[-1], years)
+    cs = cut.isoformat()
+    i = next((k for k, x in enumerate(d) if x >= cs), 0)
+    since = dt.date.fromisoformat(d[i])
+    span = (dt.date.fromisoformat(d[-1]) - since).days / 365.25
+    short_by = (since - cut).days
+    return {"i": i, "cut": cs, "since": d[i], "span_years": round(span, 1),
+            "short_by_days": short_by,
+            "truncated": short_by > SHORT_TOLERANCE_DAYS}
+
+
 def scan_one(sid: str, name: str, windows: list, years: int) -> dict:
     d, v = load(sid)
     absolute = sid in ABS_CHANGE
-    cut = f"{int(d[-1][:4]) - years}{d[-1][4:]}"
-    s = next((k for k, x in enumerate(d) if x >= cut), 0)
+    sw = sample_window(d, years)
+    s = sw["i"]
     row = {"id": sid, "name": name, "last": d[-1], "value": v[-1],
-           "unit": "abs" if absolute else "pct", "since": d[s], "w": {}}
+           "unit": "abs" if absolute else "pct", "since": sw["since"],
+           "span_years": sw["span_years"], "truncated": sw["truncated"],
+           "cut": sw["cut"], "short_by_days": sw["short_by_days"], "w": {}}
     for w in windows:
         if len(v) <= w or len(d) <= s + w:
             continue
@@ -134,6 +187,41 @@ def selftest() -> int:
         ok = False
     except ValueError:
         pass
+
+    # 樣本窗口：四個案例，每一個對應 2026-09-01 那一輪踩到或差點踩到的一種形狀。
+    # （1）快取夠長（美股 ETF）。
+    long_cache = ["2021-06-11", "2023-08-30", "2023-08-31", "2025-01-02", "2026-08-31"]
+    sw = sample_window(long_cache, 3)
+    if sw["truncated"] or sw["since"] != "2023-08-31" or sw["cut"] != "2023-08-31":
+        print(f"✗ sample_window(足夠長): {sw}")
+        ok = False
+    # （2）快取被自己的起始日截短（^TWII 只回到 2024-09）。
+    short_cache = ["2024-09-02", "2025-06-02", "2026-08-31"]
+    sw = sample_window(short_cache, 3)
+    if not sw["truncated"] or sw["since"] != "2024-09-02" or sw["span_years"] != 2.0:
+        print(f"✗ sample_window(被截短): {sw}")
+        ok = False
+    # （3）**假警報那一種**：首筆只比切點晚一天（切點不是觀測日）。
+    # 第一版逐字比 `since > cut` 會把 BAMLH0A0HYM2 標成短樣本。
+    sw = sample_window(["2023-09-01", "2025-01-02", "2026-08-31"], 3)
+    if sw["truncated"] or sw["short_by_days"] != 1:
+        print(f"✗ sample_window(晚一天不該算截短): {sw}")
+        ok = False
+    # （4）容差邊界：剛好等於容差不算，多一天才算。
+    base = dt.date(2026, 8, 31)
+    edge = (base.replace(year=2023) + dt.timedelta(days=SHORT_TOLERANCE_DAYS)).isoformat()
+    over = (base.replace(year=2023) + dt.timedelta(days=SHORT_TOLERANCE_DAYS + 1)).isoformat()
+    if sample_window([edge, "2026-08-31"], 3)["truncated"]:
+        print("✗ sample_window(剛好等於容差不該算截短)")
+        ok = False
+    if not sample_window([over, "2026-08-31"], 3)["truncated"]:
+        print("✗ sample_window(超過容差一天應算截短)")
+        ok = False
+    # （5）閏日：2 月 29 日回推三年落在平年，切點要退回 28 日而不是拋錯。
+    if _cut_date("2028-02-29", 3).isoformat() != "2025-02-28":
+        print(f"✗ _cut_date(閏日): {_cut_date('2028-02-29', 3)}")
+        ok = False
+
     print("selftest 全部通過 ✓" if ok else "★ selftest 有錯")
     return 0 if ok else 1
 
@@ -149,7 +237,9 @@ def main(argv) -> int:
     if "--json" in argv:
         print(json.dumps(res, ensure_ascii=False, indent=1))
         return 0
-    print(f"近 {years} 年分位｜視窗 {windows}｜快取：{SERIES}")
+    # **表頭寫「要求」，不寫「實際」。** 每一列的樣本各自標在該列尾端 ——
+    # 舊版表頭直接斷言「近 N 年分位」，而那句話對快取較短的序列是假的。
+    print(f"分位樣本：要求近 {years} 年，實際逐列標示｜視窗 {windows}｜快取：{SERIES}")
     for r in res["rows"]:
         unit = "" if r["unit"] == "pct" else "（絕對變動）"
         head = f"{r['name']:<14}{r['id']:<14} 末日 {r['last']} {r['value']:>10.4f}{unit}"
@@ -159,7 +249,19 @@ def main(argv) -> int:
             if x:
                 sign = f"{x['change']:+.2f}" + ("%" if r["unit"] == "pct" else "")
                 cells.append(f"{w}日 {sign:>9} 分位 {x['pct_rank']:>5.1f}(n={x['n']})")
-        print(head + "  " + "  ".join(cells))
+        tail = f"  樣本 {r['since']} 起 {r['span_years']} 年"
+        if r["truncated"]:
+            tail = "  ★" + tail.strip()
+        print(head + "  " + "  ".join(cells) + tail)
+    short = [r for r in res["rows"] if r["truncated"]]
+    if short:
+        # **這一行是給複製表格的人看的。** 單看一列的 `n=` 讀不出樣本有多長，
+        # 要先知道一年有幾個交易日；★ 與這一行把那個心算拿掉。
+        print("★ " + "、".join(f"{r['name']}（{r['span_years']} 年，{r['since']} 起）"
+                               for r in short)
+              + f" 的快取短於要求的近 {years} 年 —— **它們的分位與其他列不是同一把尺**，"
+                "引用時措辭要跟著限縮（anchors.history_limits），"
+                "不可寫成「歷史上」或「近三年」。")
     for k, why in res["missing"].items():
         print(f"  ✗ {k}：{why}")
     return 0

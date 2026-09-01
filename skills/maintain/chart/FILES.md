@@ -55,12 +55,15 @@
 | `scripts/chart/build_series.py` | 序列轉換 `_transform` 的**唯一實作**（月頻按日曆回推、不按位置） |
 | `scripts/chart/render_day.py` | 當期渲染；`to_chart` 的欄位自動帶入在這裡 |
 | `scripts/chart/rebuild_option.py` | **修舊期渲染缺陷的唯一合法工具**（`--png` 可重繪） |
-| `scripts/chart/prefetch.py` | 11:00 的序列預抓 |
+| `scripts/chart/prefetch.py` | 11:00 的序列預抓；`--history <id>` 離線讀末日歷史 |
+| `scripts/chart/scan_moves.py` | slot 2 的異動掃描；只讀快取、不連外。**分位樣本逐列標示**，★＝該列快取短於 `--years` 要求 |
 | `scripts/chart/macro_release.py` | 三大月度數據的發布偵測 |
 | `launchd/` | 九個 plist 的版控副本 ＋ README（實裝在 `~/Library/LaunchAgents/`） |
 | `chart-of-the-day/data/<日期>.json` | 每日封存（含完整 `series`），**只讀** |
 | `chart-of-the-day/data/index.json` | 封存索引；`days[0]` 被姊妹庫讀 |
 | `chart-of-the-day/data/series/*.csv` | 序列快取，檔頭記來源與抓取日期 |
+| `chart-of-the-day/data/_prefetch_status.json` | 最近一輪預抓的狀態，**每天被覆寫**（`chart.prefetch_fresh` 讀它） |
+| `chart-of-the-day/data/_prefetch_history.jsonl` | 每輪一行的末日歷史（2026-09-01 起）。**append-only、沒有檢查在讀**，用來判某條序列的發布節奏——`anchors.freshness.release_cadence_ledger` |
 | `chart-of-the-day/charts/<日期>/` | PNG（200dpi）與 SVG，**對外契約** |
 | `chart-of-the-day/index.html` | 前端，動態渲染：加 theme 不用改，改欄位名才要動 |
 

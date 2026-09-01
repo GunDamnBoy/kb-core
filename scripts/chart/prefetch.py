@@ -22,6 +22,8 @@ prefetch.py — 在「網路通得出去的那台機器」上預抓序列，寫�
     python3 ~/kb-core/scripts/chart/prefetch.py              預抓並寫快取
     python3 ~/kb-core/scripts/chart/prefetch.py --list       只印出這次會抓哪些，不連外
     python3 ~/kb-core/scripts/chart/prefetch.py --quiet      只印摘要（launchd 用）
+    python3 ~/kb-core/scripts/chart/prefetch.py --history            末日歷史有幾輪，不連外
+    python3 ~/kb-core/scripts/chart/prefetch.py --history DCOILBRENTEU  某條的末日怎麼跳
 
 狀態會寫進 data/_prefetch_status.json，執行輪次與 `chart.prefetch_fresh` 靠它判斷
 快取是不是新鮮、有沒有哪幾條沒抓到。**沒有狀態檔＝預抓沒跑，不是「都成功」。**
@@ -37,6 +39,15 @@ _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _repo  # noqa: E402
 REPO = _repo.repo()
 STATUS = os.path.join(REPO, "data", "_prefetch_status.json")
+# **狀態檔每天被覆寫，所以「某條序列的末日多久跳一次」沒有任何資料可以回答。**
+# 這是 2026-09-01 才發現的空白：那一輪要判 `DCOILBRENTEU` 究竟是週頻發布
+# 還是單純停更，翻遍手上的東西只湊得出三筆觀測（兩份舊日檔加當天的狀態檔），
+# 而那三筆剛好互相矛盾（08-27 只落後 2 個交易日，不像週頻）。
+# `anchors.freshness.weekly_release_source` 當初為 H.10 那兩條解這題時，
+# 靠的是連續兩天手動比對；**同一個問題再問一次，手上仍然沒有帳。**
+# 所以這裡留一本 append-only 的帳：每輪一行，之後要判任何序列的發布節奏都查它。
+# 刻意**沒有任何檢查在讀它** —— 它是量測，不是閘門；等資料夠了再決定要不要改門檻。
+HISTORY = os.path.join(REPO, "data", "_prefetch_history.jsonl")
 RECENT_DAYS = 14
 
 # 核心清單：即使近期沒用到也維持新鮮的序列。
@@ -146,6 +157,89 @@ def _write_macro_release() -> None:
         json.dump(doc, f, ensure_ascii=False, indent=1)
 
 
+def _append_history(status: dict) -> None:
+    """把這一輪每條序列的末日 append 一行到 `HISTORY`。
+
+    **一行一輪，不是一行一序列**：47 條壓成一個物件約 1.5 KB，
+    而 `data/` 是整個目錄進版控的，append-only 的一行是這裡能產生的最小 diff
+    （`_prefetch_status.json` 每天是整檔重寫）。
+
+    **寫失敗不可以擋住預抓。** 這是一本帳，不是產出的一部分 ——
+    2026-08-12 的教訓反過來也成立：把記錄失敗算成執行失敗，
+    會讓一件無關的小事變成當天沒有序列可用。所以吞掉例外、只印一行。
+    """
+    try:
+        row = {
+            "run": status["finished"],
+            "host": status.get("host"),
+            "ok": status.get("ok"),
+            "requested": status.get("requested"),
+            # 只留 id → 末日。點數在狀態檔裡，這本帳要回答的是「末日多久跳一次」。
+            "last": {s["id"]: s["last"] for s in status.get("series") or []},
+            "failed": sorted(status.get("failed") or {}),
+            "skipped": sorted(status.get("skipped") or {}),
+        }
+        with open(HISTORY, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception as e:                                   # noqa: BLE001
+        print(f"  ⚠ 末日歷史沒寫成（{type(e).__name__}: {e}）——預抓本身不受影響")
+
+
+def _show_history(sid: str | None) -> int:
+    """讀 `HISTORY`，印某條序列的末日隨每輪怎麼跳。**離線，不連外。**
+
+    這是這本帳唯一的讀者。沒有它，帳會變成「有人記得去 `grep` 才有用的東西」——
+    而 `anchors` 裡已經有兩條規則是「先量再改」，兩次都卡在沒有現成的查法。
+
+    看的是 `末日跳動間隔`：日頻發布每輪都會跳（週末除外），
+    週頻發布會連續幾輪不動然後跳一整週。**兩者在單一輪次看起來一模一樣。**
+    """
+    if not os.path.exists(HISTORY):
+        print(f"還沒有末日歷史（{HISTORY}）——它從 2026-09-01 那一版起才開始記，"
+              "第一輪之前沒有帳是預期的，不是壞掉。")
+        return 0
+    rows = []
+    with open(HISTORY, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass                       # 壞行跳過，不讓一行壞掉整本帳讀不出來
+    if not sid:
+        n = len(rows)
+        span = f"{rows[0]['run'][:10]} 至 {rows[-1]['run'][:10]}" if rows else "—"
+        print(f"末日歷史：{n} 輪（{span}）｜{HISTORY}")
+        print("加序列代號看它的末日怎麼跳，例如："
+              "python3 ~/kb-core/scripts/chart/prefetch.py --history DCOILBRENTEU")
+        return 0
+    print(f"{sid} 的末日歷史（{len(rows)} 輪）｜{HISTORY}")
+    prev, stuck = None, 0
+    for r in rows:
+        last = (r.get("last") or {}).get(sid)
+        if last is None:
+            state = "✗ 那一輪沒抓到" + (" (failed)" if sid in (r.get("failed") or [])
+                                    else " (skipped)" if sid in (r.get("skipped") or [])
+                                    else "")
+        elif prev is None:
+            state = "首筆"
+        elif last == prev:
+            stuck += 1
+            state = f"沒動（連續 {stuck} 輪）"
+        else:
+            state = f"跳 {(dt_date(last) - dt_date(prev)).days} 天"
+            stuck = 0
+        print(f"  輪次 {r['run'][:16]}  末日 {last or '—':<12} {state}")
+        if last:
+            prev = last
+    return 0
+
+
+def dt_date(s: str):
+    return datetime.date.fromisoformat(s)
+
+
 def main(argv):
     quiet = "--quiet" in argv
     ids = targets()
@@ -155,6 +249,10 @@ def main(argv):
         for i in ids:
             print(f"  {i}")
         return 0
+
+    if "--history" in argv:
+        k = argv.index("--history")
+        return _show_history(argv[k + 1] if len(argv) > k + 1 else None)
 
     started = datetime.datetime.now().astimezone()
     ok, failed, skipped = [], {}, {}
@@ -237,6 +335,7 @@ def main(argv):
     with open(STATUS, "w", encoding="utf-8") as f:
         json.dump(status, f, ensure_ascii=False, indent=1)
 
+    _append_history(status)
     _write_macro_release()
 
     # **兩種「未嘗試」的成因不同，混在一起講會讓人以為今天出了 11 個問題。**
