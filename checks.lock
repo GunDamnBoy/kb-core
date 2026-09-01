@@ -10,6 +10,7 @@ advisory.group_floors
 advisory.group_names
 advisory.index_entry_source
 advisory.overview_prose
+advisory.same_version_dedup
 advisory.site_total
 advisory.ts_in_window
 advisory.ts_wellformed

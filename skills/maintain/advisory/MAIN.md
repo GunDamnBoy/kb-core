@@ -57,9 +57,13 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    **最上面那筆的日期就是你的認知有多舊**。
    讀不到就用 `mcp__cowork__request_cowork_directory` 連 `~/kb-core`、
    `~/advisory-rewrite`、`~/outbox`。
-2. Read `/Users/macmini/kb-core/skills/advisory/SKILL.md` —— 每天實際跑的流程正本。
-   排程裡那份是副本，兩邊要一致。採集眉角在
-   `kb-core/scripts/advisory/preamble.md`。
+2. Read `/Users/macmini/kb-core/skills/advisory/SKILL.md` —— 每天實際跑的流程正本，
+   **而且從 2026-08-31 起是唯一的一份**。排程裡那份已改成指標式：只有幾行，
+   內容是「讀這個檔並完全照它執行」。**所以改 `SKILL.md` 就等於改了排程，不必再貼任何東西。**
+   ~~排程裡那份是副本，兩邊要一致。~~（2026-09-01 更正：那是 08-31 之前的狀態。
+   照舊寫法做會把剛拆掉的逐字副本重新造回來，而那正是 08-31 拆掉它要防的兩次事故。）
+   採集眉角在 `kb-core/scripts/advisory/preamble.md`，
+   **七份 `preamble/<代號>.md` 是 `slice_preamble.py` 的生成物、不可手改**。
 3. `mcp__scheduled-tasks__list_scheduled_tasks` 找 **`advisory-daily-0730`**
    （舊名 `advisory-dashboard-daily` 已不存在），記下
    cron／enabled／nextRunAt／lastRunAt，並 Read 它的 `path`。

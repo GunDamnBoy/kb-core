@@ -18,9 +18,9 @@
 | 什麼算對的產出 | `advisory/BRIEF.md` | 有數字就指路到 anchors，不抄值 |
 | 檢查規則 | `checks/advisory.py` | **數字不寫在這裡**，一律從 anchors 讀；動到 fixture 要確認它用的是**真實資料形狀** |
 | payload 怎麼組／index entry／要推哪些路徑 | `systems/advisory.py` | 新增維度要先加進 `kbcore/system.py` 的 `System` |
-| 採集眉角、黑名單、發稿日曆 | `scripts/advisory/preamble.md` | 無 |
+| 採集眉角、黑名單、發稿日曆 | `scripts/advisory/preamble.md` | **改完一定要跑 `python3 scripts/advisory/slice_preamble.py` 重生成七份切片**——`preamble/<代號>.md` 是生成物，採集員每天讀的是切片而不是正本，**忘了重跑就等於這次的改動明天不會生效，而且不會有任何東西報錯**。收尾用 `--check`（一致回 0、不一致回 1，2026-09-01 實測過兩側） |
 | Actions 保底層（兩條 OAS、黃金持倉、台股端點） | `tools/fetch_advisory.py` | 路由表在 `kbcore/fetch_tw.py` 的 `ROUTES` |
-| 每天怎麼跑 | `skills/advisory/SKILL.md`（正本） | 排程 prompt 整份取代，見下 |
+| 每天怎麼跑 | `skills/advisory/SKILL.md`（**唯一的一份**） | **排程 prompt 不必動** —— 2026-08-31 起它是指標式的，改正本就等於改了排程，見下 |
 | 排程與 launchd | `launchd/*.plist`＋包裝腳本＋`launchd/README.md` 的表 | 新增 Label 要同時登記進 `kbcore/env.py` 的 `REQUIRED_BY_LABEL`，**否則 `watch.external_binaries` 會 FAIL，而 FAIL 的看門狗不更新 heartbeat** —— 2026-08-23 `kbpublish.bubble` 就是這樣讓哨兵停在前一天。裝到 `~/Library/LaunchAgents/` 是**機器上的手動步驟**，工作階段做不到 |
 | 發布流程 | `tools/publish.py` | **三套系統共用，改它等於同時改三套** |
 | 網站呈現 | `advisory-rewrite/index.html` | **這裡沒有徽章對照表**（2026-08-29 查證：chip 全部由 `c.src`／`c.tag` 直接渲染、樣式統一，**來源異動不必動這個檔**）。**2026-08-22 起它在 `staged_paths` 裡，改了會自動上線** —— 在那之前不會，而回執照樣 exit 0（見 CHANGELOG 該日第一節）。代價是**沒有任何檢查在看外殼**：改壞了會直接上線。改完至少要抽 script 跑 `node --check`，視覺請人工確認（`file://` 沒有自動路徑） |
@@ -28,12 +28,28 @@
 **不要改舊 checkout `~/advisory-knowledge-hub` 裡的任何東西。** 它已於 2026-08-21 搬到 `~/_to_delete/advisory-knowledge-hub-stale-20260818`。
 那份停在 2026-08-18，改它不會有任何徵兆，也不會有任何效果。
 
-## 排程 prompt
+## 排程 prompt —— **不要貼，它已經不是副本了**
 
-`mcp__scheduled-tasks__update_scheduled_task` 是**整份取代**：
-先 Read 現有全文，漏帶的段落等於刪除。
-taskId 是 **`advisory-daily-0730`**。
-先改 `skills/advisory/SKILL.md` 正本，再整份貼過去。
+**2026-08-31 起排程 prompt 是指標式的：只有幾行，內容是「讀
+`/Users/macmini/kb-core/skills/advisory/SKILL.md` 並完全照它執行」。
+所以改 `SKILL.md` 正本就等於改了排程，不需要動 `update_scheduled_task`。**
+
+~~`mcp__scheduled-tasks__update_scheduled_task` 是整份取代：先 Read 現有全文，
+漏帶的段落等於刪除。先改 `skills/advisory/SKILL.md` 正本，再整份貼過去。~~
+**2026-09-01 撤回。** 這一段停在 08-31 之前，而它會造成的正是 08-31 拆掉副本要防的那兩次事故：
+一次是連 frontmatter 一起貼、整份偏移五行（不會報錯，靠比對行數才發現）；
+一次是兩邊各自領先、雙向漂移（最貴的地方是**兩邊看起來都像最新的**）。
+**照舊寫法做等於把剛拆掉的逐字副本重新造回來。**
+留刪節線而不是刪掉，是因為下次有人重新想到「把 SKILL 貼進排程」時，
+要看得到這個念頭已經被試過、而且是被推翻的。
+
+**唯一要對排程做的動作是驗它還是指標式的**：`list_scheduled_tasks` 拿
+`advisory-daily-0730` 的 `path`，`Read` 它，確認**它仍然只有那幾行、而且路徑指得對**。
+**不要比對行數** —— 那是舊做法的檢查，指標式與正本本來就不同長。
+（2026-09-01 實測：47 行、指標路徑正確、`enabled` 為真、`lastRunAt` 對得上當輪。）
+
+**真的需要 `update_scheduled_task` 的情況只剩三種**：改 cron、改 enabled、
+或**要換掉那個指標本身**（例如 `SKILL.md` 搬家）。前兩種不碰內文；第三種才需要整份取代。
 
 ## 來源異動
 
@@ -81,5 +97,12 @@ cd /Users/macmini/kb-core && python3 -m py_compile tools/*.py checks/*.py system
 - 改過 `publish.py` 或 `staged_paths` → **在 `/tmp` 另建 bare origin ＋ 工作 repo
   跑一次端到端**，確認宣告的路徑真的進了遠端。不要拿真 repo 試。
 - `advisory/CHANGELOG.md` 已加新版本。
-- 同步組（`skills/advisory/SKILL.md` 正本、排程 prompt、
-  `skills/maintain/advisory/*.md` 與技能裡的副本）逐項對過。
+- **同步組只剩一組了**：`skills/maintain/advisory/*.md` 正本 vs `maintain` 技能裡的副本
+  （比檔案大小即可；技能快取是唯讀的，要更新得把整個 `maintain` 目錄打包成 `.skill` 重裝）。
+  ~~排程 prompt~~ **已不在同步組裡** —— 2026-08-31 起它是指標式的、不持有內容，
+  對它只要驗「仍然只有那幾行、路徑指得對」，見上面〈排程 prompt〉那一節。
+- **動過 `scripts/advisory/preamble.md` 就跑 `python3 scripts/advisory/slice_preamble.py --check`**，
+  七份全部「一致」且 exit 0。**不一致代表有人手改了切片** —— 改回正本再重生成，不要改切片。
+- **新增或刪掉一條檢查**（`checks/*.py` 的 `register(...)`）→ `python3 tools/verify.py --write-lock`，
+  並確認 `checks.lock` 裡多／少的正是那一條。**沒寫 lock 的話 `--selftest` 會一直報「新增的 check id」**，
+  而那個提示不會擋任何東西，會被當成雜訊看習慣。

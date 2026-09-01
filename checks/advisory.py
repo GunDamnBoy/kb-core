@@ -284,13 +284,108 @@ register(Check(
     blind_to=[
         "連結不同但講的是同一件事（改寫過的同一篇）",
         "與前兩版重複（只比前一版）",
-        "同一版內部重複",
+        "同一版內部重複（2026-09-01 起改由 advisory.same_version_dedup 管，本條仍然看不到）",
+        "同一篇被加上追蹤參數繞過（本條比的是原字串；正規化只做在 same_version_dedup 那一條）",
     ],
     run=_cross_version_dupe,
     fixture={"anchors": {"dedup_exempt": []},
              "prev": {"sections": [{"groups": [{"label": "x", "cards": [{"url": "https://a/1"}]}]}]},
              "doc": {"sections": [{"groups": [{"label": "x", "cards": [{"url": "https://a/1"}]}]}]}},
     no_boundary="連結相同或不同，集合比對沒有中間狀態",
+    suite="advisory",
+))
+
+
+# ── 7 之二. 同版內部去重 ──────────────────────────────────────────────
+_TRACKING_PARAMS = {
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "utm_id",
+    "ref", "ncid", "mod", "siteid", "fbclid", "gclid", "cmpid", "srnd", "sref",
+    "yptr", "cb", "smid", "partner",
+}
+
+
+def _norm_url(u):
+    """比對用的正規化：只砍掉**追蹤參數**與 fragment，功能參數原樣保留。
+
+    不能整段砍 query string——`dedup_exempt` 裡的 TWSE／TPEX 端點靠 `date=`／`response=`
+    才指得到那一天，砍掉會把不同交易日的官方數據卡全部併成同一條。
+    也不重新編碼：`urlencode()` 會把 `date=2026/08/31` 改寫成 `date=2026%2F08%2F31`，
+    比對雖然仍然對稱、但訊息裡印出來的網址就不是資料裡那一個了。
+    """
+    if not isinstance(u, str):
+        return u
+    u = u.split("#", 1)[0]
+    if "?" not in u:
+        return u
+    base, q = u.split("?", 1)
+    keep = [kv for kv in q.split("&")
+            if kv and kv.split("=", 1)[0].lower() not in _TRACKING_PARAMS]
+    return base + ("?" + "&".join(keep) if keep else "")
+
+
+def _same_version_dupe(p):
+    """同一版之內，一個原文連結只能出現一次。
+
+    `cross_version_dedup` 只比前一版，它的 `blind_to` 第三條逐字寫著「同一版內部重複」——
+    也就是說在 2026-09-01 之前，**沒有任何機器在看這件事**。
+
+    2026-09-01 那一輪一次出現三處，全部是主線落檔時肉眼發現的：同一篇 IBD〈Stock Market
+    Today〉被寫成兩張卡、同一篇鉅亨盤後稿被寫成一般卡與 thread 深度卡各一張、以及同一篇
+    NYT G20 稿被拆兩張、**第二張在網址後面加 `?ref=press-changed` 造出第二個連結**。
+    第三種最危險，因為它連「字串相同」都繞過了——所以這條比的是 `_norm_url()` 之後的值。
+
+    **這通常不是分身偷懶，是任務卡給的則數大於素材裡真正不同的事件數**，
+    所以真正的防線在派工（`skills/advisory/SKILL.md` 步驟 3 的「素材數當場數」），
+    這條只是最後一道網。
+
+    豁免網址不算：`dedup_exempt` 存在的理由就是那幾個固定網址的官方數據頁會被重複使用，
+    而 2026-08-21 那一期實際出現過兩張卡共用 `spdrgoldshares.com/usa/gld/`。
+
+    回測（2026-09-01，33 期已發布封存）：9 期有非豁免的同版重複，最後一次是 08-21；
+    最誇張的是 07-30 的 `wallstreetcn.com/news/global` 出現 6 次、`bloomberg.com/markets`
+    出現 4 次——**那兩個還是列表頁，本來也該被 `url_is_article` 擋下**。
+    08-22 之後到今天沒有再發生過，所以這條上線不會擋到現行的產出節奏。
+    """
+    exempt = {_norm_url(u) for u in _A(p, "dedup_exempt")}
+    seen = {}
+    for _, c in _cards(p["doc"]):
+        u = c.get("url")
+        if not u:
+            continue
+        n = _norm_url(u)
+        if n in exempt:
+            continue
+        seen.setdefault(n, []).append(c.get("title") or "(無標題)")
+    dupe = sorted((u, t) for u, t in seen.items() if len(t) > 1)
+    if dupe:
+        u, titles = dupe[0]
+        return fail(f"{len(dupe)} 個原文連結在同一版裡出現不只一次，"
+                    f"例如 {u} 出現 {len(titles)} 次："
+                    f"「{titles[0]}」／「{titles[1]}」"
+                    " —— 一事一卡，同一篇不能拆成兩張卡")
+    return ok()
+
+
+register(Check(
+    id="advisory.same_version_dedup",
+    covers="同一版之內沒有任何兩張卡共用原文連結（追蹤參數正規化後比對；豁免清單在 anchors 的 dedup_exempt）",
+    blind_to=[
+        "連結不同但講的是同一件事（同 cross_version_dedup）",
+        "豁免網址在同一版裡重複（刻意放行，2026-08-21 實際發生過）",
+        "追蹤參數清單以外的參數繞過（例如站方自訂的 `?src=`）",
+        "同一篇的 AMP／行動版／短網址等不同網域寫法",
+        "**它擋得住症狀，擋不住病因** —— 任務卡要求的則數大於素材裡真正不同的事件數時，"
+        "分身仍然會少交或硬湊，那是派工端的事（SKILL 步驟 3）",
+    ],
+    run=_same_version_dupe,
+    fixture={"anchors": {"dedup_exempt": []},
+             "doc": {"sections": [{"groups": [{"label": "x", "cards": [
+                 {"url": "https://a/1", "title": "甲"},
+                 {"url": "https://a/1?ref=x", "title": "乙"}]}]}]}},
+    near_miss={"anchors": {"dedup_exempt": []},
+               "doc": {"sections": [{"groups": [{"label": "x", "cards": [
+                   {"url": "https://a/1", "title": "甲"},
+                   {"url": "https://a/2", "title": "乙"}]}]}]}},
     suite="advisory",
 ))
 
