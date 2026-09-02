@@ -63,8 +63,8 @@
 - **去重**：`anchors.dedup`（`title` ＋ `durationMs` 兩者都同才合併、`require_both`、`keep_by`、`⚠︎` 佔位不算已收錄）↔ `DIGEST-PROMPT` 第 2 步 ↔ `checks/podcast.py` 的 `_no_dupes`（應從 anchors 讀，不寫死）
 - **內容規格**：`anchors.length_tiers` ＋ `_length_tiers_rules` ＋ `per_episode` ↔ `BRIEF` 第四／五節 ↔ `preamble` 第一節 ↔ `checks` 的 `chars_in_tier`。**`topics` 詞表要逐字逐序比對**（最容易錯）
 - **日期檔的欄位形狀**：`BRIEF` 第二節的清單 ↔ `data/<date>.json` 實檔 ↔ `systems/podcast.py` 實際讀的欄位。**這一區 08-23 抓到三處**：`quotes[]` 寫成 `speaker` 而實檔是 `by`、`trackId` 與 `minutes` 兩個必要欄位不在清單裡。**`trackId` 缺席的後果是金句閘門判 SKIPPED —— 安靜地開著。**
-- **三種品質旗標**：`anchors.quality.note_dimensions` 的分工（`warnings` 決定 status／後兩者不影響）↔ `preamble` 第五、九節 ↔ **`DIGEST-PROMPT`**（組檔者要產出 `quality{}` 四個子欄位，而流程正本一度全文沒提過它們 —— **規則的執行者不是規則的讀者**）
-- **觀察點記分板四邊**：`BRIEF` 第八節 ↔ `anchors.observations` ↔ `DIGEST-PROMPT` 第 5 步 ↔ `data/observations.json` 實檔欄位（`id/date/text/status/verdict/verdictDate/due`）
+- **三種品質旗標**：`anchors.quality.note_dimensions` 的分工（`warnings` 決定 status／後兩者不影響）↔ `preamble` 第五、九節 ↔ **`DIGEST-PROMPT`**（組檔者要產出 `quality{}` 四個子欄位，而流程正本**到 2026-09-02 仍然全文沒提過它們** —— 該檔 `quality` 只出現 3 次、全部是 `anchors.quality.*` 的路徑引用，只靠一句「日期檔的完整形狀照 `BRIEF.md` 第二節」轉指。**本條原寫「一度」，那個字暗示已修復，實際沒有** —— 每次比對都要重驗，不要被它騙過去。**規則的執行者不是規則的讀者**）
+- **觀察點記分板四邊**：`BRIEF` 第八節 ↔ `anchors.observations` ↔ `DIGEST-PROMPT` 第 5 步 ↔ `data/observations.json` 實檔欄位。**欄位分兩側，比對時要分開看**：claim 側 `id`／`date`／`text`／`due` 開帳後不得改寫，判決側 `status`／`verdict`／`verdictDate`／`lastReviewed` 有結果就該動（`lastReviewed` 2026-09-02 新增，**加它的那一場只改了 `DIGEST-PROMPT` 一邊，四邊裡三邊漏掉** —— 這一區存在的理由就是這個）
 - **外包給子代理的指示是否自足**（判準見 `FILES.md`「子代理的視野」）。`preamble` 自稱「這裡就是全部的規則」，**核對它是不是真的**
 
 ## 每一份的內部自我一致性
@@ -74,7 +74,7 @@
 - **「現在只有 X，還沒有 Y」這類階段性敘述是否還成立**（同上檔頭有一整節寫「為什麼現在只有取數層，沒有日報層」，而同一個檔案第 572 行以下就是日報層 —— **判斷是對的、兌現了，但沒有人回頭刪那一節**）
 - **「由某某負責／由哨兵處理」這類宣稱，去確認某某真的在跑**（08-23 抓到 `BRIEF` 第八節「判定到期由哨兵開 issue」，而 `sentinel/report.md` 印的是 ⏭️ 未執行，且帳本形狀與它不相容）
 - **自我指涉的數字有沒有標時點**（`BRIEF` front matter 的字元數、`anchors._due_note` 與 `checks` 裡的「N 條裡 M 條」）
-- 跨檔引用有沒有斷鏈，**章節號也要核**（08-23 抓到 `AGENT_BRIEF` 開頭指的「第 3 步／第 5.5 步／第 6 步」三處內容全部不存在，`anchors.fetch_limits.subagent_threshold_kb` 全庫零讀者）
+- 跨檔引用有沒有斷鏈，**章節號也要核**（08-23 抓到 `AGENT_BRIEF` 開頭指的「第 3 步／第 5.5 步／第 6 步」三處內容全部不存在，`anchors.fetch_limits.subagent_threshold_kb` 全庫零讀者，**該鍵 09-02 已除役**）。**除役之後記得回頭改記載它的那幾處** —— 09-02 除役時三處全部漏改，等於把一個舊斷鏈換成三個新的過期記載
 
 ## 這份清單自己
 
@@ -91,4 +91,5 @@
 > 兩份都沒碰，**於是條件不觸發，而它本來就該觸發**（那一場確實新增了一條待辦）。
 > **一個只在「剛好動到那兩份」時才會亮的條件，對其餘的場次是全盲的。**
 > 登記簿每一場都會新增一列，所以它才是隨進度前進的那個錨。
-> 09-02 實測：本檔 08-30 12:37，登記簿最新列是 08-31 —— **舊的，條件現在正確觸發了。**
+> 09-02 首次實測（本檔當時 mtime 08-30 12:37、登記簿最新列 08-31）：**舊的，新條件正確觸發。**
+> 本檔已於同日改寫，所以那組 mtime 對現在的檔案不再成立 —— **量測句要標時點，而它就寫在「自我指涉的數字有沒有標時點」這一條的下面。**

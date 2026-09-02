@@ -88,9 +88,7 @@ budget:
   同樣片長多出三到五成實質內容。抓不到才退回，並**據實填 `source`**。
   **哪幾檔是 A 類、每一檔怎麼抓，在 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 第 1 節**
   —— 本檔與 `anchors.json` 都不抄那張表。
-  **這條 2026-08-22 之前結構上不可執行**：日常執行只讀本檔、`anchors.json`、`preamble.md`
-  三份，三份都沒有那張表，所以執行者無從知道誰是 A 類。那天 8 集全退第二層，
-  其中 macrovoices 與 unhedged 都是 A 類。**規則指不出資料在哪，就等於沒有規則。**
+  **規則指不出資料在哪，就等於沒有規則**（08-22 的實例見 `DIGEST-PROMPT.md` 第 1 之二步）。
 - **「抓了但沒有」與「根本沒去抓」要在資料裡分得出來。**
   A 類集數退回第二層時，`source` 要寫明是「官方稿尚未上架」還是「入口失效」，
   並在回報中具名。**兩者在輸出上長得一樣，而它們是完全不同的兩件事**
@@ -144,8 +142,8 @@ budget:
 4. 帳本沒有新增觀察點，或**有逾期超過 `observations.overdue_grace_days` 未判的項目**
    （逾期但還在寬限期內是 WARN 不是失敗；寬限期存在的理由與已知的洞見 anchors 的 `_due_note`）
 5. `index.json` 的 `days[0]` 不是當天，或執行時間戳沒動
-   （**這一條沒有對應的檢查**，靠 `publish.py` 組檔時順手保證；來歷見
-   `MAINTENANCE.md` 第 7 節）
+   （**這一條沒有對應的檢查**，靠 `publish.py` 組檔時順手保證；
+   來歷見 `MAINTENANCE.md` 第 12 節 08-22 那一列）
 
 第 4 項是本站與一般摘要的分水嶺 —— **拋出去的觀察要回頭對答案**。
 
@@ -158,7 +156,7 @@ budget:
 
 **「開帳之後不得改寫」管的是 claim，不是判決**（2026-08-30 訂正）。
 分界線是欄位：**`id`／`date`／`text`／`due` 開帳後不得改寫**；
-**`status`／`verdict`／`verdictDate` 是判決欄位，有明確結果就該動。**
+**`status`／`verdict`／`verdictDate`／`lastReviewed` 是判決欄位，有結果就該動。**
 不改判，第七節第四條就永遠判不了 —— **那半條判準的執行者是每天那一輪，不是別人。**
 
 實際在看逾期的是發布閘門的 `podcast.ledger_no_overdue`，

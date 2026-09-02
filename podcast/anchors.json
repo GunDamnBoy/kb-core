@@ -267,7 +267,7 @@
    "管線自檢",
    "純敘述性總結"
   ],
-  "source": "2026-08-19 決定升成 ledger-v1 的一個實例（工單 18）。claim 開帳後不得改寫，judge 分 auto／manual，manual 到期由哨兵開 issue —— 投顧的 sentinel.ledger_overdue 已經寫好，接上去它就從 SKIPPED 變成真的在看。"
+  "source": "2026-08-19 決定升成 ledger-v1 的一個實例（工單 18）。**claim 是 `id`／`date`／`text`／`due` 這四欄，開帳後不得改寫；判決側是 `status`／`verdict`／`verdictDate`／`lastReviewed`，有結果就該動**（欄位分界 2026-08-30 訂、`lastReviewed` 09-02 新增）。judge 分 auto／manual，manual 到期由哨兵開 issue —— 投顧的 sentinel.ledger_overdue 已經寫好，接上去它就從 SKIPPED 變成真的在看。"
  },
  "publish": {
   "index_days_order": "由新到舊",
