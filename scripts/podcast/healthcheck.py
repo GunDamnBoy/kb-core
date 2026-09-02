@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import struct
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -630,6 +631,155 @@ def latest_receipt():
             r.get("exit"), r.get("stage", ""), r.get("detail", "")), None
 
 
+def _read_repo(rel):
+    """讀 REPO 底下的一個純文字檔，讀不到回 None。**不呼叫 git。**"""
+    if not REPO:
+        return None
+    try:
+        return open(os.path.join(REPO, rel), encoding="utf-8").read().strip()
+    except Exception:
+        return None
+
+
+def reflog_old_values(path):
+    """一份 reflog 檔 → 它記過的所有「舊值」雜湊集合。讀不到就回空集合。
+
+    每一列的格式是「舊值 空白 新值 空白 誰 時戳 時區 TAB 訊息」。
+    """
+    body = _read_repo(path)
+    if not body:
+        return set()
+    olds = set()
+    for line in body.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and len(parts[0]) == 40:
+            olds.add(parts[0])
+    return olds
+
+
+def describe_divergence(local, origin):
+    """local 與 origin 不同雜湊時，說出**哪一邊領先**——判不出來就說判不出來。
+
+    **這裡曾經把方向寫死。** 2026-09-03 之前這一行是
+    `f"local {local[:7]} 領先 origin {origin[:7]}"`，從不問祖先關係。
+    而當天實際是**反的**：`.git/logs/refs/remotes/origin/main` 的最後一列是
+    `67c289b → ffdf18f  fetch -q origin: fast-forward`，也就是 origin 走在前面，
+    多出來的那顆幾乎確定是 `deploy.yml` 的 Pages 部署 commit。
+    **那則訊息可信、內容是假的**——與 `publish.py` 註解裡記的 `rstrip` 那次
+    （把 `data/index.json` 切成 `ata/index.json`、然後理直氣壯說它不在 paths 底下）
+    是同一個形狀：**護欄自己算錯了輸入，錯誤訊息卻長得像真的。**
+
+    判法不呼叫 git（本檔絕不呼叫 git，見模組 docstring）。祖先關係本來要走物件圖，
+    而 packed object 讓純檔案讀取不可靠；但 **reflog 記得每一次 ref 移動的
+    「舊值 → 新值」，而現在的 ref 必定是自己 reflog 上最後一個新值**。所以：
+
+      - local 出現在 origin reflog 的舊值裡 → origin 是從 local 走過來的 → **origin 領先**
+      - origin 出現在 local reflog 的舊值裡 → **local 領先**
+
+    兩者都不成立時**不要選一個講**——reflog 有 `gc.reflogExpire`（預設 90 天）會過期，
+    而「舊到掉出 reflog」與「真的分歧」在這裡長得一樣。那種情況只報事實。
+    """
+    a, b = local[:7], origin[:7]
+    local_olds = (reflog_old_values(".git/logs/refs/heads/main")
+                  or reflog_old_values(".git/logs/HEAD"))
+    origin_olds = reflog_old_values(".git/logs/refs/remotes/origin/main")
+    if local in origin_olds and origin not in local_olds:
+        return (f"origin {b} 領先 local {a}（local 是它的祖先，"
+                f"通常是 Pages 部署那顆——下一輪 pull --rebase 會自己追上）")
+    if origin in local_olds and local not in origin_olds:
+        return f"local {a} 領先 origin {b}"
+    return (f"local {a} 與 origin {b} 不同雜湊，"
+            f"方向從 reflog 判不出來（可能真的分歧，也可能舊到掉出 reflog）")
+
+
+def check_worktree():
+    """repo 有沒有**非 `data/` 的未提交變更**——它們會擋住 publish 的 rebase。
+
+    **這是同一件事第三次發生之後才加的檢查**（2026-09-03）：
+
+    | 日期 | 形態 | 檔案 |
+    |---|---|---|
+    | 08-24 | 191 輪 `exit 14 @ rebase`、188 筆推不出去的 commit | README.md、AGENT_BRIEF.md、MAINTENANCE.md |
+    | 08-31 | `exit 15 @ worktree-dirty` 卡兩個半小時 | 兩個非 `data/` 的檔案 |
+    | 09-03 | `exit 15 @ worktree-dirty`，03:31 卡到人介入 | AGENT_BRIEF.md、MAINTENANCE.md（**同兩個**） |
+
+    08-24 加的那道護欄（`publish.py` 的 `worktree-dirty`）成功把「191 輪無聲重試」
+    換成「一次具名的停止」，**但它只在 03:00 那一輪才會叫**。三次的成因都一樣：
+    **維護場改了 repo 根目錄的文件、沒有提交**，而在維護當下沒有任何東西問這句話。
+    這一條把發現時點從「隔天凌晨被擋」提前到「維護場跑 healthcheck 的那一刻」。
+
+    **判法不呼叫 git**，改成解析 `.git/index`（v2／v3，DIRC 格式：
+    62 位元組固定欄位 ＋ NUL 結尾路徑，補齊到 8 的倍數）。
+
+    **要兩個獨立訊號同時成立才報**（`MODIFY.md`「新增檢查」那條）：
+      ① stat 不符（size 或 mtime 與 index 記的不同）——便宜但有雜訊，
+         `git checkout`、`touch`、跨檔案系統複製都會讓 mtime 動而內容沒變；
+      ② blob SHA-1 不符——`sha1(b"blob <len>\\0" + content)`，這是 git 自己的判準，
+         定義上零誤報。只對通過 ① 的檔算 ②，所以成本只落在真的動過的那幾個檔上。
+    單獨用 ① 會每天假警報，單獨用 ② 要雜湊全部 47 個檔。
+
+    **被追蹤但檔案不見了也要報**——那同樣擋 rebase，而它通不過 ① 的 stat 比較
+    （根本 stat 不到），所以要另外接。
+    """
+    if not REPO:
+        return
+    idx_path = os.path.join(REPO, ".git", "index")
+    if not os.path.exists(idx_path):
+        log("WARN", "工作區", "讀不到 .git/index，跳過（不要用 git 指令補查）")
+        return
+    raw = open(idx_path, "rb").read()
+    sig, ver, count = struct.unpack(">4sII", raw[:12])
+    if sig != b"DIRC" or ver not in (2, 3):
+        log("WARN", "工作區", f".git/index 格式不認得（{sig!r} v{ver}），跳過")
+        return
+
+    off, dirty, missing = 12, [], []
+    for _ in range(count):
+        start = off
+        size = struct.unpack(">I", raw[off + 36:off + 40])[0]
+        mtime_s = struct.unpack(">I", raw[off + 8:off + 12])[0]
+        sha = raw[off + 40:off + 60].hex()
+        flags = struct.unpack(">H", raw[off + 60:off + 62])[0]
+        off += 62
+        if ver >= 3 and flags & 0x4000:
+            off += 2
+        end = raw.index(b"\0", off)
+        path = raw[off:end].decode("utf-8", "replace")
+        off = start + ((end + 1 - start + 7) // 8) * 8
+
+        # podcast 的 staged_paths 是 ["data"]（見 kbcore/systems/podcast.py）——
+        # publish 自己會 add 它，所以 data/ 底下髒掉不是問題。**這個值不要抄成別套的**：
+        # 投顧是 ["data", "index.html"]、每日五圖還有 charts/，形狀各不相同。
+        if path == "data" or path.startswith("data/"):
+            continue
+        full = os.path.join(REPO, path)
+        try:
+            st = os.stat(full)
+        except FileNotFoundError:
+            missing.append(path)
+            continue
+        if st.st_size == size and int(st.st_mtime) == mtime_s:
+            continue                                    # ① 沒過，不必算 ②
+        blob = open(full, "rb").read()
+        if hashlib.sha1(b"blob %d\0" % len(blob) + blob).hexdigest() != sha:
+            dirty.append(path)                          # ①②都成立
+
+    if not dirty and not missing:
+        log("PASS", "工作區", f"{count} 個追蹤檔，data/ 以外沒有未提交的變更")
+        return
+    bits = []
+    if dirty:
+        bits.append(f"改過未提交 {len(dirty)}：{'、'.join(dirty[:3])}"
+                    + (" …" if len(dirty) > 3 else ""))
+    if missing:
+        bits.append(f"被刪未提交 {len(missing)}：{'、'.join(missing[:3])}"
+                    + (" …" if len(missing) > 3 else ""))
+    log("WARN", "工作區",
+        "；".join(bits) + " —— 這些不在 publish 負責的路徑（data）底下，"
+        "**publish 永遠 stage 不到、也 commit 不掉**，下一輪 03:00 會回 "
+        "`exit 15 @ worktree-dirty` 擋掉整天的發布。**這一場結束前提交或 stash。**")
+
+
 def check_push():
     if not REPO:
         return
@@ -682,7 +832,7 @@ def check_push():
         # （最快隔天 03:00）才被順帶推上去。叫人等兩分鐘，等到的是 publish.log 裡
         # 一萬多行「空輪次，不是失敗」。
         rc, why = latest_receipt()
-        base = f"local {local[:7]} 領先 origin {origin[:7]}"
+        base = describe_divergence(local, origin)
         if rc is None:
             log("WARN", "推送鏈",
                 f"{base}——{why}，判不出 publish 那一側的狀態。push 由 "
@@ -1245,7 +1395,8 @@ def main():
                check_skill_copy,
                check_show_names_in_docs, check_podfetch,
                check_transcripts, check_pending, check_observations,
-               check_push, check_live, check_brief, collect_metrics):
+               check_worktree, check_push, check_live, check_brief,
+               collect_metrics):
         try:
             fn()
         except Exception as e:

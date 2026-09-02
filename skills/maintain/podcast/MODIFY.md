@@ -106,3 +106,28 @@ python3 tools/repo_check.py .
 3. 這次新增的任何量測或自動化，當場驗證它回傳非空結果（空值與 0 都算失敗）。
 4. ~~收工快照~~（2026-08-22 退役）。改成確認 kb-core 推得出去：`tail -5 ~/outbox/kbcorepush.log`。**若看到「檢查自檢有失敗的條目」就是新加的檢查沒過 `fixture`／`near_miss` 契約，它會擋住之後所有 kb-core 推送**——`fixture` 要能觸發檢查（非 PASS），`near_miss` 要剛好通過（PASS），兩者方向相反，很容易寫反。
 5. 驗線上狀態時，網址帶 cache-buster 並確認 `updatedLabel`。
+6. **收工前確認 `~/podcast-knowledge-digest` 工作區乾淨**——第 1 項那次 healthcheck 的
+   **`工作區` 那一條要是 PASS**。不是 PASS 就在本場結束前把那些檔提交或 stash，
+   **不要留給明天**。
+
+   > **這一條是同一件事發生三次之後才寫下來的。** `publish.py` 的 `staged_paths`
+   > 對 podcast 只有 `["data"]`，所以**repo 根目錄那些被改過、沒提交的檔，publish
+   > 永遠 stage 不到、也永遠 commit 不掉**，而 `git pull --rebase` 要求工作區乾淨——
+   > 於是隔天 03:00 的發布整個被擋住。
+   >
+   > | 日期 | 形態 | 檔案 |
+   > |---|---|---|
+   > | 08-24 | **191 輪 `exit 14 @ rebase`**、188 筆推不出去的 commit | README.md、AGENT_BRIEF.md、MAINTENANCE.md |
+   > | 08-31 | `exit 15 @ worktree-dirty` 卡兩個半小時 | 兩個非 `data/` 的檔案 |
+   > | 09-03 | `exit 15 @ worktree-dirty`，03:31 卡到人手動介入 | AGENT_BRIEF.md、MAINTENANCE.md（**同兩個**） |
+   >
+   > 08-24 加的護欄（`publish.py` 的 `worktree-dirty` 檢查）**做對了它該做的那一半**：
+   > 把 191 輪無聲重試換成一次具名的停止。**但它只在 03:00 那一輪才會叫，
+   > 而錯誤是在維護場當下犯的** —— 護欄縮短了損失，沒有縮短犯錯到發現的距離。
+   > 09-03 補上 `healthcheck.py` 的 `check_worktree()`（解析 `.git/index`，
+   > 不呼叫 git），把發現時點拉到維護場自己那一次 healthcheck；
+   > **這一條驗證項則是拉到收工前**——因為改動往往發生在第 1 項跑完之後。
+   >
+   > **不要用 `git status` 代替它。** 任何 git 指令留下的 `.git/index.lock` 都會擋住
+   > 每 60 秒一次的 `com.kenny.kbpublish.podcast`，而 Cowork 掛載點刪不掉自己建的鎖
+   > （見 `MAIN.md` 硬規矩）。要用就在 Mac 上、且加 `--no-optional-locks`。
