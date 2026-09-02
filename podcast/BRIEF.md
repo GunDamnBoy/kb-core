@@ -39,7 +39,12 @@ budget:
 
 每集：`id`／**`trackId`**／`showKey`／`show`／`title`（`節目名｜標題`）／`meta`／`published`／
 **`minutes`**／`hosts`／`guest`／`source`／`url`／`chars`／`summary`／`guests`／`topics`／
-`quality{completeness,status,speakerNote,timestampNote}`／`takeaways`／`sections`／`quotes`。
+`quality{completeness,status,speakerNote,timestampNote}`／`takeaways`／`sections`／`quotes`，
+以及只在觸發下界例外時出現的 **`lowerBoundException`**。
+
+- **下界例外是欄位，不是回報裡的一句話。** `chars` 低於下界時該集要帶
+  `lowerBoundException`（一句話理由），**否則 `chars_in_tier` 直接 FAIL、擋掉整輪發布**
+  —— 閘門讀不到回報。這與上一條是同一個形狀的反面：**那兩個缺了安靜放行，這個缺了硬擋。**
 
 - **`trackId` 與 `minutes` 都是閘門的必要輸入**，而漏掉的後果不一樣，所以分開講：
   **`minutes` 缺了 `chars_in_tier` 直接 FAIL**（看得見）；
@@ -61,7 +66,6 @@ budget:
   **比對基準是 podfetch 稿，不是官方稿。** `quote_misses()` 寫死了
   `~/podcast-transcripts/<date>/<showKey>-<trackId>.md`。所以**A 類走第一層時，
   正文用官方稿寫，`original` 仍要回 podfetch 稿挑** —— 官方稿是編修過的，用字對不上。
-  2026-08-23 latentspace 五條全取自官方稿，機械比對 5／5 全 MISS。
   少了這個欄位，「金句必須是逐字稿裡實際出現的發言」就只是一條靠自覺的規則，
   而**依賴自覺的紀律不是紀律**。
 
@@ -140,10 +144,8 @@ budget:
 4. 帳本沒有新增觀察點，或**有逾期超過 `observations.overdue_grace_days` 未判的項目**
    （逾期但還在寬限期內是 WARN 不是失敗；寬限期存在的理由與已知的洞見 anchors 的 `_due_note`）
 5. `index.json` 的 `days[0]` 不是當天，或執行時間戳沒動
-   （**這一條沒有對應的檢查，2026-08-22 複驗抓到**：`checks/podcast.py` 十八條裡沒有任何一條讀
-   `index.json`。實況是 `tools/publish.py` 在組 `index.json` 時就保證了它，而 `checks/sentinel.py`
-   是事後心跳、屬於另一個套件——**兩者都不是這條判準的執行者**。所以它目前靠的是
-   「寫的人不會寫錯」，而這份文件第七節的前提正好是不要依賴那個。）
+   （**這一條沒有對應的檢查**，靠 `publish.py` 組檔時順手保證；來歷見
+   `MAINTENANCE.md` 第 7 節）
 
 第 4 項是本站與一般摘要的分水嶺 —— **拋出去的觀察要回頭對答案**。
 
@@ -154,14 +156,14 @@ budget:
 
 免責聲明、來源標註、管線自檢、純敘述性總結都不是觀察點。
 
-**開帳之後不得改寫。**
+**「開帳之後不得改寫」管的是 claim，不是判決**（2026-08-30 訂正）。
+分界線是欄位：**`id`／`date`／`text`／`due` 開帳後不得改寫**；
+**`status`／`verdict`／`verdictDate` 是判決欄位，有明確結果就該動。**
+不改判，第七節第四條就永遠判不了 —— **那半條判準的執行者是每天那一輪，不是別人。**
 
-~~判定到期由哨兵開 issue。~~ **這一句沒有執行者**（2026-08-23 標；哨兵實際印 ⏭️ 未執行，
-且帳本形狀與它不相容，細節在 `MAINTENANCE.md` 第 6 節）。實際在看的是發布閘門的
-`podcast.ledger_no_overdue`，**而它對沒有到期日的舊項目是瞎的**（`due` 自 08-22 起才強制）。
-現況條數一律看 `healthcheck.py` 的記分板，**這裡不記數字**。**綠燈不等於帳本乾淨。**
-（第七節第五條 08-22 才標過同型的洞，隔一節又寫了一次 ——
-**寫「由某某負責」之前先確認某某真的在跑。**）
+實際在看逾期的是發布閘門的 `podcast.ledger_no_overdue`，
+**而它對沒有到期日的舊項目是瞎的**。現況條數一律看 `healthcheck.py` 的記分板，
+**這裡不記數字**。**綠燈不等於帳本乾淨。**
 
 ## 九、合規
 

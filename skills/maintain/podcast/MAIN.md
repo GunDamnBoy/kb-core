@@ -1,6 +1,10 @@
 # 節目知識庫 · 維護
 
-> **這是正本**，`maintain` 技能裡那份是副本。
+> **正本在 `~/kb-core/skills/maintain/podcast/`；已安裝技能裡那份是副本。**
+> **這句話在副本裡也逐字存在，所以它認不出自己是誰** —— 要分辨就看路徑：
+> 路徑含 `claude-hostloop-plugins` 或 `.claude/skills` 的是副本，**改它不會保存**
+> （技能快取唯讀，且 `save_skill` 只取代 `SKILL.md`）。`healthcheck.py` 的
+> `check_skill_copy()` 會比對兩邊並報 WARN。（2026-09-02 補上這段辨識法。）
 >
 > **2026-08-22 已查證，上一版留的那個問題有答案了。**
 > 上一版寫「下次維護第一件事就是查 `AGENT_BRIEF.md` 開頭有沒有失效橫幅」——
@@ -16,7 +20,9 @@
 > 已確認並改掉的（2026-08-21）：推送者不是 `com.kenny.dashpush`（已退場）、
 > 排程 taskId 是 `podcast-daily-300`。
 
-repo 外的檔案（`podfetch.py`、`config.json`、`shows.json`、排程 `SKILL.md`）**沒有 git**，快照是唯一還原點；排程 `SKILL.md` 還可能在對話進行中被別場維護整份覆寫。動手前重讀當下的檔案，只信這一秒讀到的內容——即使你認為自己就是上一個改它的人。
+**排程 `SKILL.md` 可能在對話進行中被別場維護整份覆寫。動手前重讀當下的檔案，只信這一秒讀到的內容**——即使你認為自己就是上一個改它的人。
+
+> **2026-09-02 訂正**：本段原本寫「`podfetch.py`／`config.json`／`shows.json`／排程 `SKILL.md` 沒有 git，快照是唯一還原點」——**四個前提現在全部不成立**，而它就掛在下方硬規矩「不再需要快照」的正上方。前三個 08-22 起住在 kb-core、有 git 也有自動推送；排程 `SKILL.md` 是 `DIGEST-PROMPT.md` 的副本、正本在 kb-core。**這是「判斷兌現了、沒有人回頭刪那一段」的第三次**（前兩次記在 `SYNC-CHECKLIST.md`）。留下的只有那句仍然成立的重讀紀律。
 
 全程繁體中文（台灣用語）。repo 根目錄 `~/podcast-knowledge-digest`。
 
