@@ -10,9 +10,9 @@
 
 | 檔 | 改了什麼 |
 |---|---|
-| `chart/anchors.json` | `history_limits` 新增 `tw_route_months`＝36 與 `tw_route_source`（含「改這個數字不會補到歷史」與「天花板是節流不是資料」） |
+| `chart/anchors.json` | `history_limits` 新增 `tw_route_months`（**先填 36，同日實跑後更正為 37**）、`tw_route_source`（含「改這個數字不會補到歷史」與「天花板是節流不是資料」）與 `tw_route_months_is_12n_plus_1` |
 | `scripts/chart/fetch.py` | 新增 `tw_route_months()`（讀 anchors，取不到回退 24）；台股路線改明傳 `months=`；**把聯集寫入抽成 `merge_write()`**（原本內嵌在 `get()`）；新增 `cache_path()` |
-| `scripts/chart/backfill_tw_history.py` | **新檔**。一次性補歷史：強制 `have_through=""` 全量、經 `merge_write()` 寫回、預設一次兩條、夠深自動跳過（冪等）；`--selftest-offline` 七個案例 |
+| `scripts/chart/backfill_tw_history.py` | **新檔**。一次性補歷史：強制 `have_through=""` 全量、經 `merge_write()` 寫回、預設一次兩條、夠深自動跳過（冪等）；`--selftest-offline` 八個案例（含同日補上的 12N+1 那條） |
 | `scripts/chart/prefetch.py` | `handshake` 區塊新增 `stale`（＋`failed_empty_means`／`stale_means` 兩段說明）；新增 `_handshake_stale()`，判定委外給 `prep_chart._stale()` |
 | `skills/chart/SKILL.md` | 第 3 步補「`handshake.failed` 空的不代表那條路是好的」與 `handshake.stale` |
 | `chart/SOURCES.md` | `^TWOII` 那節加 2026-09-02 追記；「安靜失敗的那些」加台股路線深度那一條 |
@@ -98,17 +98,59 @@
 而 **2026-08-30 的節流事故是 144 次／天造成的**，壞掉的是抓取順序的最後兩個。
 `--all` 存在，但那要是一個決定，不是一個預設。
 
+### 三之二、同日更正：36 個月不是 3 年，而它補完之後每個數字都變好了
+
+**上面那個 36 是錯的，實跑第一條就抓到。** 留痕不改寫。
+
+在 Mac 上跑 `--only '^TWII'`：485 → 708 點，起日 2024-09-02 → **2023-10-02**，
+資料本身乾淨（遞增、無重複日期，三個 >7 天的缺口全是農曆年：
+2024-02-05→02-15、2025-01-22→02-03、2026-02-11→02-23，最大 12 天 ——
+**這也順帶把 `SHORT_TOLERANCE_DAYS = 14` 從「推出來的」變成量出來的**）。
+接縫處 2024-08-29 → 2024-09-02 連續，沒有斷。
+
+然後兩份實作對同一條序列給出不同答案：
+
+| 判定者 | 拿 2023-10-02 對誰比 | 結論 |
+|---|---|---|
+| `backfill_tw_history` | 目標 `_target_start(36)`＝2023-10-01 | 差 1 天 → **已夠深** |
+| `scan_moves` | 三年切點 2023-09-01 | `short_by_days`＝31 → **★ 還在** |
+
+根因不是容差，是 36 這個數字：**`_months_back(n)` 含本月，而本月不完整**，
+所以 36 個月只往回跨 35 個月界。**覆蓋 N 年要 12N+1 個月。** 改成 37。
+
+> **它藏住的方式，是我昨天寫在風險欄裡的那一條真的發生了 ——
+> 而且是往「看起來成功」的方向發生的。**
+> 補完之後：點數 +223、起日早了 11 個月、`needs_backfill` 說夠深、
+> 跨距從 2.00 年變成 2.92 年。**六個數字裡五個都在說成功。**
+> 唯一說不對的是 `scan_moves` 的 ★，而那正是 2026-09-01 才加上去的東西 ——
+> 沒有它，這個 off-by-one-month 會安靜地留在快取裡，
+> 而所有人都會以為台股已經是三年了。
+> 當初把兩邊的容差刻意取成同一個 14 天，以為那樣就對齊了；
+> **對齊的是容差，不是基準點。** 一個問「有沒有補到我要的月數」，
+> 一個問「有沒有覆蓋三年窗口」，兩個問題的答案本來就可以同時是對的。
+
+修法不只是改數字，而是讓它下次是紅字：`backfill_tw_history.selftest_offline()`
+新增案例（3）——`_target_start(F.tw_route_months())` 必須 ≤ 今天往回三年。
+**有人哪天再填 36，那條會紅。** 同時 `anchors.history_limits` 新增
+`tw_route_months_is_12n_plus_1` 把整段沿革寫下來。
+
+代價：`^TWII` 要再補一次（現在判「要補」，因為目標起日變成 2023-09-01），
+七條全做由 252 次變成 259 次請求。
+
 ### 量測
 
 | 量的東西 | 值 | 怎麼量的 |
 |---|---|---|
 | 台股路線快取跨距 | 七條全部 1.98–2.00 年，起日全為 2024-09-02 | 逐檔讀 `data/series/*.csv` 首末列 |
+| `^TWII` 補歷史（36 個月那次） | 485 → 708 點，起日 2024-09-02 → 2023-10-02，跨距 2.92 年 | Mac 上實跑 `--only '^TWII'` |
+| 補完後的資料完整性 | 0 重複日期、嚴格遞增、最大相鄰間隔 12 天（農曆年 ×3） | 逐列讀補完的 `_TWII.csv` |
+| 36 個月的缺口 | `short_by_days` ＝ 31（起日 2023-10-02 vs 切點 2023-09-01） | `scan_moves --json` 的 `^TWII` 那一列 |
 | 其他路線跨距（對照） | 5.22（SOXQ）／10.01（SP500、`^KS11`、8035.T、005930.KS）／11.66（GLD、XLE） | 同上 |
 | `^TWOII` 落後 | 33 個交易日，末日 2026-07-17，落在 `ok`、`handshake.failed` 為空 | `_prefetch_status.json` ＋ `prep_chart._stale()` |
 | `handshake.stale` 實算 | 1 筆（`^TWOII`，「落後 33 個交易日，≥ 硬失敗門檻 5」） | 拿今天的狀態檔餵 `_handshake_stale()` |
 | Brent 帳 | 2 輪，末日皆 2026-08-25，「沒動（連續 1 輪）」 | `prefetch.py --history DCOILBRENTEU` |
-| 補歷史請求量 | 一條 36 次；預設批次 2 條＝72 次（~1 分 12 秒）；全做 252 次 | `backfill_tw_history.py --dry-run` |
-| 待補條數 | 7／7（今天一條都還沒補） | 同上 |
+| 補歷史請求量（37 個月） | 一條 37 次；預設批次 2 條＝74 次（~1 分 14 秒）；全做 259 次 | `backfill_tw_history.py --dry-run` |
+| 待補條數 | 改 37 之後 7／7（`^TWII` 補過一次但只到 36 個月，仍要再補） | 同上 |
 
 ### 怎麼驗的
 
@@ -116,7 +158,7 @@
 scripts/chart 全部）exit 0；檢查自檢 fixture 與 near_miss 兩側 **0 失敗**；
 `build_series --selftest`、`fetch --selftest-cache`（8 條）、
 `fetch_tw_price --selftest-offline`（7 條）、`scan_moves --selftest`、
-`backfill_tw_history --selftest-offline`（新增 7 條）全過；
+`backfill_tw_history --selftest-offline`（新增 8 條，含 12N+1 那條）全過；
 `chart_verify` 對 2026-09-02 仍是 **17 PASS · 2 WARN · 0 FAIL · 0 SKIPPED · 0 ENV**，
 兩條 WARN 與改動前逐字相同；29 份日檔全部可 `json.load`；`anchors.json` 可 `json.load`；
 `index.html` 抽 `<script>` 後 `node --check` exit 0；兩個 repo 的符號連結各為 0。
@@ -153,14 +195,18 @@ scripts/chart 全部）exit 0；檢查自檢 fixture 與 near_miss 兩側 **0 �
   這支不在每日關鍵路徑上（手動、一次性），所以我判斷可以先交出去，
   **但這是一個判斷，不是一個豁免**。第一次在 Mac 上跑務必先 `--only '^TWII'` 單條，
   對完起日與點數再放第二條。
-- **36 是對齊出來的，不是量出來的。** 依據是「跟 `BAMLxxx_years` 與 `scan_moves`
+- **37 是對齊出來的，不是量出來的。** 依據是「跟 `BAMLxxx_years` 與 `scan_moves`
   的三年窗口對齊」，不是「台股資料只有這麼多」或「證交所撐得住這麼多」。
+  **而第一次對齊就對錯了**（填 36），見上面的同日更正 —— 現在有回歸案例守著。
   真正的天花板是節流，而**節流的門檻我們沒有量過** ——
   只知道 144 次／天會壞（2026-08-30），不知道 72 次會不會。
-- **補完之後 `scan_moves` 的台股 ★ 會消失，而那正是要盯的驗收點。**
-  ★ 消失代表樣本真的變成三年了；**若補歷史沒生效而 ★ 也消失了，那是更糟的狀況**
-  —— 表示容差判定與 `scan_moves` 的短樣本判定用了不同的尺。
-  兩邊的容差刻意取同一個值（14 天）就是為了這件事，但**兩邊仍是兩份實作**。
+- ~~**補完之後 `scan_moves` 的台股 ★ 會消失，而那正是要盯的驗收點。**~~
+  ~~★ 消失代表樣本真的變成三年了；若補歷史沒生效而 ★ 也消失了，那是更糟的狀況。~~
+  **撤回：這條寫對了一半，而錯的那一半當天就實現了。**
+  真的發生的是第三種——**補歷史生效了、★ 也沒消失**，因為兩份實作量的不是同一件事
+  （目標月數 vs 三年窗口），而不是用了不同的容差。見上面的同日更正。
+  現在 `^TWII` 補到 37 個月之後 ★ 應該消失，**這仍然是驗收點**，
+  只是「★ 沒消失」現在有第二種解釋要先排除：先跑 `--dry-run` 看它判要不要補。
 - **`handshake.stale` 讓 `^TWOII` 從「安靜」變成「每天都在的一行」。**
   一條每天都響而且短期內不會好的訊號，會被習慣成背景 ——
   這正是 `daily_trading_days_source` 記過的那種失效。

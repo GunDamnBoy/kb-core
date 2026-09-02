@@ -4,11 +4,18 @@ backfill_tw_history.py — 一次性把台股路線的快取補到 `anchors.hist
 
 【為什麼要有這支，而不是改一個數字就好】
 
+**先看一眼 `tw_route_months` 為什麼是 37 不是 36**：`_months_back()` 含本月，
+而本月不完整，所以**覆蓋 N 年要 12N+1 個月**。2026-09-02 實跑時填的是 36，
+補完 `^TWII` 每個數字都變好（485 → 708 點）、這支也判「已夠深」，
+**而 `scan_moves` 的 ★ 還在**（`short_by_days` ＝ 31）。
+案例（3）就是為了讓這件事下次是紅字，不是一次安靜的重跑。
+
+
 2026-09-02 量到：走 `fetch_tw_price` 的七條快取（`^TWII`、2330、2317、2344、2382、
 2408、8069.TWO）**全部起於 2024-09-02、跨距剛好 2.00 年**，而同一天其他路線是
 5.22–11.66 年。成因是 `series()` 的預設 `months=24`，而 `fetch.get()` 從來沒有覆寫它。
 
-**把預設改成 36 不會補到歷史。** `series()` 在 `have_through` 非空時走
+**把預設改大不會補到歷史。** `series()` 在 `have_through` 非空時走
 `_months_since()`，只從快取末日數到本月 —— 歷史那一段**永遠不會被要求**，
 所以快取的起日會一直停在它第一次被建起來的那一天，只往前長不往後長。
 要補得刻意走一次 `have_through=""` 的全量，讓 `fetch.get()` 那道
@@ -16,8 +23,8 @@ backfill_tw_history.py — 一次性把台股路線的快取補到 `anchors.hist
 
 【為什麼預設一次只做兩條】
 
-一條全量 36 個月 ＝ 36 次證交所請求（`series()` 內部每月之間 sleep 1 秒）。
-七條全做是 252 次，而 **2026-08-30 那場證交所節流事故是 144 次／天造成的**，
+一條全量 ＝ `tw_route_months` 次證交所請求（`series()` 內部每月之間 sleep 1 秒），
+現在是 37。七條全做 259 次，而 **2026-08-30 那場證交所節流事故是 144 次／天造成的**，
 壞掉的正是抓取順序的最後兩個，嚴重度隨順序遞增。所以：
 
   · 預設 `--max-series 2`，跑完印出還剩哪幾條，**要你自己再跑一次**。
@@ -43,7 +50,7 @@ import fetch as F                                    # noqa: E402
 import fetch_tw_price as TW                          # noqa: E402
 
 PAUSE_BETWEEN_SERIES = 5.0
-# 深度容差：36 個月的目標起日與實際起日差在這個天數內就算補到了。
+# 深度容差：目標起日與實際起日差在這個天數內就算補到了。
 # **與 `scan_moves.SHORT_TOLERANCE_DAYS` 是同一個理由**（台股農曆年可連休九天加
 # 前後週末約十一天），值刻意取一樣 —— 兩邊都在問「這條夠不夠深」，
 # 用兩個不同的容差會讓同一條序列在一邊算夠、另一邊算不夠。
@@ -149,7 +156,17 @@ def selftest_offline() -> int:
     eq("_target_start 對得上 _months_back",
        (ts.year, ts.month), TW._months_back(36)[0])
 
-    # 3. 容差：差 1 天算夠深（BAMLH0A0HYM2 那種假警報的形狀，見 scan_moves 2026-09-01）
+    # 3. **12N+1**：anchors 設的月數要真的覆蓋得到 `scan_moves` 的三年窗口。
+    #    2026-09-02 實跑踩到：36 個月只到 2023-10-01，而三年切點是 2023-09-01，
+    #    於是補完之後每個數字都變好、`needs_backfill` 也說夠深，**而 ★ 還在**。
+    #    `_months_back()` 含本月（不完整的那個月），所以覆蓋 N 年要 12N+1 個月。
+    #    **這一條是為了讓「有人再填 36」變成紅字，而不是變成一次安靜的重跑。**
+    months_cfg = F.tw_route_months()
+    three_years_ago = datetime.date(today.year - 3, today.month, 1)
+    eq(f"tw_route_months={months_cfg} 覆蓋得到三年窗口（12N+1）",
+       _target_start(months_cfg) <= three_years_ago, True)
+
+    # 4. 容差：差 1 天算夠深（BAMLH0A0HYM2 那種假警報的形狀，見 scan_moves 2026-09-01）
     class _Fake:
         pass
     saved = F.read_cache
@@ -160,10 +177,10 @@ def selftest_offline() -> int:
         F.read_cache = lambda p: ([(ts + datetime.timedelta(days=TOLERANCE_DAYS + 1)).isoformat(),
                                    today.isoformat()], [1.0, 2.0])
         eq("差 15 天算淺", needs_backfill("^TWII", 36), True)
-        # 4. 空快取要補 —— **不可以因為「沒有起日」而被當成夠深**
+        # 5. 空快取要補 —— **不可以因為「沒有起日」而被當成夠深**
         F.read_cache = lambda p: ([], [])
         eq("空快取要補", needs_backfill("^TWII", 36), True)
-        # 5. 起日壞掉要補，不是安靜跳過
+        # 6. 起日壞掉要補，不是安靜跳過
         F.read_cache = lambda p: (["not-a-date", today.isoformat()], [1.0, 2.0])
         eq("起日壞掉要補", needs_backfill("^TWII", 36), True)
     finally:
@@ -179,7 +196,7 @@ def main(argv=None) -> int:
                     help="預設讀 anchors.history_limits.tw_route_months")
     ap.add_argument("--only", default="", help="只補這一條")
     ap.add_argument("--max-series", type=int, default=2)
-    ap.add_argument("--all", action="store_true", help="一次補完（252 次請求，自己決定）")
+    ap.add_argument("--all", action="store_true", help="一次補完（七條約 259 次請求，自己決定）")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--selftest-offline", action="store_true")
     a = ap.parse_args(argv)
