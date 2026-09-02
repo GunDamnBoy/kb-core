@@ -662,8 +662,9 @@ def describe_divergence(local, origin):
 
     **這裡曾經把方向寫死。** 2026-09-03 之前這一行是
     `f"local {local[:7]} 領先 origin {origin[:7]}"`，從不問祖先關係。
-    而當天實際是**反的**：`.git/logs/refs/remotes/origin/main` 的最後一列是
-    `67c289b → ffdf18f  fetch -q origin: fast-forward`，也就是 origin 走在前面，
+    而當天實際是**反的**：`.git/logs/refs/remotes/origin/main` 在 09-03 06:00 那一刻的
+    最後一列是 `67c289b → ffdf18f  fetch -q origin: fast-forward`（**同一天稍晚就不再是
+    最後一列了**，所以這句話帶時點——不帶時點的量測隔天就變成假的），也就是 origin 走在前面，
     多出來的那顆幾乎確定是 `deploy.yml` 的 Pages 部署 commit。
     **那則訊息可信、內容是假的**——與 `publish.py` 註解裡記的 `rstrip` 那次
     （把 `data/index.json` 切成 `ata/index.json`、然後理直氣壯說它不在 paths 底下）
@@ -676,20 +677,38 @@ def describe_divergence(local, origin):
       - local 出現在 origin reflog 的舊值裡 → origin 是從 local 走過來的 → **origin 領先**
       - origin 出現在 local reflog 的舊值裡 → **local 領先**
 
-    兩者都不成立時**不要選一個講**——reflog 有 `gc.reflogExpire`（預設 90 天）會過期，
-    而「舊到掉出 reflog」與「真的分歧」在這裡長得一樣。那種情況只報事實。
+    **這個推論比它看起來的弱，說出口的話要跟著弱。** reflog 記的是
+    「這個 ref 曾經是 X」，**它不記祖先關係**——「曾經是 X、現在是 Y」在
+    `fetch: forced-update`（遠端被改寫）之後，X 就不再是 Y 的祖先了。
+    所以底下的訊息只講「走在前面」這個 reflog 真的看得到的事，
+    **不宣稱「local 是它的祖先」**，也不保證下一輪 rebase 一定順——
+    初版寫了那句，而它在 force-update 下是假的，還會叫人去做一次會衝突的 rebase。
+    **那正是本函式存在的理由（訊息可信、內容是假的）在同一段程式裡再犯一次。**
+
+    兩者都不成立時**不要選一個講**，而**那有三種成因不是兩種**：
+    ①真的分歧；②舊到掉出 reflog（`gc.reflogExpire` 預設 90 天）；
+    ③**兩邊互為對方的舊值**，被底下的 `and not` 互相否決——
+    這一種聽起來罕見，但 2026-09-03 實測本 repo 的兩份 reflog
+    舊值集合**交集有 28 個雜湊**（`git reset --hard` 回到某個推過的舊點就會這樣），
+    所以它是三種裡最可能的一種。漏列它會讓維護場往「真的分歧」那個方向找錯。
+
+    **`heads/main` 讀不到才退回 `HEAD` 那份，而兩份不等價**（保守方向，可接受）：
+    HEAD 的 reflog 多含 rebase 中途的 `checkout`（2026-09-03 實測 257 對 240 筆），
+    因此含有 origin 的雜湊當舊值，`heads/main` 沒有——用它只會更容易落到「判不出來」。
     """
     a, b = local[:7], origin[:7]
     local_olds = (reflog_old_values(".git/logs/refs/heads/main")
                   or reflog_old_values(".git/logs/HEAD"))
     origin_olds = reflog_old_values(".git/logs/refs/remotes/origin/main")
     if local in origin_olds and origin not in local_olds:
-        return (f"origin {b} 領先 local {a}（local 是它的祖先，"
-                f"通常是 Pages 部署那顆——下一輪 pull --rebase 會自己追上）")
+        return (f"origin {b} 走在 local {a} 前面（origin 的 reflog 記得它從 {a} 移動過來，"
+                f"多半是 Pages 部署那顆；正常情況下一輪 pull --rebase 會追上，"
+                f"但若那是 forced-update 就會是衝突）")
     if origin in local_olds and local not in origin_olds:
-        return f"local {a} 領先 origin {b}"
-    return (f"local {a} 與 origin {b} 不同雜湊，"
-            f"方向從 reflog 判不出來（可能真的分歧，也可能舊到掉出 reflog）")
+        return f"local {a} 走在 origin {b} 前面"
+    return (f"local {a} 與 origin {b} 不同雜湊，方向從 reflog 判不出來"
+            f"（三種成因：真的分歧／舊到掉出 reflog／兩邊互為對方的舊值，"
+            f"最後那種通常是做過 reset --hard）")
 
 
 def check_worktree():
@@ -747,9 +766,18 @@ def check_worktree():
         path = raw[off:end].decode("utf-8", "replace")
         off = start + ((end + 1 - start + 7) // 8) * 8
 
-        # podcast 的 staged_paths 是 ["data"]（見 kbcore/systems/podcast.py）——
-        # publish 自己會 add 它，所以 data/ 底下髒掉不是問題。**這個值不要抄成別套的**：
-        # 投顧是 ["data", "index.html"]、每日五圖還有 charts/，形狀各不相同。
+        # podcast 的 staged_paths 是 ["data"]（`systems/podcast.py`，**不是 `kbcore/`**——
+        # `kbcore/` 是共用套件，各系統的定義在 repo 根目錄的 `systems/`）。
+        # publish 自己會 add 它，所以 data/ 底下髒掉不是問題。
+        #
+        # **這個值不要抄成別套的，而且六套有三種形狀**（2026-09-03 實跑
+        # `grep -rn "staged_paths" systems/*.py` 數的）：常數 `["data"]`
+        # （podcast／tracer）、常數多一個**檔案** `["data", "index.html"]`（投顧）、
+        # **條件式**——chart 與 research 是 `["data"]` 再視 `charts/<date>`
+        # （research 是 `charts/<week>`）**存在才加**，convergence 則刻意寫成函式
+        # 來拒絕預設值。**08-24 出事的正是「宣告不是常數」那一類**，
+        # 而 `MODIFY.md` 教的那行 `grep "staged_paths="` 只看得到六行裡的三行，
+        # 另外三支寫的是 `staged_paths=staged_paths`。
         if path == "data" or path.startswith("data/"):
             continue
         full = os.path.join(REPO, path)

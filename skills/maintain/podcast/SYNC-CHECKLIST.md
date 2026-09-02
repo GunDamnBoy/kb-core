@@ -66,6 +66,7 @@
 - **三種品質旗標**：`anchors.quality.note_dimensions` 的分工（`warnings` 決定 status／後兩者不影響）↔ `preamble` 第五、九節 ↔ **`DIGEST-PROMPT`**（組檔者要產出 `quality{}` 四個子欄位，而流程正本**到 2026-09-02 仍然全文沒提過它們** —— 該檔 `quality` 只出現 3 次、全部是 `anchors.quality.*` 的路徑引用，只靠一句「日期檔的完整形狀照 `BRIEF.md` 第二節」轉指。**本條原寫「一度」，那個字暗示已修復，實際沒有** —— 每次比對都要重驗，不要被它騙過去。**規則的執行者不是規則的讀者**）
 - **觀察點記分板四邊**：`BRIEF` 第八節 ↔ `anchors.observations` ↔ `DIGEST-PROMPT` 第 5 步 ↔ `data/observations.json` 實檔欄位。**欄位分兩側，比對時要分開看**：claim 側 `id`／`date`／`text`／`due` 開帳後不得改寫，判決側 `status`／`verdict`／`verdictDate`／`lastReviewed` 有結果就該動（`lastReviewed` 2026-09-02 新增，**加它的那一場只改了 `DIGEST-PROMPT` 一邊，四邊裡三邊漏掉** —— 這一區存在的理由就是這個）
 - **外包給子代理的指示是否自足**（判準見 `FILES.md`「子代理的視野」）。`preamble` 自稱「這裡就是全部的規則」，**核對它是不是真的**
+- **`staged_paths` 三邊**（2026-09-03 新增，隨 `healthcheck.check_worktree()` 一起來）：`systems/podcast.py` 的 `staged_paths` ↔ `healthcheck.py` 的 `check_worktree()` 排除哪些路徑 ↔ `MODIFY.md` 驗證第 6 項。**這三邊只要有一邊改了，另外兩邊會安靜地失準**：排除多了，髒檔就漏報；排除少了，publish 自己會 add 的檔被報成髒檔、每天假警報。**別套系統的形狀不要抄過來**——2026-09-03 實跑 `grep -rn "staged_paths" systems/*.py` 數到六套三種形狀：常數（podcast／tracer）、常數含**檔案**（投顧 `["data", "index.html"]`）、**條件式**（chart／research 視 `charts/<date>` 存在才加，convergence 刻意寫成函式拒絕預設值）。**`MODIFY.md` 教的那行 `grep "staged_paths="` 只看得到六行裡的三行**（另三支是 `staged_paths=staged_paths`），而 08-24 出事的正是它看不到的條件式那一類
 
 ## 每一份的內部自我一致性
 
@@ -93,3 +94,15 @@
 > 登記簿每一場都會新增一列，所以它才是隨進度前進的那個錨。
 > 09-02 首次實測（本檔當時 mtime 08-30 12:37、登記簿最新列 08-31）：**舊的，新條件正確觸發。**
 > 本檔已於同日改寫，所以那組 mtime 對現在的檔案不再成立 —— **量測句要標時點，而它就寫在「自我指涉的數字有沒有標時點」這一條的下面。**
+
+> **2026-09-03：那個錨對「本場自己」是結構性全盲的，而漏更新恰恰發生在本場。**
+> 09-03 新增 `check_worktree()` 時，本檔又漏了它那一組比對關係（`staged_paths` 三邊）——
+> **與 08-30 漏掉 `check_skill_copy()` 完全同型，這是第三次。**
+> 成因不是忘記，是條件本身：**登記簿是收工才寫的，而複驗（`MODIFY.md` 驗證第 2 項）
+> 跑在收工之前**，所以「本場那一列」在複驗當下必然還不存在，條件永遠不會亮。
+> 它抓得到「上一場漏更新」，抓不到「這一場漏更新」。
+> **所以再加一個不依賴登記簿的條件**：
+> **本場若動了 `healthcheck.py` 的 `main()` 檢查串列、`checks/podcast.py` 的檢查清單、
+> 或任何 `systems/*.py`，就一定要回來問「這新增了哪一組需要比對的東西」。**
+> 那三個檔案是「新增比對關係」的唯一來源，而它們在改動當下就看得到，不必等收工。
+> （這一條是複驗子代理抓到的；主線當天自己漏了，正如前兩次。）
