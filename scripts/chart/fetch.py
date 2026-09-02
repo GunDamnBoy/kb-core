@@ -189,6 +189,23 @@ def handshake_allowlist() -> dict:
     return (anchors().get("rate_limits") or {}).get("handshake_allowlist") or {}
 
 
+def tw_route_months() -> int:
+    """台股路線要幾個月的歷史。**家在 `anchors.history_limits.tw_route_months`。**
+
+    2026-09-02 之前這個值不存在，於是走的是 `fetch_tw_price.series()` 的預設 24，
+    而七條台股快取**全部剛好 2.00 年**，同一天其他路線是 5.22–11.66 年。
+    **上限只活在一個函式的預設參數裡，`history_limits` 那一格沒有它** ——
+    所以讀表的人不會知道台股的分位跟其他列不是同一把尺。
+
+    取不到就用 24：**回退到「現狀」而不是「更深」**，因為更深會在無人值守的預抓裡
+    悄悄放大請求量，而 2026-08-30 的證交所節流事故正是請求量造成的。
+    """
+    try:
+        return int((anchors().get("history_limits") or {})["tw_route_months"])
+    except (KeyError, TypeError, ValueError):
+        return 24
+
+
 def yahoo_handshake(symbol: str) -> dict:
     """做完 cookie／crumb 握手再取 Yahoo 日線。**只走允許清單上的代號。**
 
@@ -396,7 +413,14 @@ def _route_and_fetch(ident: str, since: str, path: str) -> dict:
         # 快取的末日交給它做增量：每天重下 24 個月是 2026-08-30 那場證交所節流的成因
         # （六個代號 ×24 個月＝144 次請求）。快取空的時候 `have_through` 是空字串，
         # 它自己會走全量那條。
-        return TW.series(ident, have_through=cached_last(path))
+        #
+        # `months` 2026-09-02 起明寫（值在 `anchors.history_limits.tw_route_months`）。
+        # **在此之前這裡不傳，於是吃 `series()` 的預設 24**，而那個 24
+        # 是七條台股快取剛好 2.00 年的唯一成因。
+        # **傳了不代表歷史會補回來**：`have_through` 非空時走的是增量那條，
+        # 只從快取末日數到本月 —— 這裡的 `months` 只是增量的上限。
+        # 補歷史要走 `scripts/chart/backfill_tw_history.py`（一次性、全量、分批）。
+        return TW.series(ident, months=tw_route_months(), have_through=cached_last(path))
 
     if src == "tiingo":
         return tiingo(ident, since)
@@ -445,6 +469,50 @@ def cached_last(path: str) -> str:
     return d[-1] if d else ""
 
 
+def merge_write(path: str, ident: str, s: dict, today: str) -> tuple[int, list, dict]:
+    """把這次取到的與快取取聯集再寫回，然後對末日倒退大聲失敗。
+
+    **這是「只能長不能縮」那道守衛的唯一實作。** 2026-09-02 從 `get()` 裡抽出來，
+    因為補歷史（`backfill_tw_history.py`）需要同一道守衛：它強制走全量，
+    而全量拿到的**末日可能比快取舊**（來源當月還沒收盤、或那幾個月被節流回空），
+    正是這道守衛存在的情境。**在腳本裡另寫一份合併，就是再造一次 2026-08-30 那場資料損失** ——
+    那次的成因就是「同一個意義有兩個實作，而只修了看得見的那一個」。
+
+    回傳 `(合併前點數, 合併後的 dates, 合併後的 {date: value})` ——
+    **合併後的那一份是回傳的，不是叫呼叫端自己再讀一次檔**：
+    `get()` 要回傳的是聯集，不是這次抓到的那一段，兩者不同（增量取數時差很多）。
+    呼叫端自己重讀會讓「寫進去的」與「回傳的」變成兩條路，那正是漂移的起點。
+
+    行為與抽出來之前逐字相同：先寫、後拋，**順序不能反**（先寫資料才保得住，
+    後拋失敗才仍然是大聲的）。
+    """
+    old_d, old_v = read_cache(path)
+    merged = dict(zip(old_d, old_v))
+    merged.update(zip(s["d"], s["v"]))           # 同一天以這次取到的為準
+    dates = sorted(merged)
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"# {ident} | {s['source']} | fetched {today}\n")
+        f.write("date,value\n")
+        for a in dates:
+            f.write(f"{a},{merged[a]}\n")
+
+    if old_d and s["d"] and s["d"][-1] < old_d[-1]:
+        raise SeriesRegressed(
+            f"{ident} 來源末日 {s['d'][-1]} 比快取的 {old_d[-1]} 還舊"
+            f"（來源 {len(s['d'])} 點、快取 {len(old_d)} 點）—— "
+            "快取已保留聯集不會變短，但這條序列今天不可信，不要用。"
+            "多半是來源對最近幾期回空而不是回錯誤碼（SOURCES.md：空不是「沒有資料」，是被擋）")
+    return len(old_d), dates, merged
+
+
+def cache_path(ident: str) -> str:
+    """代號對應的快取檔路徑。**唯一的檔名轉換實作**，補歷史腳本也走它 ——
+    `^TWII` → `_TWII.csv` 這種轉換寫錯不會報錯，只會安靜地寫到另一個檔。"""
+    safe = ident.replace("^", "_").replace("=", "-").replace("/", "-")
+    return os.path.join(CACHE, f"{safe}.csv")
+
+
 def get(ident: str, since: str = "2015-01-01", use_cache: bool = True) -> dict:
     """自動判斷來源。路由優先序：快取檔頭記錄的來源 → 字串啟發式 → FRED 400 時回退 Yahoo。
 
@@ -475,8 +543,7 @@ def get(ident: str, since: str = "2015-01-01", use_cache: bool = True) -> dict:
     `2382.TW` 只有尾端兩個月空 → 沒拋錯 → 快取被覆寫。同一場故障，兩種下場。
     """
     os.makedirs(CACHE, exist_ok=True)
-    safe = ident.replace("^", "_").replace("=", "-").replace("/", "-")
-    path = os.path.join(CACHE, f"{safe}.csv")
+    path = cache_path(ident)
     today = time.strftime("%Y-%m-%d")
     if use_cache and os.path.exists(path):
         with open(path, encoding="utf-8") as f:
@@ -486,24 +553,7 @@ def get(ident: str, since: str = "2015-01-01", use_cache: bool = True) -> dict:
             return {"id": ident, "source": "cache", "d": d, "v": v}
 
     s = _route_and_fetch(ident, since, path)
-
-    old_d, old_v = read_cache(path)
-    merged = dict(zip(old_d, old_v))
-    merged.update(zip(s["d"], s["v"]))           # 同一天以這次取到的為準
-    dates = sorted(merged)
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(f"# {ident} | {s['source']} | fetched {today}\n")
-        f.write("date,value\n")
-        for a in dates:
-            f.write(f"{a},{merged[a]}\n")
-
-    if old_d and s["d"] and s["d"][-1] < old_d[-1]:
-        raise SeriesRegressed(
-            f"{ident} 來源末日 {s['d'][-1]} 比快取的 {old_d[-1]} 還舊"
-            f"（來源 {len(s['d'])} 點、快取 {len(old_d)} 點）—— "
-            "快取已保留聯集不會變短，但這條序列今天不可信，不要用。"
-            "多半是來源對最近幾期回空而不是回錯誤碼（SOURCES.md：空不是「沒有資料」，是被擋）")
+    _, dates, merged = merge_write(path, ident, s, today)
 
     return {"id": ident, "source": s["source"], "d": dates,
             "v": [merged[a] for a in dates]}

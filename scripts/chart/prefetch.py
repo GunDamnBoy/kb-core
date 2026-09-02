@@ -89,6 +89,37 @@ FRED_EQUIV = {
 }
 
 
+def _handshake_stale(ok: list) -> list:
+    """走握手、取數成功、但末日已過硬失敗門檻的那幾條。
+
+    **為什麼要有這一格**：`handshake.failed` 只由「取數有沒有拋錯」推出來，
+    而 `^TWOII` 的失效方式是**取得到、只是來源停止更新**（2026-08-29 起
+    末日凍在 2026-07-17）。它因此落在 `ok`，`failed` 是空的 —— 而
+    「`failed` 空」讀起來就像「那條路是好的」。
+    `anchors.rate_limits.handshake_allowlist` 早就把這件事寫下來，
+    連「它從 2026-08-29 起會變安靜」都預測到了；**預測寫在文件裡，而狀態檔沒有跟上。**
+
+    **這是量測不是閘門**（同 2026-09-01 那本 `_prefetch_history.jsonl` 的理由）：
+    不改任何門檻、不擋任何產出，只是把安靜的那一半寫出來。
+    `prep_chart._stale()` 每一輪本來就會把它印成「不能用」，那一段仍然是主要的出口；
+    這一格補的是**狀態檔自己**的可讀性 —— 讀狀態檔的人不會同時在看 prep 的輸出。
+
+    判定整段委外給 `prep_chart._stale()`：門檻、日／週／月三套、交易日換算全部在那裡。
+    **在這裡再寫一份就是漂移**，而漂的那天兩邊會對同一條序列給出不同答案。
+    取不到就回空 list 並印一行 —— **記帳失敗不可以擋住預抓**。
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from prep_chart import _stale
+        allow = set(F.handshake_allowlist())
+        rows = [s for s in ok if s.get("id") in allow]
+        bad, _warn = _stale(rows, F.anchors(), datetime.date.today().isoformat())
+        return [{"id": s.get("id"), "last": s.get("last"), "why": why} for s, why in bad]
+    except Exception as e:                               # noqa: BLE001
+        print(f"  ⚠ 握手停滯清單算不出來（不影響預抓）：{e}", file=sys.stderr)
+        return []
+
+
 def recent_ids(days: int = RECENT_DAYS) -> list:
     """近 N 期實際用過的序列 id。
 
@@ -328,8 +359,18 @@ def main(argv):
         "handshake": {
             "ids": list(F.handshake_allowlist()),
             "failed": [i for i in F.handshake_allowlist() if i in failed],
+            "stale": _handshake_stale(ok),
             "means": "走握手客戶端的那幾條。**這裡有東西就是那條路壞了**（多半是 yfinance "
                      "又被 Yahoo 改壞），當日該圖要退回代理或改題並在 note 說明",
+            "failed_empty_means": "**`failed` 是空的不代表那條路是好的。** 它只由「取數有沒有拋錯」"
+                     "推出來，所以「握手成功、但來源已經停止更新」會落進 `ok`，在這一格完全看不到。"
+                     "`^TWOII` 就是這個形狀：2026-08-29 之前沒裝 yfinance 時它每天落在 `failed`，"
+                     "是大聲的失敗；裝了之後它落進 `ok`，涵蓋率看起來還變好了，"
+                     "**而它依然過不了 freshness 的硬失敗門檻**。所以另外看 `stale`。",
+            "stale_means": "走握手且**末日已過 freshness 硬失敗門檻**的那幾條 —— "
+                     "取得到但不能用。**這是量測不是閘門**：預抓照樣算它成功、"
+                     "涵蓋率照樣算它一條，只是這裡把「安靜的那一半」寫出來。"
+                     "門檻與交易日換算都走 `prep_chart._stale()`，**這裡不抄數字也不另寫一份**。",
         },
     }
     with open(STATUS, "w", encoding="utf-8") as f:

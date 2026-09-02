@@ -57,6 +57,7 @@
 | `scripts/chart/rebuild_option.py` | **修舊期渲染缺陷的唯一合法工具**（`--png` 可重繪） |
 | `scripts/chart/prefetch.py` | 11:00 的序列預抓；`--history <id>` 離線讀末日歷史 |
 | `scripts/chart/scan_moves.py` | slot 2 的異動掃描；只讀快取、不連外。**分位樣本逐列標示**，★＝該列快取短於 `--years` 要求 |
+| `scripts/chart/backfill_tw_history.py` | **一次性**把台股快取補到 `history_limits.tw_route_months`；強制全量、預設一次兩條。**改預設月數不會補到歷史，只有這支會** |
 | `scripts/chart/macro_release.py` | 三大月度數據的發布偵測 |
 | `launchd/` | 九個 plist 的版控副本 ＋ README（實裝在 `~/Library/LaunchAgents/`） |
 | `chart-of-the-day/data/<日期>.json` | 每日封存（含完整 `series`），**只讀** |

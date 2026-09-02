@@ -105,6 +105,13 @@ python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 清單以外一律照上一段。預抓狀態檔的 `handshake.failed` 有東西＝那條路壞了，
 當日退回代理或改題並在 `about.run` 說明。
 
+**而 `handshake.failed` 是空的不代表那條路是好的** —— 它只由「取數有沒有拋錯」推出來。
+`^TWOII` 取得到，只是來源從 2026-07-17 起停止更新，於是它落在 `ok`、`failed` 是空的，
+**涵蓋率看起來還變好了**。所以 2026-09-02 起同一格另有 `handshake.stale`：
+走握手、取數成功、但末日已過硬失敗門檻的那幾條。**它是量測不是閘門**，
+不擋任何產出；`prep_chart` 的「不能用」那一段仍然是主要出口。
+兩格都要看：`failed` 說路壞了，`stale` 說路是好的但資料死了。
+
 **週頻發布的日頻序列另有一套門檻**（`anchors.freshness.weekly_release_series`）：
 `DTWEXBGS`／`DEXJPUS` 出自 H.10，**觀測每天有、發布每週一次**，
 所以照日頻門檻它們週三起就是硬失敗，2026-08-21 與 08-22 兩輪都因此沒畫美元。
