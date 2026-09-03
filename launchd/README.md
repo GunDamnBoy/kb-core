@@ -20,7 +20,7 @@
 | `com.kenny.kbwatch.chart` | 00／04／08／12／16／20 時 | chart 的看門狗：只跑 `watch_sentinel.py`（chart 沒有 healthcheck） |
 | `com.kenny.kbdocx.podcast` | 每天 04:00／07:00／10:00／13:00 | 把**已發布的**當日 JSON 排版成 Word（`kbdocx-podcast.sh`）→ `~/Documents/podcast-reports`。**四個時刻是重試不是重做**：它只在回執 `exit 0` 時轉檔，而回執每輪被覆寫，發布晚成功的那天值會從非 0 翻成 0（2026-08-24 只釘 04:00 時漏過一次）。冪等守衛讓後面三輪各是一次 stat 比較 |
 | `com.kenny.kbprefetch.chart` | 每天 11:00 | 每日五圖的序列預抓（`kbprefetch-chart.sh`）→ `data/series` 快取 |
-| `com.kenny.kbprefetch.advisory` | 每天 07:20 | 投顧保底層預抓（`kbprefetch-advisory.sh`）：curl origin 的 `raw/<date>.json` → `~/.advisoryfetch/raw/` 快取。**不跑 git** |
+| `com.kenny.kbprefetch.advisory` | 每天 07:20 | 投顧保底層預抓（`kbprefetch-advisory.sh`）：curl origin 的 `raw/<date>.json` → **`~/outbox/floor/` 快取**（~~`~/.advisoryfetch/raw/`~~ 2026-08-28 搬家，舊路徑在使用者的連接資料夾之外、輪次讀不到內容；本列 2026-09-03 才更正）。三次抓不到就**在本機自取**（`produced_by: mac-local`）。落地前會**補抓** `SPDR:GLD`／`SPDR:GLDM`／`TWSE:REV_L`／`TWSE:REV_O`／`TWSE:CONF` 五個 ident（`fetch_advisory.py --top-up`），因為 Actions 那一班跑在台北凌晨，早於 SPDR 的紐約歸檔、又撞上 TWSE 深夜維護窗；**補抓失敗一律保留原值、不影響退出碼**，逐項記在檔案的 `top_ups`。**不跑 git** |
 | `com.kenny.kbpublish.chart` | 每 60 秒 | 發布**每日五圖**：`~/outbox/chart/` → `chart-of-the-day` |
 | `com.kenny.kbcorepush` | 每 300 秒 | 推 **kb-core 自己**（`push_kbcore.py`），帶靜置與自檢閘門 |
 | `com.kenny.kbpublish.bubble` | 每 60 秒 | 發布 **AI 泡沫監控**的每週質化覆核：`~/outbox/bubble/` → `ai-bubble-monitor` |

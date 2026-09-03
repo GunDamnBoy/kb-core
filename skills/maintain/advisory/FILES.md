@@ -28,8 +28,8 @@
 | `advisory/BRIEF.md` | **什麼算對的產出**（十節散文）＋日期檔的形狀 | 排程第 0 步、撰寫端 |
 | `advisory/CHANGELOG.md` | **事故經過與被否決的選項**。每日排程不讀，維護時讀 | 維護者 |
 | `scripts/advisory/preamble.md` | **採集眉角**：讀法、選擇器與路徑表、擋源三分、來源清單與**黑名單**、台股官方端點、保底數據、回報格式 | 採集 subagent（**只拿得到這一份**） |
-| `skills/advisory/SKILL.md` | **每天怎麼跑**（九步）。排程裡那份是副本 | 排程（整份貼過去） |
-| `checks/advisory.py` | **檢查邏輯**（18 條，suite=`advisory`）。**數字不寫在這裡**，一律從 anchors 讀 | `tools/advisory_verify.py`、`publish.py` |
+| `skills/advisory/SKILL.md` | **每天怎麼跑**（九步）。**2026-08-31 起是唯一的一份** —— 排程 prompt 已改成指標式，只有幾行、內容是「讀這個檔並照它執行」。~~排程裡那份是副本~~ | 排程（**指向它，不是貼它**） |
+| `checks/advisory.py` | **檢查邏輯**（suite=`advisory`）。**數字不寫在這裡**，一律從 anchors 讀；**條數也不寫在這裡**，數得出來（`grep -c 'id="advisory\.'`）。~~18 條~~ | `tools/advisory_verify.py`、`publish.py` |
 | `systems/advisory.py` | payload 怎麼組、index entry 寫哪些欄、要推哪些路徑 | `publish.py` |
 | `tools/advisory_verify.py` | 檢查的進入點（組 payload、取前一版、無副作用） | 人工、排程步驟 7 |
 | `tools/fetch_advisory.py` | Actions 保底層取數（兩條 OAS、GLD／GLDM、台股端點）。路由表在 `kbcore/fetch_tw.py` 的 `ROUTES` | GitHub Actions（**不在本機跑，本機沒有 `FRED_API_KEY`**） |

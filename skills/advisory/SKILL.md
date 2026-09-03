@@ -106,12 +106,30 @@ description: 產出投顧知識庫的今日儀表板。每天台北 07:30 在 Ma
 
 | 看哪裡 | 看到什麼 | 這一輪要做的事 |
 |---|---|---|
-| **① 預抓快取 `~/outbox/floor/<今天>.json`** | 有這個檔 | **用它，而且這一層現在真的讀得到。** `com.kenny.kbprefetch.advisory` 每天 07:20 產出，**已經驗過 `date` 是今天、`failed_essential` 是空的才落地** —— 不合格它不會寫檔，不會有一份日期不對的東西騙你。**順手看一眼 `produced_by`**：`actions` ＝ GitHub 那一班正常；`mac-local` ＝ **Actions 今天沒產出、是本機自己抓的**，那要在步驟 9 記一筆。同目錄的 `prefetch.log` 也讀得到，預抓失敗的理由在裡面 |
+| **① 預抓快取 `~/outbox/floor/<今天>.json`** | 有這個檔 | **用它，而且這一層現在真的讀得到。** `com.kenny.kbprefetch.advisory` 每天 07:20 產出，**已經驗過 `date` 是今天、`failed_essential` 是空的才落地** —— 不合格它不會寫檔，不會有一份日期不對的東西騙你。**順手看一眼 `produced_by`**：`actions` ＝ GitHub 那一班正常；`mac-local` ＝ **Actions 今天沒產出、是本機自己抓的**，那要在步驟 9 記一筆。同目錄的 `prefetch.log` 也讀得到，預抓失敗的理由在裡面。**還要看 `top_ups`**，見下面那一段 |
 | ② 本機 `advisory-rewrite/raw/<今天>.json` | `fetched_at` 是今天，且 `failed_essential` 是空的 | 用它 |
 | ② 同上 | 沒有這個檔，或 `fetched_at` 是舊的 | **這是時序，不是故障。** Actions 推上 origin 之後，本機要等 `com.kenny.kbpublish` 下一次 `pull --rebase` 才拿到，而**發布是這一輪的最後一步** —— 所以輪次開跑時本機最新的通常就是昨天的（2026-08-23 實測 `raw/2026-08-23.json` 的 mtime 是 09:31 ＝ 當輪回執時刻）。往 ③ 走，不要因此判定 Actions 失敗 |
 | **③ Chrome 讀 origin** | 前兩層都沒有 | `navigate` 到 `raw.githubusercontent.com/GunDamnBoy/advisory-rewrite/main/raw/<今天>.json?cb=<時間戳>`。**這一層每次約 4 分鐘、6 次工具呼叫**，走到這裡就要在步驟 9 記一筆「預抓沒生效」 |
 | ④ origin 上也沒有 | **保底層今天真的不存在** | 用 `api.github.com/repos/GunDamnBoy/advisory-rewrite/actions/workflows/fetch-floor.yml/runs?per_page=14` 看最近幾班（**看 `run_started_at`，排程班的期望時刻自 2026-08-30 起是每日 16:15 UTC ＝ 台北 00:15**；在那之前是 22:43 UTC）。**要數班次、不要只看最近兩筆** —— 08-28 與 08-30 兩次都是這樣判錯的，見下。並記進步驟 9。**接著把三組數字寫進 A／D／F 的任務卡，叫他們現場取**（信用債的兩條 FRED、黃金的 SPDR、台股的 TWSE／TPEX），取法在 `preamble` 第七之二節 |
 | 任何一層 | `failed_essential` 非空 | 保底卡今天可能出不來：只補**那幾個**端點，並在 `about.run` 具名記錄 |
+
+**`top_ups`：凌晨那一班拿不到的東西，07:20 那一班會補抓，而你要知道它補到了沒有。**
+
+Actions 那一班跑在台北凌晨（cron 00:15、2026-09-03 實測延到 03:23），那時候
+**SPDR 的紐約歸檔還沒上站**（要到台北 04:00–04:45），而 **TWSE 的 OpenAPI 在深夜維護窗內**。
+所以 2026-09-03 起 `kbprefetch-advisory.sh` 會在落地前補抓五個 ident：
+`SPDR:GLD`、`SPDR:GLDM`、`TWSE:REV_L`、`TWSE:REV_O`、`TWSE:CONF`。
+
+結果逐項記在檔案的 `top_ups` 陣列裡（可能有多筆，看最後一筆）：
+
+| `top_ups` 最後一筆 | 意思 | 這一輪要做的事 |
+|---|---|---|
+| `replaced` 裡有 `SPDR:GLD`／`SPDR:GLDM` | 補抓成功，**這是當日那一列** | 直接把數字寫進 D 的任務卡，**不必叫它現場複驗** |
+| `kept_original` 裡有它們 | 補抓失敗，**這是凌晨那一列，很可能與前一版逐字相同** | **把「這一列可能是過期的、請你現場開產品頁複驗」明寫進 D 的任務卡**，並在步驟 9 記一筆 |
+| 整個 `top_ups` 欄不存在 | 這份檔是補抓機制上線前產的，或 07:20 那一班沒跑到補抓 | 當成「補抓失敗」處理，走上面那一列 |
+
+**`fetched_at` 不會因為補抓而改變** —— 它記的是凌晨那一班的取數時刻，這是刻意的：
+補抓只換掉幾個 ident，其餘仍然是凌晨取的。**所以判 SPDR 新不新鮮要看 `top_ups`，不是看 `fetched_at`。**
 
 **「延後」與「漏跑」是兩件事，而它們的解法相反。看到保底層缺席時，先數幾班、
 看延後的分佈，再決定它是遲到還是沒來。**
@@ -284,6 +302,9 @@ F 自己驗了四篇、G 明說「任務卡與前言衝突，我照前言」—�
 信用債的兩條 FRED OAS 給 A、黃金的 GLD／GLDM 持倉給 D、台股三大法人與融資融券
 與櫃買指數給 F。它們在步驟 1 找到的那一份保底檔裡已經是實測值，重抓只會多花時間、
 還可能抓到不同時點的版本。
+**唯一的例外是黃金那兩個**：先看步驟 1 的 `top_ups`，
+`replaced` 裡有它們才是當日那一列、可以直接給；落在 `kept_original` 就要在 D 的任務卡上
+明寫「這一列可能與前一版逐字相同，請你現場開產品頁複驗」。
 
 **但保底層缺席時要反過來做**：把「今天保底層沒有落地、這幾個數字請你現場取」
 明確寫進 A／D／F 的任務卡，並附上**前值序列**（讓它算得出日變化與週變化）

@@ -13,9 +13,9 @@ description: 七套自動化系統的維護入口——投顧知識庫儀表板�
 | 每日五圖 | `chart/` | `chart-daily-1130` | `~/chart-of-the-day` | slot、軌道輪盤、圖型、chartkit、token 稽核 |
 | Podcast 摘譯 | `podcast/` | `podcast-daily-300` | `~/podcast-knowledge-digest` | 節目清單、`podfetch`、轉錄、集數缺漏、成本基線 |
 | 外資報告週摘 | `research/` | 「外資報告週摘（週日深夜）」 | `~/broker-research-digest` | 外資／券商報告、精華、原句牆、立場帳本、標籤、浮水印、重製圖 |
-| AI 泡沫監控 | `bubble/` | **本機無排程** | — | 指標、層權重、計分錨點、觸發器、台股子模型 |
-| 主題匯流訊號報 | `convergence/` | **本機無排程** | — | 每週、跨庫、訊號帳本、發布閘門、上游改版偵測 |
-| 國際市場 Houseview 月報 | `houseview/` | **本機無排程** | — | 月度 pptx、十五章、縱深、DROPPED、版面壓字 |
+| AI 泡沫監控 | `bubble/` | `bubble-weekly-0900`（每週一） | — | 指標、層權重、計分錨點、觸發器、台股子模型 |
+| 主題匯流訊號報 | `convergence/` | `convergence-weekly-1500`（每週一） | `~/outbox/convergence/` → `com.kenny.kbpublish.convergence` | 每週、跨庫、訊號帳本、發布閘門、上游改版偵測 |
+| 國際市場 Houseview 月報 | `houseview/` | `houseview-weekly-1630`（每週五） | — | 月度 pptx、十五章、縱深、DROPPED、版面壓字 |
 
 **前四套是活的**（2026-08-22 查證：排程與 launchd 都在跑，且都接上了
 `~/kb-core` 的共用底盤 —— 門檻在 `kb-core/<系統>/anchors.json`、
@@ -23,8 +23,19 @@ description: 七套自動化系統的維護入口——投顧知識庫儀表板�
 **外資報告週摘是其中唯一週頻的**：它的哨兵門檻、不可改寫規則都跟前三套不同，
 照日頻那三套的直覺去判會判錯。
 
-**後三套在這台機器上沒有排程也沒有 launchd 工作**，文件停在 2026-08-20 重建之前，
-待重建。碰它們之前先跟使用者確認現況，**不要照那三份文件的路徑直接動手**。
+**後三套現在也都有排程，而且都在跑** —— 2026-09-03 用 `list_scheduled_tasks` 查證：
+`bubble-weekly-0900`（enabled，每週一，lastRun 2026-08-31）、
+`convergence-weekly-1500`（enabled，每週一，lastRun 2026-08-31，草稿寫進
+`~/outbox/convergence/` 由 `com.kenny.kbpublish.convergence` 發布）、
+`houseview-weekly-1630`（enabled，每週五，lastRun 2026-08-28）。
+**但這三套的文件仍停在 2026-08-20 重建之前，所以「排程在跑」不等於「文件可信」。**
+碰它們之前先跟使用者確認現況，**不要照那三份文件的路徑直接動手**。
+
+> ~~後三套在這台機器上沒有排程也沒有 launchd 工作，待重建。~~
+> **2026-09-03 更正。** 這句話至少從 2026-08-24（`convergency-weekly-2100` 被
+> `convergence-weekly-1500` 取代那天）起就已經不成立了。
+> **它錯的方向特別糟**：它叫維護者把三套當成死的，而它們每週在跑、其中一套還會發布 ——
+> 「以為它沒在跑」比「以為它在跑」更危險，因為前者不會有人去看它的產出。
 
 **`advisory-knowledge-hub`／`chart-of-the-day`／`podcast-knowledge-digest`
 是系統 id，不一定等於路徑。** 投顧就是這樣踩到的：同名的舊 checkout

@@ -2,6 +2,24 @@
 """投顧保底層 —— 跑在 GitHub Actions，把「每天一定拿得到」的東西先抓好。
 
 用法：fetch_advisory.py <raw 目錄> [YYYYMMDD]
+      fetch_advisory.py --top-up <既有的 raw json> --only IDENT[,IDENT...]
+
+**補抓模式（`--top-up`）解的是取數時點問題，不是取數失敗問題。**
+Actions 那一班跑在台北凌晨（cron 00:15、實測延到 03:23），而有兩件事那時候還沒發生：
+
+- **SPDR 的紐約歸檔要到台北 04:00–04:45 才上站** —— 凌晨取到的是**前一個交易日**那一列，
+  而前一版已經用過它。照用不會報錯，只會讓 `advisory.exempt_card_freshness` WARN。
+- **TWSE 的 OpenAPI 在深夜維護窗內會回空字串或 HTML** —— 2026-09-03 那一班
+  `REV_L`／`REV_O`／`CONF` 三個同時失敗，而同日稍晚實測三個端點全部 200、URL 一個字都沒變。
+
+**兩個症狀、一個病。** 修法不是把 Actions 往後挪（那會壓縮它對排程延遲的餘裕，
+實測延遲曾達 7 小時 39 分），而是讓 Mac 本機在台北 07:20 那一班**補抓那幾個**，
+因為 07:20 既晚於紐約歸檔也避開了維護窗。
+
+補抓有一條不可讓步的性質：**補抓失敗時保留原值。**
+原值可能過期，但它至少是資料；補抓失敗若把它清掉，就是「補一次讓情況變糟」。
+補了什麼、保留了什麼，逐項記進 `top_ups`，因為**下游必須分得出「這一列是補抓來的」
+與「這一列是凌晨那一班的、補抓沒成功」** —— 這兩者在 `items` 裡長得一模一樣。
 
 它抓的是**保底**，不是新聞：兩條信用債 OAS、兩檔黃金 ETF 持倉、六個台股官方端點。
 新聞由 Mac 那一輪的採集負責。
@@ -111,10 +129,106 @@ def fetch_one(ident: str, ymd: str) -> dict:
         return {"status": "failed", "reason": type(e).__name__, "detail": str(e)}
 
 
+def parse_flags(argv):
+    """把 `--only` 與 `--top-up` 拆出來，位置參數維持原樣。
+
+    刻意不用 argparse：這支被 Actions 以 `fetch_advisory.py raw` 呼叫，
+    位置參數的行為一個字都不能變，而 argparse 會把 `--` 開頭的未知參數變成錯誤，
+    也會自己接管 `-h`。手寫這十行的代價比「某天 Actions 那一行安靜地改變行為」低。
+    """
+    only, top_up, rest = None, None, []
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a.startswith("--only="):
+            only = [s.strip() for s in a.split("=", 1)[1].split(",") if s.strip()]
+        elif a == "--only":
+            i += 1
+            only = [s.strip() for s in argv[i].split(",") if s.strip()]
+        elif a.startswith("--top-up="):
+            top_up = Path(a.split("=", 1)[1])
+        elif a == "--top-up":
+            i += 1
+            top_up = Path(argv[i])
+        else:
+            rest.append(a)
+        i += 1
+    return only, top_up, rest
+
+
+def top_up(path: Path, only) -> int:
+    """把 `only` 那幾個 ident 重抓一次，成功的才覆蓋回 `path`。"""
+    if not only:
+        print("`--top-up` 必須搭配 `--only`：不指定補哪幾個等於整份重抓，"
+              "而整份重抓是位置參數那條路，不是這一條", file=sys.stderr)
+        return Exit.BAD_INPUT
+    if not path.exists():
+        print(f"補抓對象不存在：{path}", file=sys.stderr)
+        return Exit.ENVIRONMENT
+    known = set(FRED_IDENTS) | set(TW_IDENTS)
+    unknown = [i for i in only if i not in known]
+    if unknown:
+        print(f"不認得的 ident：{'、'.join(unknown)}", file=sys.stderr)
+        return Exit.BAD_INPUT
+
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    items = doc["items"]
+    ymd = doc["date"].replace("-", "")
+    print(f"補抓 {path.name}（date={doc['date']}）：{'、'.join(only)}")
+
+    replaced, kept = [], []
+    for ident in only:
+        r = fetch_one(ident, ymd)
+        if r["status"] == "ok":
+            items[ident] = r
+            replaced.append(ident)
+            print(f"  {ident:16} ok —— 已取代")
+        else:
+            # **保留原值。** 見模組 docstring：補抓失敗把原值清掉是「補一次讓情況變糟」。
+            kept.append(ident)
+            prev = items.get(ident, {}).get("status", "缺席")
+            print(f"  {ident:16} {r['reason']} —— 補抓失敗，保留原值"
+                  f"（原本是 {prev}）：{r['detail'][:70]}")
+
+    # **拿合併後的整份重算，不是拿補抓的子集算。** 只算子集會讓沒被補抓的那些
+    # 失敗項從清單裡消失，而它們還在 `items` 裡失敗著。
+    doc["failed_essential"] = sorted(
+        i for i, r in items.items() if r.get("status") == "failed" and i in ESSENTIAL)
+    doc["failed_other"] = sorted(
+        i for i, r in items.items() if r.get("status") == "failed" and i not in ESSENTIAL)
+    doc.setdefault("top_ups", []).append({
+        "at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "requested": list(only), "replaced": replaced, "kept_original": kept,
+    })
+
+    # 原子寫入：同目錄 .tmp 再 rename。這個檔每天早上會被輪次讀，
+    # 而輪次讀到寫到一半的 JSON 會是一個沒有人看得懂的失敗。
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(path)
+
+    print(f"\n補抓 {len(replaced)}/{len(only)} 成功"
+          f"{'；保留原值：' + '、'.join(kept) if kept else ''}")
+    print(f"合併後：必要項失敗 {len(doc['failed_essential'])}、"
+          f"其餘失敗 {len(doc['failed_other'])}")
+    if doc["failed_essential"]:
+        print(f"必要項仍然掛著：{'、'.join(doc['failed_essential'])}", file=sys.stderr)
+        return Exit.ENVIRONMENT
+    return Exit.OK
+
+
 def main(argv) -> int:
-    if not 2 <= len(argv) <= 3:
+    try:
+        only, top_up_path, rest = parse_flags(argv)
+    except IndexError:
         print(__doc__)
         return Exit.BAD_INPUT
+    if top_up_path is not None:
+        return top_up(top_up_path, only)
+    if not 1 <= len(rest) <= 2:
+        print(__doc__)
+        return Exit.BAD_INPUT
+    argv = [argv[0]] + rest
     raw_dir = Path(argv[1])
     ymd = argv[2] if len(argv) == 3 else dt.datetime.now(
         dt.timezone(dt.timedelta(hours=8))).strftime("%Y%m%d")

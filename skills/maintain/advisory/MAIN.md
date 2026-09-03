@@ -54,7 +54,11 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
 1. Read `/Users/macmini/kb-core/advisory/BRIEF.md`（什麼算對的產出）與
    `advisory/anchors.json`（每一個數字，含 `groups` 那十五組 ——
    **五圖的 `theme` 值域也吃這一份**）。沿革在 `advisory/CHANGELOG.md`，
-   **最上面那筆的日期就是你的認知有多舊**。
+   **最下面那筆的日期就是你的認知有多舊** —— 這個檔是**舊在上、新在下**：
+   `維護判斷` 那一節在最上面，逐版明細由舊到新往下排（與 `MODIFY.md`
+   〈收尾〉第 1 條的「最下方加一筆」是同一個慣例）。
+   ~~最上面那筆~~ **2026-09-03 更正**：原本寫反了。照字面讀會拿到**最舊**的那一筆
+   （2026-08-19），而且會把它當成最新狀態 —— **這個錯不會報錯，只會讓你以為自己是最新的**。
    讀不到就用 `mcp__cowork__request_cowork_directory` 連 `~/kb-core`、
    `~/advisory-rewrite`、`~/outbox`。
 2. Read `/Users/macmini/kb-core/skills/advisory/SKILL.md` —— 每天實際跑的流程正本，
@@ -75,7 +79,12 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    python3 /Users/macmini/kb-core/tools/advisory_verify.py /Users/macmini/advisory-rewrite /Users/macmini/advisory-rewrite/data/<日期>.json
    ```
 
-   十八條檢查跑在 `advisory` suite 上，**完全無副作用**。
+   `advisory` suite 的檢查**完全無副作用**。**條數不寫在這裡** ——
+   它是數得出來的（`grep -c 'id="advisory\.' checks/advisory.py`，或直接看
+   `advisory_verify` 最後那行的 `N PASS · …`），手寫一個數字就是第二份副本。
+   ~~十八條~~ **2026-09-03 更正**：當時寫 18，而 2026-09-01 加了
+   `advisory.same_version_dedup` 之後實際是 **19** 條 —— 同一次修改動了本檔的
+   指標式段落，卻沒回頭改這個數字。
    輸出與 `about.run` 對照著看：run 說正常但檢查有紅字＝執行者沒發現。
 5. Read `/Users/macmini/advisory-rewrite/data/index.json` 看近幾期的
    跨日記憶欄位（`thermo`／`threads`／`watch`／`pulse`／`snap`）。
@@ -85,6 +94,20 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    比對 `/Users/macmini/advisory-rewrite/.git/refs/heads/main` 與
    `.git/refs/remotes/origin/main`，再看 `~/outbox/<日期>.receipt.json`
    的 `exit` 與 `stage`。哨兵的心跳在 `advisory-rewrite/sentinel/heartbeat.json`。
+
+   **⚠️ 判心跳之前先知道它的節奏，否則你會把「還沒到」讀成「沒有來」。**
+   心跳與 `sentinel/report.md` 由**資料 repo 的 GitHub Actions**
+   （`advisory-rewrite/.github/workflows/sentinel.yml`）寫，cron 是 `0 7 * * *`
+   ＝ **每天台北 15:00**，**本機沒有任何東西在跑它**（`tools/sentinel.py`
+   在這台機器上只是手動診斷工具，沒有任何 plist 指向它；`com.kenny.kbwatch`
+   跑的是 `watch_sentinel.py`，那是**看門狗**，只讀心跳不寫心跳）。
+   **所以台北 15:00 之前看到昨天的心跳、`day_count` 比今天少一，是正常的。**
+   而且 Actions 實測會延遲：2026-09-02 那一班延了 4 小時 46 分
+   （cron 07:00Z、實際 11:46Z），與 `fetch-floor` 那條同型。
+   `watch.sentinel_alive` 在 payload 沒帶 `cadence_hours` 時退回 **24 小時**才轉紅，
+   所以「還沒到」與「真的停了」之間有一段看起來一樣的區間。
+   **要判它真的停了，去數 Actions 的班次，不要拿單一份 heartbeat 推論**
+   —— 這正是 CHANGELOG 在 08-28、08-30、09-01 記過三次的同一個形狀。
 
 完成條件：六項都有實際輸出在手，沒有一項靠記憶或推論。
 
