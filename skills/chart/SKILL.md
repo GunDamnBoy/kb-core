@@ -90,6 +90,15 @@ python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 
 每張圖在 `series_spec` 寫明代號與轉換，由取數工具實體化資料點。
 
+**`t` 的值域在 `anchors.series.spec_transforms`，寫之前去看一眼。**
+`raw`／`rebase`／`diff`／`yoy` 加上 `ma:N`／`vol:N`／`pct:N` 就是全部，
+2026-09-05 起 `chart.series_spec_runnable` 會擋下不在文法裡的值。
+**跨序列的運算（相減、比值）不在文法裡** —— `_transform` 只拿得到一條序列。
+那一類手工組 `series` 並寫 `provenance.computed`，
+**不要寫一份跑不動的 spec**：2026-09-03 那期寫了 `"t": "pct_change_5d"`，
+而那張圖的 `series` 是手寫的，於是那份 spec 從來沒有被執行過 ——
+**它看起來記錄了「這條線怎麼來的」，照它跑卻會當掉**，而一整輪都不會有任何徵兆。
+
 **開工前把 `chart/SOURCES.md` 讀一遍。** 那裡面每一條都是實測撞出來的，而其中一半的失效方式是安靜的 —— 例如櫃買被節流時回的是空 body 而不是錯誤碼，**空不是「沒有資料」，是被擋**。
 
 **代理必須在 `series_spec` 明寫 ETF 代號**（對照表在 `anchors.proxies`），
@@ -111,6 +120,14 @@ python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 走握手、取數成功、但末日已過硬失敗門檻的那幾條。**它是量測不是閘門**，
 不擋任何產出；`prep_chart` 的「不能用」那一段仍然是主要出口。
 兩格都要看：`failed` 說路壞了，`stale` 說路是好的但資料死了。
+
+**來源端已經死透、而且沒有第二條路的序列登錄在 `anchors.dead_series`**（2026-09-04 起）。
+prep 會把它們跟「新的硬失敗」分開印成一行，**你不必在 `about.run` 每輪重寫一次同樣的降級**——
+`^TWOII` 從 2026-07-17 起就沒有更新，而在此之前每一輪的報告都在重寫它，
+**於是新的降級被它淹掉**（2026-09-04 那期 `^GSPC` 的 429 就排在它後面）。
+三件事不變：門檻一個字都沒動（用它出圖照樣被 `chart.series_freshness` 判硬失敗）、
+**有圖真的因為它改題時那一句還是要寫**、以及 prep 若印出
+**「登錄的失效序列復活了」**就照它說的做 —— 回頭把 anchors 那一格拿掉並在 `about.run` 記一句。
 
 **週頻發布的日頻序列另有一套門檻**（`anchors.freshness.weekly_release_series`）：
 `DTWEXBGS`／`DEXJPUS` 出自 H.10，**觀測每天有、發布每週一次**，

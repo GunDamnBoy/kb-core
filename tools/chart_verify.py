@@ -57,8 +57,15 @@ def main(argv) -> int:
     if miss:
         print(f"chart/anchors.json 缺 {miss} —— 門檻沒有家，這一輪沒有資格判", file=sys.stderr)
         return Exit.BAD_INPUT
-    # **檔案大小要用實際落地的那個數字**，不是序列化後重算的長度——
-    # 兩者會因為縮排與編碼而差幾個百分點，而門檻就訂在那附近。
+    # **檔案大小要用實際落地的那個數字**，不是序列化後重算的長度。
+    #
+    # 2026-09-04 訂正：這裡原本寫「兩者會因為縮排與編碼而差幾個百分點」，
+    # 而當時 `build()` 量的是 compact，實測差 **1.65 倍**（243.5 vs 401.6 KB）。
+    # `build()` 已改用 `day_json()`，所以對 2026-08-21 之後的封存兩者現在**相同**，
+    # 這一行是冗餘的。留著是因為它對**舊方言那 12 份**仍然不冗餘：
+    # 2026-08-05 至 08-17 的日檔存成 `separators=(",",":")`，比 `day_json` 還緊，
+    # 拿 `day_json` 重算會高估它們的真實大小（實測 08-06：檔案 247.2 KB、重算 273.2 KB）。
+    # **已發布的檔問「它多大」，答案只能是檔案本身。**
     payload["size_kb"] = src.stat().st_size / 1024
     print(f"{date}｜{len(doc.get('charts') or [])} 張圖｜{payload['size_kb']:.0f} KB｜{src}\n")
     return report(run_all(payload, suite="chart"))

@@ -105,6 +105,22 @@
   "grouped_bar_max_groups": 4,
   "color_default_empty": true,
   "signed_values_share_color": true,
+  "spec_transforms": {
+   "exact": [
+    "raw",
+    "rebase",
+    "diff",
+    "yoy"
+   ],
+   "prefixed": [
+    "ma:",
+    "vol:",
+    "pct:"
+   ],
+   "_": "**`series_spec[].t` 的值域，也就是 `build_series._transform()` 認得的全部。** `prefixed` 那三個後面接一個正整數（`ma:5`、`vol:60`、`pct:5`）。這一格是值域的家：`_transform` 的錯誤訊息與 `chart.series_spec_runnable` 都讀它，**兩邊不各寫一份**。",
+   "_why_it_needed_a_home": "2026-09-04 開。在此之前值域只活在 `_transform()` 的 if 鏈裡，而**沒有任何東西在驗它** —— 2026-09-03 那期的 `gold-day-up-week-down` 寫了 `\"t\": \"pct_change_5d\"`，`_transform` 對這個值會直接 `raise ValueError`。那份 spec 從來沒有被執行過（那張圖的 `series` 是手寫的），所以它是一份**跑不動的文件**：看起來記錄了「這條線怎麼來的」，實際上照它跑會當掉。\n**它藏住的方式**：`build_series.py` 只碰帶 `series_spec` 的圖，而手工序列的圖本來就合法 —— 於是「spec 寫錯」與「spec 正確但沒人跑」在輸出上完全一樣，`--selftest` 也照樣全綠（它沒有涵蓋那個值）。逐檔掃 28 份封存：`rebase` 111、`raw` 62、`yoy` 4、`ma:*` 5、假值 1。**一份沒有讀者的欄位不會被違反，只會安靜地變成假的。**",
+   "_why_no_subtraction": "**相減（`sub:<id>`）刻意不在這個文法裡。** `_transform(d, v, t)` 只拿到一條序列，相減需要第二條，只能做在 `materialize()` —— 那是另一個難度，而且它會讓 spec 從「這條線怎麼轉換」變成「這條線由哪幾條組成」。目前的分工是：**單條序列的轉換寫 `series_spec`，跨序列的運算寫 `provenance.computed`**（2026-09-04 的 slot 1 利差與 slot 5 的 CCC−BB 都走後者）。要改這個分工之前先想清楚 `series_spec` 還算不算「一條序列一個物件」。"
+  },
   "source": "四條上限是配色決定的：`PALETTE` 只有四個角色，第 5 條會 `PALETTE[4 % 4]` **繞回主角紅**，一張圖出現兩個主角。**超過就拆圖，不是換色。** stacked／grouped 同理，超過就把小的併成「其他」。`series[].color` 預設留空由 chartkit 依角色給：2026-08-05 那期九條序列 100% 手寫 color，其中**七條等於預設（白工）**。正負值不分色，一律靠 zero_line 與資料標籤表達。"
  },
  "palette": {
@@ -169,7 +185,11 @@
  "size": {
   "json_warn_kb": 250,
   "json_fail_kb": 600,
-  "source": "實測單日 105.7 KB（series 47.1、option 41.0、文字 16.4）；credit-spreads 一張佔 49 KB（3 年 × 2 條日資料共 1,569 點）。"
+  "measure": "**磁碟上那一份的位元組數**，也就是 `kbcore/repo.day_json()`（`indent=1`）的長度。已發布的日檔直接量檔案（`chart_verify` 那一行），草稿階段量 `day_json(draft)` 的長度 —— publish 落地寫的就是它，所以兩者對 2026-08-21 之後的封存相同。",
+  "measure_corrected": "**2026-09-04 之前這道門檻在兩側量的不是同一個東西。** `systems/chart.py` 的 `build()` 用 compact（`json.dumps(draft, ensure_ascii=False)`），而 `tools/chart_verify.py` 覆寫成實際檔案大小。實測 2026-09-04 那一期：compact 243.5 KB、`day_json` 401.6 KB —— **1.65 倍**，而那行覆寫的註解寫著「差幾個百分點」。\n後果：publish 用 compact，所以 `json_fail_kb` 600 這道**發布閘門**實際上等於磁碟上的 985 KB；2026-09-04 當期 `chart_verify` 判 WARN、而 publish 眼中它是 243.5，**連警示都沒有響**。**它藏住的方式是兩邊各自都合理，而且沒有任何一輪會同時看到兩個數字** —— 執行報告抄 `chart_verify` 的判定，回執只說 publish 有沒有擋。\n**沒有帶生效日，因為換尺不改寫任何舊期的判定**：`chart_verify` 本來就量檔案大小、這一側一個字都沒變，而 publish 不回頭重跑舊期。變的只有「從 2026-09-05 起 publish 也用同一把尺」。逐檔回測 28 份封存，三把尺的最大值：檔案 **401.6 KB**（2026-09-04）、compact **273.2 KB**（2026-08-06）、`day_json` 重算 **435.6 KB**（2026-08-06）——**三把尺下都沒有任何一期超過 600**，所以沒有回溯性的硬失敗。",
+  "two_dialects_note": "2026-08-05 至 08-17 那 12 份是 compact 方言（`separators=(\",\",\":\")`，比 `day_json` 更緊），所以拿 `day_json` 重算會**大幅高估**它們：實測 08-06 檔案 **247.2 KB**、`day_json` 重算 **435.6 KB**（+188.4 KB，1.76 倍）。這 12 份若照重算值判，會有 3 份越過 warn 250（實際檔案都在 250 以下），0 份越過 fail 600。**已發布的檔問「它多大」，答案只能是檔案本身** —— 這就是 `chart_verify` 那行覆寫留著的理由：它對 08-21 之後的封存冗餘，對那 12 份不冗餘。\n**這一段第一版寫的是「重算 273.2 KB」，錯了**（2026-09-04 當場更正）：273.2 是**compact 重算**的值，不是 `day_json` 的。同一份檔在三把尺下是 247.2／273.2／435.6，而錯的那個數字**落在另外兩個之間、量級也合理**，正是這份 CHANGELOG 一再記的那種形狀。逐檔表在該日的 CHANGELOG。",
+  "blame_lives_in_the_check": "超標時**由 `chart.size` 逐圖歸因**（`checks/chart.py` 的 `_size_blame`），列最大三張與各自佔全檔的比例。加總小於 100%，差額是 `about` 與外層欄位 —— 那個差額大到不成比例時，撐大檔案的就不是圖。**歸因只到圖為止，不到序列。**",
+  "source": "實測單日 105.7 KB（series 47.1、option 41.0、文字 16.4）；credit-spreads 一張佔 49 KB（3 年 × 2 條日資料共 1,569 點）。**這幾個數字是 compact 尺下量的**（2026-08-20 那批），與現在的門檻不同尺，引用時要換算約 1.6 倍。2026-09-04 同尺重量的一期：全檔 401.6 KB，最大三張 index-calm-bottom-cracking 109 KB（27%）、europes-debt-is-not-in-its-stocks 86 KB（21%）、semis-sat-out-the-index-week 55 KB（14%）。"
  },
  "quality": {
   "sigma": 5,
@@ -424,8 +444,31 @@
   "_diversity_from_source": "「至少一張非折線」是 2026-08-10 才生效的，08-06 至 08-09 四天五張全折線是**規則生效前**的資料，不是違規。回測歷史時要記得這條線。",
   "data_path_from": "2026-08-15",
   "_data_path_from_source": "`about.data_path` 是預抓系統落地前後才加的欄位，實測只有 2026-08-15／16／17 三天有（值都是 prefetch）。更早的日檔缺它是**規則生效前**，不是漏填。",
+  "series_spec_t_from": "2026-09-05",
+  "_series_spec_t_from_source": "`chart.series_spec_runnable` 的生效日。**取明天而不是今天，因為它對已發布的封存會紅**：2026-09-03 的 `gold-day-up-week-down` 帶著一個跑不動的 `t`，而封存不改寫。照 MAIN.md「新硬規則帶生效日、舊期不列入」——**對舊期硬失敗只會讓人習慣忽略紅字**。",
+  "fake_series_spec_t": [
+   "2026-09-03 / gold-day-up-week-down / 第 2 條「五日滾動報酬」寫 `\"t\": \"pct_change_5d\"` —— 不在文法內，`_transform` 對它 `raise ValueError`。那張圖的 `series` 是手寫的，所以那份 spec **從來沒有被執行過**，它是一份跑不動的文件。**刻意不加別名**：加了下一個人會抄它，而正確寫法是 `pct:5`（2026-09-04 補進 `_transform`，`--selftest` 有回歸，同時也有一條「`pct_change_5d` 必須繼續拋錯」的回歸）。封存不改寫，所以那一筆維持原樣，靠 `series_spec_t_from` 讓它回 SKIPPED。"
+  ],
   "qa_disposed_from": "2026-08-25",
   "_qa_disposed_from_source": "`about.qa_dispositions` 是 2026-08-24 加的欄位，而 SKILL 第 4 步還沒改成會寫它。**值為 null 時 `chart.qa_disposed` 一律回 SKIPPED**；填上生效日（YYYY-MM-DD）之後才開始判。把「欄位存在」與「開始擋發布」拆成兩個變因，是為了讓 SKILL 改完再翻這個開關 —— 同 `data_path_from` 與 `diversity_from` 的作法。**2026-08-29 翻開，生效日 2026-08-25。** 開關空轉了五天：SKILL 第 4 步實際上從 08-25 起每一期都在寫，而檢查每天回 SKIPPED —— **一條永遠 SKIPPED 的檢查與一條不存在的檢查，在輸出上長得一模一樣。** 生效日不是挑的，是量出來的：22 期封存逐期比對 `qa_flags` 與 `qa_dispositions` 的筆數，08-25 起四期全部相符（1/1、6/6、6/6、1/1），而 08-25 之前有 12 期是「有旗標、零處置」。填 08-25 讓那 12 期回 SKIPPED 而不是 FAIL，照 MAIN.md「新硬規則帶生效日、舊期不列入」。`checks/chart.py` 的 fixture 本來就寫 `2026-08-25` —— **規格側早就假設了這個日期，只有 anchors 沒填**。"
+ },
+ "dead_series": {
+  "_": "**來源端已經停止更新、而且沒有第二條路的序列。** 跟 `known_limits` 不同：那一格是「檢查程式看不到的軟失敗」，這一格的每一條都看得見（`prep_chart._stale()` 每輪印成「不能用」、`prefetch.handshake.stale` 每輪記一筆）。**登錄不是為了讓它變安靜，是為了讓它不再每輪佔掉一段。**",
+  "_why_this_exists": "2026-09-04 開。在此之前每一輪的執行報告都要重寫同一段降級說明——`^TWOII` 從 2026-07-17 起就沒有更新，而它是一個**持續的結構性缺口**，不是當日事件。代價是新的降級會被它淹掉：2026-09-04 那期 `^GSPC` 的 429 就排在它後面。**一段每天都要重寫一次的說明，就是一段每天都在稀釋新資訊的說明。**",
+  "_how_a_registration_can_lie": "**登錄一條「不用再報」的規則，就是一條會藏住復活的規則。** 所以每一條必帶 `revive_if_last_after`：末日一旦越過那個日期，`prep_chart` 要大聲說「登錄的失效序列復活了，回頭把這一格拿掉」。這是 `rate_limits.handshake_allowlist` 那次學到的對稱性——`handshake.failed` 只寫了「有東西＝路壞了」，沒寫「空的不代表好」，於是讀狀態檔的人要自己把兩段接起來才看得見。**這一格從第一天就把反向那一半寫進來。**",
+  "_what_it_does_not_change": "**它不是豁免，也不是閘門。** 門檻一個字都沒動：登錄過的序列**依然過不了 `freshness` 的硬失敗門檻**，用它出圖依然會被 `chart.series_freshness` 判 FAIL。改變的只有兩件事：`prep_chart` 把它跟「新的硬失敗」分開印，以及 `skills/chart/SKILL.md` 第 3 步不再要求每輪在 `about.run` 重寫它。**有圖真的因為它改題時，那一句還是要寫。**",
+  "^TWOII": {
+   "label": "櫃買指數",
+   "last": "2026-07-17",
+   "first_detected": "2026-08-08",
+   "registered": "2026-09-04",
+   "route": "Yahoo（走 rate_limits.handshake_allowlist 的握手客戶端）",
+   "why": "這條序列在 Yahoo 上停止更新。官方端點（證交所／櫃買）只給個股與加權指數，FRED 無等價序列，也沒有 ETF 代理 —— **沒有第二條路**，所以它仍留在 handshake_allowlist 裡。",
+   "control_group": "同一天 `8069.TWO`（櫃買個股，走櫃買官方端點）末日正常，所以**不是櫃買資料拿不到，是櫃買的「指數」在這條路上死了**。",
+   "worsening": "2026-08-08 落後 22 天 → 08-29 落後 43 天 → 09-04 落後 35 個交易日。不是固定延遲。",
+   "cost": "櫃買相關題材當日沒有對應的圖，要改題或改走個股。2026-09-04 那期就是這樣處置的（上游卡 23「櫃買跌幅是加權四倍以上」沒有圖，slot 4 改走記憶體個股）。",
+   "revive_if_last_after": "2026-07-17"
+  }
  },
  "known_limits": {
   "static_end_label_vs_right_axis": "**靜態軌的末值標籤會與右軸刻度疊印。** 2026-08-21 圖 3（`gold-is-not-a-rates-story`）的 `415.26` 與右軸 `4.90` 部分重疊，仍可讀。與 08-17 記過的 marker 疊印同類：**檢查程式照不到、只有看圖才會發現的軟失敗** —— option 與資料都完全正確，壞的只有 matplotlib 的擺放。\n**尚未修。** 修它要在發布機上實際出圖比對，因為疊不疊印取決於字型與 DPI，而沙箱的字型跟 Mac 不同 —— 在沙箱裡「修好了」不構成證據。修的時候一併處理 marker 那一類，兩者是同一個擺放邏輯。",

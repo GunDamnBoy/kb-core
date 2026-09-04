@@ -110,6 +110,53 @@ def _stale(ser, anchors, today):
     return bad, warn
 
 
+def _dead(bad, anchors, ser):
+    """把硬失敗那一堆拆成「已登錄的長期失效」與「新的」，並抓出復活的。
+
+    回 `(dead, fresh_bad, revived)`：
+      · `dead`      —— 在 `anchors.dead_series` 裡、且末日仍在登錄的那一天：一行帶過
+      · `fresh_bad` —— 沒有登錄過的硬失敗：**這才是要凸顯的那些**
+      · `revived`   —— 登錄過但末日已經越過 `revive_if_last_after`：要求把登錄拿掉
+
+    ## 為什麼要拆
+
+    2026-09-04 之前每一輪的執行報告都在重寫同一段 `^TWOII` 的降級說明，
+    而那條序列從 2026-07-17 起就沒有更新 —— **它是持續的缺口，不是當日事件**。
+    代價是新的降級被它淹掉：那一期 `^GSPC` 的 429 就排在它後面。
+
+    ## 為什麼一定要有 `revived`
+
+    **一條「不用再報」的登錄就是一條會藏住復活的登錄。** 反向那一半必須跟登錄同時存在，
+    否則哪天櫃買指數回來了，這裡會照舊印「已登錄失效」而沒有人會去查。
+    這是 `handshake.failed_empty_means` 那次學到的：一格只寫了「有東西＝壞了」、
+    沒寫「空的不代表好」，讀的人就要自己把兩段接起來才看得見。
+    """
+    reg = {k: v for k, v in ((anchors or {}).get("dead_series") or {}).items()
+           if isinstance(v, dict)}
+    dead, fresh_bad, revived = [], [], []
+    for s, why in bad:
+        r = reg.get(s.get("id"))
+        if r is None:
+            fresh_bad.append((s, why))
+            continue
+        after = str(r.get("revive_if_last_after") or "")
+        if after and str(s.get("last") or "") > after:
+            revived.append((s, r))
+        else:
+            dead.append((s, r, why))
+    # 登錄過、今天**有被抓到**、但連硬失敗都沒進 —— 那也是復活，而且更安靜：
+    # 它不在 `bad` 裡，所以上面那個迴圈根本走不到它。
+    # **條件是它出現在今天的涵蓋清單裡**：只是「今天沒抓它」不算復活，
+    # 否則預抓清單一改，這裡就會噴一堆假的好消息。
+    in_bad = {s.get("id") for s, _ in bad}
+    fetched = {s.get("id") for s in (ser or [])}
+    for sid, r in reg.items():
+        if r.get("revive_if_last_after") and sid in fetched and sid not in in_bad:
+            got = next((s for s in ser if s.get("id") == sid), {"id": sid})
+            revived.append((got, r))
+    return dead, fresh_bad, revived
+
+
 def load(path, what):
     """讀不到就說出來並回 None。**讀不到與「裡面是空的」是兩件事。**"""
     if not os.path.exists(path):
@@ -233,12 +280,26 @@ def main(argv):
         ser = pre.get("series") or []
         if ser:
             bad, warn = _stale(ser, anchors, day)
-            print(f"　涵蓋 {len(ser)} 條，其中 **{len(bad)} 條硬失敗**、{len(warn)} 條警示")
-            # 硬失敗逐條列，**這是這一段存在的理由**：它們在 `ok` 清單裡，
+            dead, fresh_bad, revived = _dead(bad, anchors, ser)
+            print(f"　涵蓋 {len(ser)} 條，其中 **{len(bad)} 條硬失敗**"
+                  f"（{len(fresh_bad)} 條新的、{len(dead)} 條已登錄長期失效）、{len(warn)} 條警示")
+            # **復活排最前面，因為它是唯一一種「登錄本身該被改掉」的訊號。**
+            for s, r in revived:
+                print(f"　　**登錄的失效序列復活了**　{s.get('id','?')}"
+                      f"（{r.get('label','')}）last={s.get('last','?')}，"
+                      f"已越過登錄的 {r.get('revive_if_last_after')} —— "
+                      "回頭把 `anchors.dead_series` 那一格拿掉，並在 `about.run` 寫一句")
+            # 新的硬失敗逐條列，**這是這一段存在的理由**：它們在 `ok` 清單裡，
             # 不列出來就跟正常的序列長得一模一樣。
-            for s, why in bad:
+            for s, why in fresh_bad:
                 print(f"　　**不能用**　{s.get('id','?'):<14}n={s.get('n','?'):<6}"
                       f"last={s.get('last','?')}　{why}")
+            # 已登錄的一行帶過。**門檻沒有放寬**：用它出圖照樣會被
+            # `chart.series_freshness` 判 FAIL，這裡只是不再每輪佔掉一段。
+            for s, r, why in dead:
+                print(f"　　（已登錄失效，不必在 about.run 重寫）　{s.get('id','?')}"
+                      f"（{r.get('label','')}）last={s.get('last','?')}　{why}"
+                      f"　登錄於 {r.get('registered','?')}")
             # 警示只給摘要。**逐條列會反過來蓋掉硬失敗**——2026-08-30 實測，
             # 那天警示有 32 條（多數只是日曆日在週末必然落後 2–3 天），
             # 三條真的不能用的被埋在中間。
@@ -293,5 +354,45 @@ def main(argv):
     return 0
 
 
+def selftest_offline() -> int:
+    """`_dead()` 的回歸。**四個案例對應它的四條出口**，不連外、不讀預抓狀態檔。
+
+    第 4 條是這支自檢真正的理由：「今天沒抓它」**不可以**被讀成復活，
+    否則預抓清單一改，這裡就會噴一堆假的好消息 —— 而假的好消息會讓人把登錄拿掉。
+    """
+    a = {"freshness": {"daily_fail_days": 5, "daily_warn_days": 2,
+                       "daily_counts_trading_days": True,
+                       "trading_days_from": "2026-08-31"},
+         "dead_series": {"^X": {"label": "測試", "registered": "2026-09-04",
+                                "revive_if_last_after": "2026-07-17"}}}
+    day, ok = "2026-09-04", True
+
+    def run(ser):
+        bad, _w = _stale(ser, a, day)
+        return _dead(bad, a, ser)
+
+    cases = [
+        ("登錄過且末日沒動 → dead 1／fresh 0／revived 0",
+         [{"id": "^X", "last": "2026-07-17"}], (1, 0, 0)),
+        ("沒登錄的硬失敗 → dead 0／fresh 1／revived 0",
+         [{"id": "^NEW", "last": "2026-06-01"}], (0, 1, 0)),
+        ("登錄過但末日往前動（仍硬失敗）→ revived 1",
+         [{"id": "^X", "last": "2026-08-01"}], (0, 0, 1)),
+        ("登錄過且完全恢復（連硬失敗都沒進）→ revived 1",
+         [{"id": "^X", "last": "2026-09-03"}], (0, 0, 1)),
+        ("**今天沒抓它 → 一律不算復活**",
+         [{"id": "^OTHER", "last": "2026-09-03"}], (0, 0, 0)),
+    ]
+    for label, ser, want in cases:
+        got = tuple(len(x) for x in run(ser))
+        if got != want:
+            print(f"✗ {label}：得到 {got}、應為 {want}")
+            ok = False
+    print("selftest-offline 全部通過 ✓" if ok else "★ selftest-offline 有錯")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    if "--selftest-offline" in sys.argv[1:]:
+        sys.exit(selftest_offline())
     sys.exit(main(sys.argv))

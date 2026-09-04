@@ -15,7 +15,7 @@ build_series.py — 把當日 JSON 裡的 `series_spec` 實體化成 `series`。
 spec 格式（每條序列一個物件）：
     {"id": "^SOX",              ← fetch.py 認得的代號（Yahoo 或 FRED）
      "name": "費城半導體",       ← 圖例名稱，必填
-     "t": "rebase",             ← 轉換：raw｜rebase｜diff｜yoy｜ma:3｜vol:60
+     "t": "rebase",             ← 轉換：值域的家在 anchors.series.spec_transforms
      "since": "2026-01-02",     ← 起日（rebase 的基期＝起日）
      "style": "bar",            ← 選填，同 series 的欄位
      "axis": "right", "dash": true, "color": "#..."（同上，都選填）}
@@ -30,6 +30,12 @@ spec 格式（每條序列一個物件）：
     yoy    對 12 期前的年增率 %（CPI／PCE 用；**前 12 期會被消耗掉**）
     ma:N   N 期移動平均，**自動標 derived**
     vol:N  N 期日報酬標準差 %，**自動標 derived**（衍生序列的 QA 四分法見 brief 3.4）
+    pct:N  N 期百分比變動 %，**自動標 derived**；**前 N 期會被消耗掉**，
+           而且窗口互相重疊（相鄰點共用 N−1 個觀測）——引用相關係數或分位時要說出來
+
+**跨序列的運算（相減、比值）不在這個文法裡**，理由在
+`anchors.series.spec_transforms._why_no_subtraction`：`_transform` 只拿得到一條序列。
+那一類一律手工組 `series` 並寫 `provenance.computed`，**不要寫一份跑不動的 spec**。
 
 設計原則：
     · `series_spec` 寫進 JSON 後**保留**，與 `series` 並存——spec 是「這條線怎麼來的」
@@ -117,7 +123,36 @@ def _transform(d: list, v: list, t: str) -> tuple[list, list, bool]:
             out.append(round(statistics.pstdev(r[i - n + 1:i + 1]) * 100, 3))
             dd.append(d[i + 1])
         return dd, out, True
-    raise ValueError(f"未知的轉換 {t!r}（可用 raw/rebase/diff/yoy/ma:N/vol:N）")
+    if t.startswith("pct:"):
+        # N 期百分比變動。**標 derived**：它跟 `yoy` 是同一類——分母是另一個觀測值，
+        # 趨近零時 `qa_series` 會固定誤報（見 `yoy` 那一段的病歷）。
+        # **窗口互相重疊**（相鄰點共用 N−1 個觀測），引用相關係數或分位時要說出來。
+        n = int(t[4:])
+        if n < 1:
+            raise ValueError(f"{t!r} 的期數要是正整數")
+        dd, out = [], []
+        for i in range(n, len(v)):
+            base = v[i - n]
+            dd.append(d[i])
+            out.append(None if base in (0, None) or v[i] is None
+                       else round((v[i] / base - 1) * 100, 3))
+        return dd, out, True
+    raise ValueError(f"未知的轉換 {t!r} —— 值域的家在 "
+                     f"anchors.series.spec_transforms：{_grammar_hint()}")
+
+
+def _grammar_hint() -> str:
+    """值域從 anchors 讀，**這裡不抄一份**。取不到就說取不到，不要退回硬寫的清單。
+
+    2026-09-04 加。在此之前這個錯誤訊息裡有一份手寫的
+    `raw/rebase/diff/yoy/ma:N/vol:N` —— 而它就是第二份真相：
+    加了 `pct:` 之後，忘了改它的話，訊息會叫人不要用一個其實可以用的值。
+    """
+    try:
+        g = (F.anchors().get("series") or {})["spec_transforms"]
+        return "、".join(list(g["exact"]) + [x + "N" for x in g["prefixed"]])
+    except Exception:                                    # noqa: BLE001
+        return "（anchors.series.spec_transforms 讀不到 —— 那是設定壞了，不是這個值錯了）"
 
 
 def materialize(c: dict) -> list:
@@ -191,8 +226,24 @@ def selftest() -> int:
     dd, vv, der = _transform(d, [100.0] * 13, "vol:5")
     if any(x != 0.0 for x in vv) or not der:
         print(f"✗ vol: {vv[:3]} derived={der}"); ok = False
+    # `pct:N`：13 個點、100…112，5 期變動的末筆是 112/107−1 = +4.673%，
+    # 前 5 期被消耗掉所以剩 8 筆，且必須標 derived（分母是另一個觀測值）。
+    dd, vv, der = _transform(d, v, "pct:5")
+    if len(vv) != 8 or abs(vv[-1] - 4.673) > 1e-3 or not der or dd[0] != d[5]:
+        print(f"✗ pct:5 len={len(vv)} last={vv[-1]} derived={der} first={dd[0]}"); ok = False
+    # 分母是 0 要回 None（圖上斷開），**不可以拋例外、也不可以拿相鄰值頂替**。
+    _dd, vv0, _ = _transform(d[:3], [0.0, 5.0, 7.0], "pct:1")
+    if vv0 != [None, 40.0]:
+        print(f"✗ pct 遇到 0 分母：{vv0}"); ok = False
     try:
         _transform(d, v, "nope"); print("✗ 未知轉換沒有拋錯"); ok = False
+    except ValueError:
+        pass
+    # **2026-09-03 那份假 spec 的回歸**：`pct_change_5d` 不是文法的一員，
+    # 而它曾經被寫進一份已發布的 `series_spec`。它必須繼續拋錯 ——
+    # 加別名會讓下一個人抄它，處置寫在 anchors.known_exceptions.fake_series_spec_t。
+    try:
+        _transform(d, v, "pct_change_5d"); print("✗ pct_change_5d 應該要拋錯"); ok = False
     except ValueError:
         pass
     print("selftest 全部通過 ✓" if ok else "★ selftest 有錯")

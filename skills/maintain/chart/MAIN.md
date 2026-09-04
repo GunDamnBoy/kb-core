@@ -119,6 +119,24 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
   查法是拿一期真資料手算一遍，跟檢查說的比。
 - **宣告與事實**：`anchors.publish.static_outputs` 說要產出什麼、
   `System.staged_paths` 說要推什麼、`.git/index` 裡實際有什麼，三者要對得上。
+- **同一道門檻，兩側量的是不是同一個東西。** 2026-09-04 抓到的那一類：
+  `chart.size` 的 `size_kb` 由 `systems/chart.py` 的 `build()` 量（當時是 compact），
+  而 `tools/chart_verify.py` **覆寫**成實際檔案大小。實測差 **1.65 倍**
+  （243.5 vs 401.6 KB），那行覆寫的註解卻寫著「差幾個百分點」。
+  於是 publish 與預檢對同一期給出兩個答案，`json_fail_kb` 600 這道**發布閘門**
+  實際上等於磁碟上的 985 KB。
+  **它藏住的方式**：兩邊各自都合理，而**沒有任何一輪會同時看到兩個數字** ——
+  執行報告抄 `chart_verify` 的判定，回執只說 publish 有沒有擋。
+  查法是拿同一份日檔，把 payload 的 `size_kb` 跟 `chart_verify` 印出來的那個數字並排。
+  這一條要對每一個「由 payload 帶進來的量測」問一次
+  （`size_kb`、`png`、`prefetch`、`recent_data_paths`），不是只問 size。
+- **一個欄位有沒有讀者。** 2026-09-04 抓到的另一類：`series_spec[].t` 的值域
+  只活在 `build_series._transform()` 的 if 鏈裡，**沒有任何東西在驗它**，
+  而 `build_series.py` 只碰帶 spec 的圖 —— 於是 2026-09-03 那份寫著
+  `pct_change_5d`（不存在的轉換）的 spec 安靜地活了一整期。
+  查法是問「這個欄位**寫錯的時候，誰會紅**」；答不出來就是沒有讀者，
+  而**沒有讀者的欄位不會被違反，只會安靜地變成假的**（同 `anchors.lengths`
+  那兩個沒有讀者的數字，見 `_headline_standfirst_was_prose_only`）。
 - 篇幅與結構規範：`anchors.lengths` vs `checks/chart.py` 的 `_lengths` vs
   `BRIEF.md` 第四節散文。
 - 軌道輪盤（含週末規則）：`anchors.tracks` vs `checks/chart.py` 的 `_track`。

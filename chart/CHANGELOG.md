@@ -1,5 +1,186 @@
 # 每日五圖｜重建紀錄
 
+## 2026-09-04（五）｜同一道門檻在兩側量的不是同一個東西，而沒有人會同時看到兩個數字
+
+這一輪從當期執行報告的三條「下一輪要修」進來。三條都成立，但**第二條真正的問題
+比報告寫的大一級**：報告說的是「`chart.size` 不歸因」，而查下去發現的是
+**publish 與預檢量的根本不是同一個數字**。歸因是十行程式，那個才是閘門。
+
+### 動到哪些檔
+
+| 檔 | 改了什麼 |
+|---|---|
+| `systems/chart.py` | `size_kb` 由 compact 改用 `kbcore/repo.day_json()`；模組 docstring 補整段病歷 |
+| `tools/chart_verify.py` | 覆寫那一行的註解訂正（「差幾個百分點」→ 實測 1.65 倍），並說明它現在對新期冗餘、對舊方言那 12 份仍不冗餘 |
+| `checks/chart.py` | 新增 `_size_blame()` 與逐圖歸因；`chart.size` 的 `blind_to` 換掉「不歸因」那條；**新增 `chart.series_spec_runnable`**；頂部 import `day_json` |
+| `chart/anchors.json` | `size` 補 `measure`／`measure_corrected`／`two_dialects_note`／`blame_lives_in_the_check`，`source` 標明舊數字是 compact 尺；**新增 `dead_series`**（含 `^TWOII`）；`series` 新增 `spec_transforms`；`known_exceptions` 新增 `series_spec_t_from` 與 `fake_series_spec_t` |
+| `scripts/chart/prep_chart.py` | 新增 `_dead()`（登錄／新硬失敗／復活三分）與 `--selftest-offline`（五個案例）；盤點區塊改為三段輸出 |
+| `scripts/chart/build_series.py` | `_transform` 新增 `pct:N`、錯誤訊息改讀 anchors（新增 `_grammar_hint()`）；docstring 補文法與「跨序列運算不在文法裡」；`--selftest` 加三個案例 |
+| `chart/SOURCES.md` | `^TWOII` 那節加 2026-09-04 追記（登錄治的是第三個問題）；「安靜失敗的那些」加兩條（假 spec、跨序列運算） |
+| `skills/chart/SKILL.md` | 第 3 步補 `dead_series` 的用法與 `t` 的值域 |
+| `skills/maintain/chart/MAIN.md` | 第 2 步漂移清單新增兩條：「同一道門檻兩側量的是不是同一個東西」與「一個欄位有沒有讀者」 |
+| `skills/maintain/chart/FILES.md` | 檢查條數改成量出來的、補 `prep_chart.py` 一列、`build_series.py` 那列補值域的家 |
+
+**沒有動任何門檻數字**（`json_warn_kb` 250／`json_fail_kb` 600 一個字都沒改）、
+**沒有動任何已發布的日檔**、**沒有跑任何 git 指令**。
+
+### 一、`chart.size`：閘門與預檢量的不是同一把尺
+
+`systems/chart.py` 的 `build()` 給 `size_kb` 的是 `json.dumps(draft, ensure_ascii=False)`
+—— **compact**。而 `tools/chart_verify.py` 拿到 payload 之後**覆寫**成 `src.stat().st_size`。
+`publish.py` 只用前者。
+
+實測 2026-09-04 那一期：
+
+| 量法 | 數字 | 誰在用 |
+|---|---|---|
+| compact | 243.5 KB | `publish.py`（**發布閘門**） |
+| `day_json`（`indent=1`） | 401.6 KB | —— |
+| 實際檔案 | 401.6 KB | `chart_verify.py`（預檢） |
+
+於是同一天有兩個答案：`chart_verify` 判 WARN（401.6 > 250），
+而 publish 眼中它是 243.5、**連警示都沒有響**。
+`json_fail_kb` 600 這道閘門實際上等於磁碟上的 985 KB。
+
+**它藏住的方式**：那行覆寫的註解寫著「兩者會因為縮排與編碼而差幾個百分點」——
+**那句話是這個缺陷的偽裝**，它讓每一個讀到的人都覺得「知道了、不重要」。
+而兩邊各自都合理，**沒有任何一輪會同時看到兩個數字**：執行報告抄 `chart_verify` 的判定，
+回執只說 publish 有沒有擋。
+
+修法是讓 `build()` 用 `day_json()` —— publish 落地寫的就是它，所以那個長度**等於**
+「這份草稿發布後在磁碟上會有多大」。`chart_verify` 那行覆寫留著，因為它對
+2026-08-05 至 08-17 那 12 份 compact 方言的封存仍然不冗餘。**已發布的檔問「它多大」，
+答案只能是檔案本身。**
+
+> **這一段第一版寫錯了一個數字，當場更正，留痕在這裡。**
+> 我原本寫「拿 `day_json` 重算會高估它們（08-06 檔案 247.2、重算 273.2 KB）」——
+> **273.2 是 compact 重算的值，不是 `day_json` 的**。實際三把尺是
+> **247.2／273.2／435.6 KB**，`day_json` 高估 188.4 KB（1.76 倍）。
+> 錯的那個數字**落在另外兩個之間、量級也合理**，而它就是這一輪在修的那個缺陷本身的形狀——
+> **我在寫「兩把尺不一樣」的那一段時，自己用錯了尺。**
+> 抓到它的是把 `build()` 的輸出跟檔案大小並排跑一次，不是再推論一次。
+
+逐檔三把尺（28 份，2026-09-04 實測）：
+
+| | 檔案 | compact | `day_json` 重算 |
+|---|---|---|---|
+| 最大值 | 401.6（09-04） | 273.2（08-06） | 435.6（08-06） |
+| 越過 warn 250 | 1 期 | 1 期 | 4 期 |
+| 越過 fail 600 | **0** | **0** | **0** |
+
+方言那 12 份逐檔驗過，**正好是 `rendering.legacy_json_format` 記的
+「08-05 至 08-17 扣掉 08-10」** —— 08-10 在這張表上跟 08-21 之後的封存一樣（重算＝檔案），
+獨立證實了那一格「08-10 例外，應是事後補發過」的判斷。
+
+**沒有帶生效日，而這是一個判斷不是疏忽**：換尺不改寫任何舊期的判定 ——
+`chart_verify` 本來就量檔案大小、這一側一個字都沒變，publish 也不回頭重跑舊期。
+變的只有「從今天起 publish 也用同一把尺」。
+
+### 二、歸因：十行程式，而它以前每一輪都要重做一次
+
+`chart.size` 的 `blind_to` 自己寫著「哪一張圖把它撐大的——只給總量，不歸因」，
+於是 2026-09-04 那輪超標時是**手算五張圖的 `series`＋`option` 長度**才知道要砍哪一張。
+
+`_size_blame()` 用**同一種序列化**逐圖量，只在超標時附在 detail 裡。三件事寫進 `blind_to`：
+歸因只到圖為止不到序列、五張加起來不等於 100%（差額是 `about` 與外層欄位，
+**那個差額本身就是資訊**）、以及**它只說誰最大，而最大的那一張可能正是當天的結論所在**
+—— 2026-09-04 就是這樣，最大的兩張帶的是三年分位，砍掉等於砍結論。
+
+### 三、`^TWOII`：登錄治的是第三個問題
+
+前兩個問題都解過了：「取不到」（08-29 裝 yfinance）與「取得到但看不見它死了」
+（09-02 加 `handshake.stale`）。**第三個是它每一輪都要被重新解釋一次** ——
+連續多期的執行報告在重寫同一段降級說明，而那條序列從 2026-07-17 起就沒有更新。
+代價是新的降級被它淹掉：09-04 那期 `^GSPC` 的 429 就排在它後面。
+
+`anchors.dead_series` 登錄它，`prep_chart._dead()` 把硬失敗拆成
+「已登錄長期失效（一行帶過）」與「新的（逐條列）」。**門檻一個字都沒動**：
+用它出圖照樣被 `chart.series_freshness` 判硬失敗。
+
+**而登錄一條「不用再報」的規則，就是一條會藏住復活的規則。**
+所以反向那一半跟登錄**同時**寫進去，不是等哪天想起來再補（`handshake.failed_empty_means`
+就是晚了一個多月才補上的那個對稱性）：每條必帶 `revive_if_last_after`，
+末日一旦越過就大聲說「登錄的失效序列復活了，回頭把它拿掉」。
+`--selftest-offline` 五個案例，最重要的是第五個 ——
+**「今天沒抓它」不可以被讀成復活**，否則預抓清單一改就會噴一堆假的好消息，
+而假的好消息會讓人把登錄拿掉。
+
+### 四、`series_spec` 的 `t`：一個沒有讀者的欄位
+
+2026-09-03 的 `gold-day-up-week-down` 第 2 條寫著 `"t": "pct_change_5d"` ——
+`_transform` 對這個值會直接 `raise ValueError`。而那張圖的 `series` 是手寫的，
+`build_series.py` 只碰帶 spec 的圖，**所以它安靜地活了一整期**；
+`--selftest` 也全綠（沒涵蓋那個值）。逐檔掃 28 份封存：
+`rebase` 111、`raw` 62、`yoy` 4、`ma:*` 5、**假值 1**。
+
+三件事一起做：值域搬進 `anchors.series.spec_transforms`（`_transform` 的錯誤訊息與
+新檢查都讀它，兩邊不各寫一份）、新增 `chart.series_spec_runnable`（純比字串、不執行轉換）、
+`pct:N` 補進 `_transform`。
+
+**刻意不為 `pct_change_5d` 加別名**，這一點偏離了當初提案裡的字面：
+加了別名下一個人會抄它，而那份 spec 從來沒有被執行過、讓它「能跑」沒有實際價值。
+封存不改寫，那一筆登錄在 `known_exceptions.fake_series_spec_t`，
+靠 `series_spec_t_from`（2026-09-05）讓它回 SKIPPED。
+`--selftest` 另有一條回歸：**`pct_change_5d` 必須繼續拋錯**。
+
+**`sub:<id>`（相減）不做**，理由寫進 `spec_transforms._why_no_subtraction`：
+`_transform(d, v, t)` 只拿得到一條序列。分工是**單條轉換寫 spec、跨序列運算寫
+`provenance.computed`**。
+
+### 怎麼驗的
+
+| 驗收 | 結果 |
+|---|---|
+| `py_compile` 全部 | 通過 |
+| 檢查自檢（fixture ＋ near_miss，20 條） | 0 失敗 |
+| `build_series.py --selftest` | 通過（新增 `pct:5`、0 分母、`pct_change_5d` 必須拋錯三例） |
+| `prep_chart.py --selftest-offline` | 通過（5 例） |
+| `fetch.py --selftest-cache` | 通過（8 例） |
+| `fetch_tw_price.py --selftest-offline` | 通過（8 例） |
+| `scan_moves.py --selftest` | 通過 |
+| **28 份封存 ＋ 當期逐期回測** | `chart.size` **沒有任何一期 FAIL**；`series_spec_runnable` 全部 SKIPPED（都早於生效日） |
+| **把生效日暫時挪到 2026-08-01（只在記憶體裡）** | 2026-09-03 **FAIL 並逐字指出那條假 spec**、2026-09-04 PASS —— **證明新檢查對真實資料有牙齒，不是只有 fixture 過得去** |
+| 兩個 repo 的 symlink | 各 0 |
+| `anchors.json` 可 `json.load` | 是 |
+| 28 份日檔可 `json.load` | 是 |
+
+**量測值**：當期 compact 243.5 KB／`day_json` 401.6 KB（比 1.65）。
+28 份封存三把尺的最大值 401.6／273.2／435.6 KB，**三把尺下都沒有任何一期超過 600**
+（逐檔表在第一節）。逐圖歸因當期實測：`index-calm-bottom-cracking` 109 KB（27%）、
+`europes-debt-is-not-in-its-stocks` 86 KB（21%）、`semis-sat-out-the-index-week` 55 KB（14%）。
+
+**一個數字寫錯又當場改掉**（見第一節的引言區塊）。它不是打字錯誤，是**用錯了尺**——
+而這一輪修的就是「兩把尺」。留在這裡不是自我檢討，是因為下一個引用 273.2 的人
+需要知道它是 compact 的值。
+
+### 怎麼倒回去
+
+四件事互相獨立，可以逐項倒：
+
+1. **size 量尺**：`systems/chart.py` 那一行改回 `json.dumps(draft, ensure_ascii=False)`。
+   倒回去等於把發布閘門放鬆回 985 KB。
+2. **逐圖歸因**：`_size` 只回總量、`_size_blame` 刪掉、`blind_to` 加回「不歸因」那條。
+3. **`dead_series`**：刪 anchors 那一格即可，`_dead()` 會回 `(0 條登錄, 全部是新的, 0 復活)`，
+   輸出退回原本的樣子。
+4. **`series_spec_runnable`**：把 `known_exceptions.series_spec_t_from` 設回 `null`，
+   整條回 SKIPPED（同 `qa_disposed_from` 的作法）。`pct:N` 留著不影響任何既有 spec。
+
+### 當時已知的風險
+
+- **`dead_series` 是這次唯一會「讓人少看到東西」的改動。** 復活偵測涵蓋了三種形狀
+  （末日往前動仍硬失敗／完全恢復／今天沒抓它），但**涵蓋不到「登錄的理由變了」**
+  —— 例如哪天 FRED 出了櫃買指數的等價序列，`^TWOII` 依然死著、依然一行帶過，
+  而那時候正確的處置是改題不再需要它。這一格沒有辦法自己知道，
+  **只有做第 2 步漂移比對的人會發現**。
+- **`chart.size` 現在會更常響。** 今天 401.6 KB 就是 WARN，而近十期有兩期在 200 KB 以上。
+  門檻沒動，所以這是量對了之後的正常結果；但**如果它變成每天都響，那條 WARN 就會被習慣性忽略**
+  —— 到那天要問的是門檻該不該重新校準，不是把量尺調回去。
+- **`_size_blame` 用 `day_json` 逐圖序列化，那是超標時才跑的額外一次 `json.dumps`。**
+  對 400 KB 的日檔量到的成本可以忽略，但它在檢查裡，而**檢查本來的約定是不做 IO 也不做重活**。
+  哪天日檔大一個量級要回頭看這一行。
+- **`chart_verify` 的覆寫還在**，所以「兩側同尺」這件事是靠兩處各自寫對維持的，
+  不是靠單一實作。第 2 步的漂移清單已經加了對應那一條。
+
 ## 2026-09-02（三）｜台股的兩年不是來源給的，是我們自己傳的；而我昨天那句「沒有人在看」是錯的
 
 這一輪同樣從當期執行報告的三條「下一輪要修」進來 —— 而**那三條是同一個人（我）

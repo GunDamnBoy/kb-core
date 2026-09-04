@@ -14,11 +14,25 @@
 草稿階段還沒落地時它是序列化後的長度，發布之後才是檔案大小。
 組 payload 的人負責回答這個問題，並且在答不出來時**留 None 讓檢查判 SKIPPED**，
 而不是給一個 0。
+
+**而「序列化後的長度」必須用 `day_json()` 量，不是 compact**（2026-09-04 訂正）。
+這一行原本是 `json.dumps(draft, ensure_ascii=False)`——compact，而 publish 落地時寫的是
+`day_json()`（`indent=1`）。2026-09-04 實測同一份日檔：compact 243.5 KB、`day_json` 401.6 KB，
+**差 1.65 倍，不是幾個百分點**。
+
+後果是這道門檻**在兩側量的不是同一個東西**：`chart_verify` 一直用實際檔案大小
+（它自己覆寫 `size_kb`），publish 用 compact。2026-09-04 那一期因此得到兩個答案——
+`chart_verify` 判 WARN（401.6 > 250），而 publish 眼中它是 243.5、**連警示都沒有響**。
+`json_fail_kb` 600 這道發布閘門實際上等於磁碟上的 985 KB。
+
+**它藏住的方式**：兩邊各自都合理，而且沒有任何一輪會同時看到兩個數字——
+執行報告抄的是 `chart_verify` 的判定，回執只說 publish 有沒有擋。
 """
 import datetime as dt
 import json
 from pathlib import Path
 
+from kbcore.repo import day_json
 from kbcore.system import System, frozen, register
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -101,7 +115,9 @@ def build(draft, repo: Path):
         "prev": prev_doc(repo / "data", date),
         "anchors": load_anchors(repo),
         "advisory_anchors": json.loads((ROOT / "advisory" / "anchors.json").read_text()),
-        "size_kb": len(json.dumps(draft, ensure_ascii=False).encode()) / 1024,
+        # **用 day_json 量，不是 compact**——publish 落地時寫的就是它，
+        # 所以這個長度等於「這份草稿發布後在磁碟上會有多大」。理由見模組 docstring。
+        "size_kb": len(day_json(draft).encode()) / 1024,
         "png": png_bytes(draft, repo),
         "prefetch": prefetch_status(repo),
         "recent_data_paths": recent_data_paths(repo / "data", date),

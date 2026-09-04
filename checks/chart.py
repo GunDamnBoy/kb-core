@@ -31,6 +31,9 @@ import datetime as dt
 import unicodedata
 
 from kbcore.check import Check, fail, ok, register, skipped, warn
+# 純函式（就是 json.dumps 的一個固定寫法），不做 IO——**檢查不做 IO 這條沒有破**。
+# 用它是因為「日檔長什麼樣」只有一個家，逐圖歸因若自己另寫一種序列化就不可比。
+from kbcore.repo import day_json
 
 TPE = dt.timezone(dt.timedelta(hours=8))
 
@@ -724,29 +727,133 @@ register(Check(
 
 
 # ── 11. 體積 ────────────────────────────────────────────────────────
+def _size_blame(doc, top=3):
+    """逐圖的位元組數，由大到小。**與總量走同一種序列化**（`day_json`），否則不可比。
+
+    2026-09-04 加的。在此之前這條只給總量，而 `blind_to` 自己寫著「不歸因」——
+    於是超標的那一輪要靠人手算五張圖的 `series`＋`option` 長度才知道該砍哪一張，
+    **每一輪都要重做一次**，而它是十行程式的事。
+
+    加總會**小於**總量：`about`（含 `qa_flags`／`qa_dispositions`／`run`）與外層欄位
+    不屬於任何一張圖。所以回傳的百分比是「佔全檔的比例」，五張加起來不會是 100%——
+    **那個差額本身就是資訊**（它大到不成比例時，撐大檔案的不是圖）。
+    """
+    out = [(c.get("slug", "?"), len(day_json(c).encode())) for c in _charts(doc)]
+    return sorted(out, key=lambda t: -t[1])[:top]
+
+
 def _size(p):
     kb = p.get("size_kb")
     if kb is None:
         return skipped("payload 沒有帶 size_kb —— **這不是「沒問題」**")
     warn_kb, fail_kb = _A(p, "size", "json_warn_kb"), _A(p, "size", "json_fail_kb")
+    if kb <= warn_kb:
+        return ok(f"{kb:.0f}KB")
+    total = kb * 1024
+    blame = "；".join(f"{s} {b / 1024:.0f}KB（{100 * b / total:.0f}%）"
+                      for s, b in _size_blame(p["doc"]))
     if kb > fail_kb:
-        return fail(f"單日 JSON {kb:.0f}KB，超過 {fail_kb} —— 前端載入會明顯卡頓")
-    if kb > warn_kb:
-        return warn(f"單日 JSON {kb:.0f}KB，超過 {warn_kb} —— 檢查是否有圖用了過長的序列")
-    return ok(f"{kb:.0f}KB")
+        return fail(f"單日 JSON {kb:.0f}KB，超過 {fail_kb} —— 前端載入會明顯卡頓。"
+                    f"最大三張：{blame}")
+    return warn(f"單日 JSON {kb:.0f}KB，超過 {warn_kb} —— 最大三張：{blame}")
+
+
+def _spec_runnable(p):
+    """`series_spec[].t` 落在文法內，且 `id`／`name` 都在。
+
+    **這條驗的是「照這份 spec 跑得動嗎」，不是「跑出來對不對」。**
+
+    為什麼需要它：`build_series.py` 只碰帶 `series_spec` 的圖，而手工序列的圖本來就合法 ——
+    於是「spec 寫錯」與「spec 正確但這張圖沒走那條路」在輸出上完全一樣。
+    2026-09-03 的 `gold-day-up-week-down` 寫了 `"t": "pct_change_5d"`，
+    `_transform` 對它會直接 `raise ValueError`，而那張圖的 `series` 是手寫的，
+    所以**沒有任何一輪會發現**；`build_series --selftest` 也全綠（它沒涵蓋那個值）。
+    這條檢查不用執行任何轉換、不碰資料，光比字串就抓得到。
+    """
+    since = _A(p, "known_exceptions", "series_spec_t_from")
+    if not since:
+        return skipped("anchors.known_exceptions.series_spec_t_from 是 null —— 開關還沒翻")
+    if p["doc"].get("date", "") < since:
+        return skipped(f"{p['doc'].get('date')} 早於這個欄位生效的 {since}")
+    g = _A(p, "series", "spec_transforms")
+    exact, prefixed = set(g["exact"]), tuple(g["prefixed"])
+    bad, n = [], 0
+    for c in _charts(p["doc"]):
+        for i, sp in enumerate(c.get("series_spec") or [], 1):
+            n += 1
+            tag = f"{c.get('slug', '?')} 第 {i} 條"
+            if not isinstance(sp, dict):
+                bad.append(f"{tag}不是物件")
+                continue
+            for k in ("id", "name"):
+                if not sp.get(k):
+                    bad.append(f"{tag}缺 `{k}`")
+            t = sp.get("t", "raw")
+            if t in exact:
+                continue
+            head = next((x for x in prefixed if t.startswith(x)), None)
+            if head is None:
+                bad.append(f"{tag}的 `t` 是 {t!r}，不在文法內 —— "
+                           f"跑 build_series 會 ValueError")
+            elif not t[len(head):].isdigit() or int(t[len(head):]) < 1:
+                bad.append(f"{tag}的 `t` 是 {t!r}，{head}後面要接正整數")
+    if bad:
+        return fail("；".join(bad) + " —— **一份跑不動的 spec 是假文件**："
+                    "它看起來記錄了「這條線怎麼來的」，照它跑卻會當掉")
+    return ok(f"{n} 條 series_spec 的 t 都在文法內" if n else "本期沒有 series_spec")
+
+
+register(Check(
+    id="chart.series_spec_runnable",
+    covers="每一條 series_spec 的 `t` 落在 anchors.series.spec_transforms 的文法內"
+           "（`ma:`／`vol:`／`pct:` 後面接正整數），且 `id` 與 `name` 非空",
+    blind_to=[
+        "**`id` 存不存在**——只看非空，不查那個代號取不取得到",
+        "**轉換出來的值對不對**——文法對不代表數字對",
+        "**spec 與同一張圖的 `series` 是否一致**：spec 保留、series 手改過的話這條看不出來，"
+        "而那正是 2026-09-03 那份假 spec 能活下來的環境",
+        "沒有 series_spec 的圖（手工序列仍然合法，這條不要求每張圖都有）",
+        "生效日之前的封存整條跳過（SKIPPED），既有的假 spec 登錄在 "
+        "known_exceptions.fake_series_spec_t",
+    ],
+    run=_spec_runnable,
+    fixture={"anchors": {"known_exceptions": {"series_spec_t_from": "2026-09-05"},
+                         "series": {"spec_transforms": {"exact": ["raw", "rebase"],
+                                                        "prefixed": ["ma:", "pct:"]}}},
+             "doc": {"date": "2026-09-05",
+                     "charts": [{"slug": "g", "series_spec": [
+                         {"id": "GLD", "name": "金", "t": "pct_change_5d"}]}]}},
+    near_miss={"anchors": {"known_exceptions": {"series_spec_t_from": "2026-09-05"},
+                           "series": {"spec_transforms": {"exact": ["raw", "rebase"],
+                                                          "prefixed": ["ma:", "pct:"]}}},
+               "doc": {"date": "2026-09-05",
+                       "charts": [{"slug": "g", "series_spec": [
+                           {"id": "GLD", "name": "金", "t": "pct:5"}]}]}},
+    suite="chart",
+))
 
 
 register(Check(
     id="chart.size",
-    covers="當日 JSON 的實際位元組數落在 anchors.size 的兩道門檻內",
+    covers="當日 JSON 的實際位元組數落在 anchors.size 的兩道門檻內；超標時**逐圖歸因**，"
+           "列出最大的三張與各自佔全檔的比例（與總量同一種序列化）",
     blind_to=[
-        "**哪一張圖把它撐大的**——只給總量，不歸因",
+        "**是哪一條序列撐大那一張圖的**——歸因只到圖為止，不到序列",
+        "**五張加起來不等於 100%**：about（qa_flags／qa_dispositions／run）與外層欄位"
+        "不屬於任何一張圖，差額不歸因給任何人",
+        "**該不該砍**——它只說誰最大，而最大的那一張可能正是當天的結論所在"
+        "（2026-09-04 就是這樣：最大的兩張帶的是三年分位，砍掉等於砍結論）",
         "體積小但內容是空的",
         "PNG／SVG 的體積（那些不在 JSON 裡）",
+        "**兩側量的是不是同一把尺**——2026-09-04 之前 publish 量 compact、"
+        "chart_verify 量檔案大小，差 1.65 倍而這條完全看不出來（已修，病歷在 systems/chart.py）",
     ],
     run=_size,
-    fixture={"anchors": {"size": {"json_warn_kb": 250, "json_fail_kb": 600}}, "size_kb": 700},
-    near_miss={"anchors": {"size": {"json_warn_kb": 250, "json_fail_kb": 600}}, "size_kb": 200},
+    fixture={"anchors": {"size": {"json_warn_kb": 250, "json_fail_kb": 600}}, "size_kb": 700,
+             "doc": {"charts": [{"slug": "big", "series": [{"values": [1.5] * 400}]},
+                                {"slug": "small", "series": [{"values": [1.5] * 10}]}]}},
+    near_miss={"anchors": {"size": {"json_warn_kb": 250, "json_fail_kb": 600}}, "size_kb": 200,
+               "doc": {"charts": [{"slug": "big"}]}},
     suite="chart",
 ))
 

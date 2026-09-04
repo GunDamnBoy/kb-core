@@ -45,17 +45,18 @@
 | `chart/CHANGELOG.md` | 歷版變更紀錄，五欄結構，最新一筆在最上面 |
 | `skills/chart/SKILL.md` | 每天怎麼跑的**流程正本** |
 | `scripts/chart/RUN-PROMPT.md` | 排程 prompt 的正本 |
-| `checks/chart.py` | 十八條檢查。**數字一律從 anchors 讀**，這裡是它的讀者不是第二份副本 |
+| `checks/chart.py` | **二十條**檢查（`grep -c 'register(Check('` 數的，不要靠記憶——這一格 2026-09-04 之前寫「十八條」而實際是十九條）。**數字一律從 anchors 讀**，這裡是它的讀者不是第二份副本 |
 | `systems/chart.py` | payload 怎麼組、index entry、`staged_paths`（要推哪些路徑） |
 | `kbcore/system.py` | `System` 登記的形狀 —— 新增維度先加在這裡 |
 | `tools/chart_verify.py` | 驗一天，**不發布、無副作用**。回測舊期用它 |
 | `tools/publish.py` | 唯一的發布路徑，**三套系統共用** |
 | `tools/push_kbcore.py` | 推 kb-core 自己，帶靜置與自檢閘門 |
 | `scripts/chart/chartkit.py` | 雙軌繪圖實作（`render_static` ＋ `echarts_option`） |
-| `scripts/chart/build_series.py` | 序列轉換 `_transform` 的**唯一實作**（月頻按日曆回推、不按位置） |
+| `scripts/chart/build_series.py` | 序列轉換 `_transform` 的**唯一實作**（月頻按日曆回推、不按位置）。**`t` 的值域在 `anchors.series.spec_transforms`**，錯誤訊息與 `chart.series_spec_runnable` 都讀那一格；跨序列的運算不在文法裡 |
 | `scripts/chart/render_day.py` | 當期渲染；`to_chart` 的欄位自動帶入在這裡 |
 | `scripts/chart/rebuild_option.py` | **修舊期渲染缺陷的唯一合法工具**（`--png` 可重繪） |
 | `scripts/chart/prefetch.py` | 11:00 的序列預抓；`--history <id>` 離線讀末日歷史 |
+| `scripts/chart/prep_chart.py` | 第 1 步的開工盤點。`_stale()` 分硬失敗與警示、`_dead()` 再把硬失敗拆成「已登錄長期失效」與「新的」並抓復活；`--selftest-offline` 是 `_dead()` 的回歸 |
 | `scripts/chart/scan_moves.py` | slot 2 的異動掃描；只讀快取、不連外。**分位樣本逐列標示**，★＝該列快取短於 `--years` 要求 |
 | `scripts/chart/backfill_tw_history.py` | **一次性**把台股快取補到 `history_limits.tw_route_months`；強制全量、預設一次兩條。**改預設月數不會補到歷史，只有這支會** |
 | `scripts/chart/macro_release.py` | 三大月度數據的發布偵測 |
