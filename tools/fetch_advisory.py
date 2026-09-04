@@ -21,6 +21,22 @@ Actions 那一班跑在台北凌晨（cron 00:15、實測延到 03:23），而�
 補了什麼、保留了什麼，逐項記進 `top_ups`，因為**下游必須分得出「這一列是補抓來的」
 與「這一列是凌晨那一班的、補抓沒成功」** —— 這兩者在 `items` 裡長得一模一樣。
 
+**2026-09-04 加第三種結局：抓成功了，但抓回來的跟原本那一份一模一樣。**
+當天 `top_ups` 回報 `replaced` 五個 ident 全中、`kept_original` 空的，看起來完全成功；
+而 SPDR 補回的歷史檔**最後一列仍是 `02-Sep-2026`，與前一版用過的那一列相同**，
+當輪的採集端現場開產品頁才確認 `03-Sep` 已經上站。
+**`replaced` 只證明「抓取這個動作成功了」，不證明「資料前進了一天」** ——
+而下游照抄的話會產出一張與前一版逐字相同的保底卡，`exempt_card_freshness` 只會給一個 WARN。
+所以現在每個 ident 在覆蓋前後各取一次 `data` 的指紋，**內容沒動的另外記進 `unchanged`**。
+`replaced` 的語意刻意不動（仍是「抓取成功」的全集），因為它已經有下游在讀；
+`unchanged` 是加上去的一個子集，只讀 `replaced` 的下游行為完全不變。
+
+**這個欄位同時就是量測。** 2026-09-04 只證明了「台北 07:20 時 archive 沒有 03-Sep」，
+而產品頁那一次是 49 分鐘後、且是**不同的端點** ——
+「archive 落後一整天」還是「archive 貼得比 07:20 晚」**尚未分辨**。
+明天起 `unchanged` 會自己回答：若 SPDR 天天落在 `unchanged` 裡就是前者，
+偶爾才落就是後者，而修法與量測是同一件事、不必另外安排。
+
 它抓的是**保底**，不是新聞：兩條信用債 OAS、兩檔黃金 ETF 持倉、六個台股官方端點。
 新聞由 Mac 那一輪的採集負責。
 
@@ -38,6 +54,7 @@ Actions 那一班跑在台北凌晨（cron 00:15、實測延到 03:23），而�
    融資金額是仟元、月營收是仟元 —— 舊系統靠人記，而人會忘。
 """
 import datetime as dt
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -156,6 +173,24 @@ def parse_flags(argv):
     return only, top_up, rest
 
 
+def _payload_fingerprint(item) -> str:
+    """一個 ident 的內容指紋。**只看 `data`，不看 `note`／`url`／`unit`** ——
+    後面那幾個是靜態的說明欄，把它們算進去不會改變結果，但會讓指紋的意義變模糊。
+
+    刻意用整份 payload 的雜湊，而不是「最後一列的日期」：後者要為每一種 ident 的
+    形狀各寫一個取法（FRED 的 `points[-1][0]`、SPDR 的 `rows[-1][0]`、TWSE 的
+    `data[0]['出表日期']`…），**而那正是這個檔已經有過一次的漂移形狀** ——
+    多一份對形狀的假設，就多一個會安靜過期的地方。雜湊不需要知道任何形狀。
+    代價是它答不出「新的那一列是哪一天」，只答得出「有沒有動」；
+    對「補抓到底有沒有讓資料前進」這個問題，有沒有動就夠了。
+    """
+    if not isinstance(item, dict):
+        return ""
+    return hashlib.sha1(
+        json.dumps(item.get("data"), sort_keys=True, ensure_ascii=False,
+                   default=str).encode("utf-8")).hexdigest()
+
+
 def top_up(path: Path, only) -> int:
     """把 `only` 那幾個 ident 重抓一次，成功的才覆蓋回 `path`。"""
     if not only:
@@ -176,13 +211,21 @@ def top_up(path: Path, only) -> int:
     ymd = doc["date"].replace("-", "")
     print(f"補抓 {path.name}（date={doc['date']}）：{'、'.join(only)}")
 
-    replaced, kept = [], []
+    replaced, kept, unchanged = [], [], []
     for ident in only:
+        # **覆蓋前先取一次指紋。** 這一行就是 2026-09-04 那次「五個全中但資料沒前進」
+        # 的解藥：沒有它，成功與空轉在 `top_ups` 裡長得一模一樣。
+        before_fp = _payload_fingerprint(items.get(ident))
         r = fetch_one(ident, ymd)
         if r["status"] == "ok":
             items[ident] = r
             replaced.append(ident)
-            print(f"  {ident:16} ok —— 已取代")
+            if _payload_fingerprint(r) == before_fp:
+                unchanged.append(ident)
+                print(f"  {ident:16} ok —— 已取代，**但內容與原本那一份完全相同**"
+                      f"（抓到了，資料沒有前進）")
+            else:
+                print(f"  {ident:16} ok —— 已取代")
         else:
             # **保留原值。** 見模組 docstring：補抓失敗把原值清掉是「補一次讓情況變糟」。
             kept.append(ident)
@@ -199,6 +242,9 @@ def top_up(path: Path, only) -> int:
     doc.setdefault("top_ups", []).append({
         "at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "requested": list(only), "replaced": replaced, "kept_original": kept,
+        # `unchanged` ⊆ `replaced`。**刻意是子集而不是第三個互斥狀態** ——
+        # 已經有下游在讀 `replaced`，把它拆掉會安靜地改變那些讀者的意思。
+        "unchanged": unchanged,
     })
 
     # 原子寫入：同目錄 .tmp 再 rename。這個檔每天早上會被輪次讀，
@@ -208,7 +254,8 @@ def top_up(path: Path, only) -> int:
     tmp.replace(path)
 
     print(f"\n補抓 {len(replaced)}/{len(only)} 成功"
-          f"{'；保留原值：' + '、'.join(kept) if kept else ''}")
+          f"{'；保留原值：' + '、'.join(kept) if kept else ''}"
+          f"{'；**抓到了但內容沒變**：' + '、'.join(unchanged) if unchanged else ''}")
     print(f"合併後：必要項失敗 {len(doc['failed_essential'])}、"
           f"其餘失敗 {len(doc['failed_other'])}")
     if doc["failed_essential"]:

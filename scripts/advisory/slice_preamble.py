@@ -67,7 +67,12 @@ SECTION_OWNER = {
     # 同日又在 Bloomberg 撞到兩種（Washington Edition 電子報、Big Take podcast 頁），
     # 所以再加 A。判準是「表上出現了誰的來源」，不是「這個教訓誰用得到」——
     # 後者會一路擴張成 ALL，而那等於沒有切片。
-    "### 電子報彙整頁":       ["NYT", "WSJ", "The Economist", "Bloomberg", "SemiAnalysis"],
+    # 2026-09-04 加 Washington Post：當日在該表新增了 WaPo 一列（路徑格式與一般文章
+    # 完全相同、只能靠內文特徵認）。B 本來就因 WSJ 與 The Economist 拿得到這一節，
+    # 所以這一改不影響任何人拿不拿得到 —— **加它是為了讓這張表與判準保持一致**：
+    # 判準是「表上出現了誰的來源」，漏登記會在下一次有人重排 roster 時安靜地失效。
+    "### 電子報彙整頁":       ["NYT", "WSJ", "The Economist", "Bloomberg", "SemiAnalysis",
+                              "Washington Post"],
     "## 六之二、":            ALL,
     "## 七、台股官方端點":     ["TWSE"],
     "## 七之二、":            ["EIA", "SPDR Gold Shares", "央行官方"],

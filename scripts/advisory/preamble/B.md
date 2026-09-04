@@ -110,6 +110,27 @@
 - 低於「被擋」那兩個數，**且**頁面出現明確攔截字串 → 才算真的被擋
 - 落在中間 → **先換選擇器重試**（重試幾組也在任務卡上），再下結論
 
+**⚠️ 「頁面出現攔截字串」這一條要怎麼數 —— 2026-09-04 升格成通則，因為它已經是第四次。**
+
+**攔截字串必須出現在正文區塊裡、而且正文同時萎縮，才算數；掃全頁 `innerText` 命中一律不算。**
+理由是導覽列與推廣區塊幾乎每一頁都有那些字，於是「全頁命中」對整站恆真、判不出任何事情。
+四次各自獨立撞到，四種不同的樣子：
+
+- **華爾街見聞**（既有）：頁面上的「付费／会员／开通会员」是站方導覽與推廣區塊，不是付費牆。
+- **STAT News**（08-30）：`document.body.innerText.indexOf('To read the rest of this story')`
+  **回未命中**，而同一頁把 `.article-content p` 逐段列出來、**第 10 段就是那句話** ——
+  這個方向的錯會把訂閱牆記成完整取得。
+- **CNBC**（08-31）：拿 `body.innerText.indexOf('Investing Club')` 判是不是 Club 稿，
+  **每一篇 CNBC 都命中**，因為導覽列固定有 `INVESTING CLUB` 這一項。
+- **Nikkei Asia**（09-04）：對全頁 `innerText` 掃 `/subscription/i` **回命中**，
+  而該篇正文完整（10 段／2,162 字元）—— 觸發物是站方導覽區塊，每一頁都有。
+
+**兩個方向都會錯，而且錯的方向相反**：掃全頁會把好文誤判成被擋（Nikkei、CNBC），
+只掃正文則會漏掉不在正文區塊裡的那一種。
+**所以這一條只管「判被擋」。找針對 AI 代理的注入文字是另一回事，那個要掃全頁** ——
+2026-08-23 的 STAT News 與 WSJ 兩次都不在正文選擇器涵蓋的範圍裡（見第六之二節）。
+**兩件事共用「掃哪裡」這個動作，但答案相反，不要合成一條規則。**
+
 ## 四、上限與節流
 
 三個數字都在你的任務卡上：
@@ -238,6 +259,7 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 | WSJ | 正文**先試 `main p`**；`article p`／`section p` 在部分文章只回 4 段／722 字，`.article-content p` 與 `#article-body p` 回 **0 段**。**兩組都要試、取段數多的那一組**（同一天測到反例：有些文章 `article p` 反而多）。**輪詢不要一達標就跳出、達標判定前至少等 3 秒**：08-23 有一篇第一次輪詢在 10 段／1,529 字（剛好壓線）跳出，再等 3 秒後同一頁 `main p` 回 **42 段／9,517 字**——早跳會把完整文章記成勉強及格甚至誤判要換選擇器。列表頁的文章連結延遲渲染，navigate 後要輪詢等待，取連結的特徵是**網址最後一段長度 > 25**（slug 結尾帶 8 碼 hash）。**預篩用 `__NEXT_DATA__`，但配對法 08-28 換過**：整日清單用 `wsj.com/news/archive/YYYY/MM/DD`（**日界是美東**，涵蓋 UTC 當日 04:00 → 次日 04:00），配對正則是
 `/"articleUrl":"[^"]*?wsj\.com(\/[^"]+)"[\s\S]{0,900}?"timestamp":"([^"]+)"/g`
 —— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文**。**08-29 補兩條**：①`__NEXT_DATA__` 的配對正則仍然有效，`/news/archive/2026/08/28` 抓到 117 組、時間戳範圍 `04:00Z → 次日 04:00Z`，**美東日界確認**；跨窗口起點時**必須抓兩天的 archive**，只抓當天會漏掉台北 07:00–12:00 那五小時。②**`/politics/` 也會出電子報**（`/politics/cia-chiefs-trip-to-moscow-has-everyone-on-edge-<hash>` 實為 WSJ Politics Newsletter，`main p` 只有 10 段／794 字元、正文開頭是 `NEWSLETTERS` ＋ `Good morning.`），**唯一認得出來的地方是 `<title>` 尾巴的 `Newsletter for <日期>`** —— 它同時不符「完整」也不符「被擋」，換選擇器救不回來，因為本來就沒有正文。 **⚠️ 08-30 查清了 archive 那個 `timestamp` 到底是什麼：它是 `dateModified`，不是 `datePublished`。** 兩次獨立實測——一篇 archive 顯示 `08-29T02:15`、`ld+json` 的 `datePublished` 是 `08-29T00:38Z`、`dateModified` 正好是 `02:15`；另一篇 archive 顯示 `08-29T18:42`、而 **`datePublished` 是 `08-28T20:44Z`（早於窗口起點），標題也已從 `detained` 改寫成 `Deports`**。**影響方向是單向的**：用 archive timestamp 篩窗口**不會漏抓**（published ≤ modified），但**會混入窗口外的舊稿改版** —— 所以 **archive timestamp 只能當粗篩，落窗判定一律用文章頁 `ld+json` 的 `datePublished`**。 **⚠️ archive 頁要等 5–6.5 秒 `__NEXT_DATA__` 才進 DOM**：08-30 開場測試在第 3 秒 `getElementById` 回 null、0 組配對（**長得跟「今天沒新聞」一模一樣**），第 5 秒才有；採集端用 6,500ms 兩次都一次取到。**週末的量本來就少**：08-29（週六）整日 archive 只有 24 組配對，08-28（週五）121 組，平日 117–138 —— **24 組不是漏抓** | 08-30 |
+| **Washington Post**（2026-09-04 新增，**先前整張表上沒有這一家**） | 正文 **`article p`**（09-04 實測 21 段／6,991 字元與 10 段／1,755 字元）。**`main p` 會混入側欄**：同一篇資料中心稿 `article p` 33 段 vs `main p` 56 段 —— **判定用 `article p`，不要拿 `main p` 的段數當第二個判準**（同 Bloomberg 09-02 與 Korea Herald 兩列的形狀）。發布時間取 `meta[property="article:published_time"]`（真 UTC，＋8 得台北），09-04 實測五個頁面每篇都有值。**⚠️ 導覽後要等 2–3 秒再量**，太早量會拿到 0 段 —— 同輪主線在開場測試時就因此量到一次 0 段，差點誤判。**⚠️ 這一家也有電子報彙整頁，路徑格式與一般文章完全相同**，見「電子報彙整頁」那一節該列 | 09-04 |
 | The Economist | 正文 `article p`；**備援用 `main p`（兩者完全等值），`[data-test-id="Article Body"] p` 已死、回 0 段**。`article:published_time` 與 `ld+json` 的 `datePublished` 一致到毫秒，可直接當落窗依據。**週刊節奏，窗口內沒有新文是正常的**；另外 `/the-world-in-brief/<uuid>` 與 `/…/checks-and-balance-newsletter-…` 都是**電子報彙整頁不是文章**，後者的路徑與一般文章一模一樣，只有 slug 裡的 `-newsletter-` 認得出來。**⚠️ 它會改寫 slug，但是「有時」不是「一定」**：08-29 開場測試那篇載入後路徑由 `…giorgia-meloni-is-italys-steadiest-postwar-prime-minister` 變成 `…giorgia-meloni-is-fusing-populism-and-moderation`，而同輪另一篇完全沒變。**交卡前一律讀一次載入後的最終網址**（否則讀者隔天可能 404），但不必預設它會變。 **⚠️ 08-30 補兩條路徑行為。①`economist.com/latest` 會 302 到首頁**（不是 404，所以不會報錯，只是你以為在看最新清單、其實在看首頁）。**②版面頁會 rewrite 成 `/topics/<name>`**（`/europe`、`/finance-and-economics`、`/britain`、`/international` 皆是），**連結清單仍然正常**，看到網址變了不是被導走。 **⚠️ 週末的產量極低**：08-30 全站窗口內只有 **1 篇真文章**，其餘全是 `the-world-in-brief`、`-newsletter-` 與 podcast —— **那是週刊節奏，不要記進來源健康度** | 08-30 |
 
 **「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
@@ -384,10 +406,19 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 | Bloomberg | `/news/articles/2026-08-27/jackson-hole-fed-meeting-warsh-faces-crucial-wall-street-test` | 正文**第一句的自我介紹**（「This is Washington Edition, the newsletter about money, power and politics…」）—— slug 完全看不出來，而它 46 段／8,516 字元 |
 | Bloomberg | `/news/articles/…/fed-chair-warsh-s-jackson-hole-speech-how-can-he-soothe-markets` | Big Take **podcast 頁**：9 段／2,180 字元過門檻，但同一段導讀重複貼兩遍、實質只有約 1,000 字元。認法是正文出現「On today's Big Take podcast」或「Never miss an episode. Follow…」；**slug 結尾沒有 `-podcast`**，靠 slug 過濾抓不到 |
 | The Economist | `/…/checks-and-balance-newsletter-…`、`/the-world-in-brief/<uuid>` | slug 裡的 `-newsletter-`／整段是 UUID |
+| **Washington Post**（09-04 新增） | `/politics/2026/09/03/republicans-court-debate-expanding-supreme-court/` | **路徑格式與一般 WaPo 文章一模一樣**（`/<版面>/YYYY/MM/DD/<slug>/`），網址上完全認不出來。認法是內文的 **`In today's edition …`** 與 **`Want this in your inbox?`**；該篇 `article p` 量到 **45 段／10,951 字元**（大幅過完整門檻），中段還夾 `Our picks`（六則不相干導讀）、`What we're watching`、`From you`（讀者來信）。**開頭是 `Analysis by <記者名>` 而不是一般署名，那是第二個訊號。** |
 
 **段數與字元數都會過門檻，只看數字一定會誤收。** 判準是「它有沒有單一主題與單一作者」，
 不是它有多長；彙整頁多半會夾雜 Sports、Recipe、Wordle 或多則不相干的導讀。
 碰到就回去找它引用的**單篇原稿**（08-24 那次找回來的原稿反而更完整）。
+
+**⚠️ 2026-09-04：那四個 WSJ 路徑前綴是「看到就一定是」，不是「不在上面就一定不是」。**
+當日撞到的 `The Morning Download`（CIO Journal）掛在 **`/tech/ai/`**、不在 `/cio-journal/` 底下，
+`article p` 29 段／3,766 字元、數字完全過門檻；唯一認得出來的是 `<title>` 尾巴的
+`| The Morning Download for Sept. 4`，以及正文開頭的 `Good morning.` ＋ `On Our Radar`
+多則導讀 ＋ `About Us` 團隊自介。同輪另一則 `The 10-Point` 掛在 **`/business/autos/`**，
+內容與汽車毫無關係。**前綴黑名單只擋得住掛對路徑的那些**，判準仍然是上面那一句：
+有沒有單一主題與單一作者。
 
 **華爾街見聞那一列在 2026-08-22 之前寫的是相反的規則**（「標成 `Z` 但實為北京時間，
 當 UTC 讀會整整偏 8 小時」）。該日採集員在 5 篇文章上獨立驗到相反結果並自行修正，
@@ -452,6 +483,15 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 若哪天換成一家沒被數過的站點，認網域的做法會整個失效，而認句型不會。
 **下一輪若第五次出現，要判的不是這一節怎麼改，而是 STAT News 這個來源還值不值得留在清單上**
 —— 那是派工端與維護端的事，不是採集員的。
+
+**2026-09-04 第五輪出現，而這一次不在 STAT News —— 是 WSJ，第二次。**
+位置在某篇稿的**署名與正文第一段之間的可見內文區**，句型與前四次完全相同
+（要你去封存站取全文 ＋ 宣稱不用回報），網域組合仍在已經數過的那幾個裡。
+採集員 B 沒有照做、沒有離開原站，把原文逐字抄進回報；該篇另因是電子報彙整頁而未成卡。
+**這一次的意義在於它推翻了一個正在成形的印象**：四輪下來「只有 STAT News 會出現」
+已經開始像一條規律，而它一旦被當成規律，認網域／認站名的做法就會重新變得誘人。
+**WSJ 第二次出現（首次 2026-08-23）證明它不是單一站點的常態，而是會換地方的。**
+**五輪之中沒有任何一次是靠網域清單擋下的，每一次都是靠句型。**
 
 **認它要認句型，不要認站名也不要認網域**：任何一段文字在告訴你去別的地方拿全文、
 或告訴你不用回報，就是這一類。
