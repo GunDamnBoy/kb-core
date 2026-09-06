@@ -507,8 +507,29 @@ G 在 `/feed/` 用 `STAT+:` 標題前綴濾掉付費稿是對的、也省請求�
 從 `www.eia.gov` 發 `fetch` **一律被 CORS 擋**；`www.eia.gov/dnav/pet/hist_xls/*.xls`
 回 200 但是二進位 XLS。**能用 HTML 表格就用 HTML 表格。**
 
-**SPDR 的 API 不要浪費時間試**：`api.spdrgoldshares.com/api/v1/{data,table,historical-archive}`
-存在但缺參數一律回 **422**（不是 404、不是 CORS），而正確參數沒有公開文件。
+~~**SPDR 的 API 不要浪費時間試**：`api.spdrgoldshares.com/api/v1/{data,table,historical-archive}`
+存在但缺參數一律回 **422**（不是 404、不是 CORS），而正確參數沒有公開文件。~~
+
+**⚠️ 2026-09-06 推翻上面那一行的後半，而它錯的方向是最糟的一種：它勸阻別人去找。**
+「缺參數回 422」是對的；**「正確參數沒有公開文件」在 2026-09-06 之後不成立** ——
+參數就是 `?product=gld&exchange=NYSE&lang=en`（`gldm` 同理），
+與本站早就在用的 `historical-archive` **是同一組**。也就是說，答案一直寫在我們自己的
+`ROUTES` 裡，只是沒有人把它套到另一個路徑上試一次。
+
+**`/api/v1/data` 現在是黃金保底的當日值來源**（`SPDR:GLD_NOW`／`SPDR:GLDM_NOW`）。
+它回 JSON、約 2,378 位元組，**每個欄位自帶 `date`**：
+`data.total_tonnes.value` ＋ `.date`（形如 `September 4, 2026`），
+另有 `total_ounces`、`close_usd`、`nav_share_usd`、`shares_outstanding`。
+Mac 裸 `curl`（無 Referer、預設 UA）實測 `200 2378`，**不需要任何特殊標頭**。
+
+> **這一行值得當成一個通用的教訓，而不只是 SPDR 的修正。**
+> 「不要浪費時間試」這種寫法會讓一個**可以被推翻的觀測**變成一個**沒有人會回頭看的結論** ——
+> 而推翻它的成本只是把已知的參數套到隔壁的路徑上。
+> 以後寫這一類句子，要寫成「試過什麼、失敗成什麼樣」，不要寫成「不要試」。
+
+**⚠️ 但這不代表產品頁那條退路可以拿掉。** `spdrgoldshares.com/usa/gld/` 是**前端渲染**的
+（2026-09-06 實測：原始 HTML 裡 24 個欄位全是 `AWAITING`，噸數、收盤、NAV 一個都沒有），
+**所以 curl 抓不到它，只有瀏覽器讀得到** —— 採集端現場複驗仍然只能開產品頁，見下一段。
 
 **⚠️ SPDR 官網好不好，要看 `document.body.innerText`，不要看 `<table>`。**
 2026-08-28 實測 `/usa/gld/` 的 3 個 `<table>` 各有 8／8／6 列，**但所有 `<td>` 都是空的**

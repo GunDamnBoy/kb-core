@@ -97,10 +97,17 @@ ROUTES = {
     # 這裡是 `data.total_tonnes.date` 直接寫著 —— 「資料前進了沒有」從此是顯性的，
     # 不必再靠 `unchanged` 指紋去推。
     #
-    # ⚠️ **還沒在 Mac 上驗過 curl。** 2026-09-06 是從瀏覽器內（帶 Referer）取得
-    # 200／`application/json`／2,378 位元組；同一個網址用無 Referer 的 HTTP 取回是**空的**。
-    # 那可能是工具層、也可能是 header 把關，**在 Mac 上實跑之前不要當它已經通**。
-    # 驗法寫在 `skills/advisory/SKILL.md` 步驟 1 的 `top_ups` 那一段。
+    # ~~⚠️ 還沒在 Mac 上驗過 curl。~~ **2026-09-06 當天稍晚驗掉了：Mac 裸 curl
+    # （無 Referer、curl 預設 UA）回 `200 2378`** —— **與瀏覽器內帶 Referer 拿到的
+    # 位元組數逐位元相同**。所以先前擔心的「header 把關」不成立，
+    # 也不需要為它加 per-route 的 Referer 標頭。
+    #
+    # **兩個位元組數相同還順便排除了另一件事**：這個端點不吃 session、不做個人化，
+    # 不同 client 拿到的是同一份 payload。
+    #
+    # **仍未驗的只剩最後一段鏈**：`kbcore/fetch.py` 送的是自訂 `UA`（不是 curl 預設），
+    # 而端點既然連 Referer 都不看，UA 被擋的機率很低 —— **但「很低」不是「驗過」**。
+    # 端到端的證據是明天 07:20 那一班之後，保底檔裡有沒有這兩個鍵帶值。
     "SPDR:GLD_NOW": {
         "url": ("https://api.spdrgoldshares.com/api/v1/data"
                 "?product=gld&exchange=NYSE&lang=en"),
