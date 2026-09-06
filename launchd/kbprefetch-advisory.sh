@@ -222,7 +222,12 @@ fi
 #     輪次不會讀到一個補到一半的東西。
 #   · **這幾個 ident 都不需要 FRED 金鑰**（SPDR 與 TWSE 都是公開端點），
 #     所以這一段刻意不碰 `FRED_API_KEY`，少一個會出錯的地方。
-TOPUP_IDENTS="SPDR:GLD,SPDR:GLDM,TWSE:REV_L,TWSE:REV_O,TWSE:CONF"
+# 2026-09-06 加進 `SPDR:GLD_NOW` 與 `SPDR:GLDM_NOW`：`historical-archive`
+# 落後一個交易日（連續三輪落在 `unchanged`，09-06 由同一天兩個端點的直接對照定案），
+# 而 `/api/v1/data` 是產品頁在叫的那一個、當日就有。**兩條都補，不是二選一** ——
+# archive 給 120 列的跨期序列，`_NOW` 給當日一筆，黃金卡兩個都要。
+# 它們宣告了 `empty_ok`，所以取不到不會擋掉整份保底檔。
+TOPUP_IDENTS="SPDR:GLD,SPDR:GLDM,SPDR:GLD_NOW,SPDR:GLDM_NOW,TWSE:REV_L,TWSE:REV_O,TWSE:CONF"
 if [ ! -x "$VENV_PY" ]; then
   log "略過補抓：找不到可執行的 ${VENV_PY}（凌晨那一份仍然可用）"
 elif [ ! -f "$FETCHER" ]; then

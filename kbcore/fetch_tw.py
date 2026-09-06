@@ -72,6 +72,52 @@ ROUTES = {
         "kind": "auto", "unit": "噸／美元",
         "note": "同上，GLDM。",
     },
+    # ── 當日值。**與上面那兩條是同一個 host、同一組 query，只差路徑** ──
+    #
+    # 2026-09-06 加。`historical-archive` 落後一個交易日，而這件事花了三輪才判定：
+    # 09-04、09-05、09-06 連續三輪 `top_ups` 把 SPDR 列在 `unchanged`，
+    # 而 09-04 那次留下一個歧義——「archive 落後一整天」還是「archive 貼得比 07:20 晚」，
+    # 兩者的處置相反（換來源 vs 把補抓往後挪）。
+    #
+    # **09-06 定案，而決定性的不是班次數，是同一天兩個端點的直接對照**：
+    # archive 末列 `03-Sep-2026`，`/api/v1/data` 的 `total_tonnes.date` 是
+    # `September 4, 2026`。04-Sep 是週五、判定當天是週日 —— 若只是貼得晚，
+    # archive 最遲在週六 07:20 就該有它。**缺的是一個超過 24 小時的資料點。**
+    #
+    # **為什麼不是改抓產品頁**（`spdrgoldshares.com/usa/gld/`）：那一頁是前端渲染的。
+    # 原始 HTML 裡二十四個欄位全部是 `AWAITING`，噸數、收盤、NAV 一個都沒有
+    # （2026-09-06 兩種方式各驗一次：無 JS 的 HTTP 取回，以及頁面內
+    # `fetch(location.href)` 搜 `1,052.056` 命中 0 次）。**curl 抓不到它。**
+    # 這個端點是追那一頁的 resource timing 找出來的——它就是那頁在叫的那一個。
+    #
+    # **這兩條不取代 archive，是補它。** archive 給的是 120 列的跨期序列
+    # （黃金卡的四日序列吃它），`/api/v1/data` 只有當日一筆。兩個都要。
+    #
+    # **附帶好處：每個欄位自帶 `date`。** archive 要看末列才知道資料日，
+    # 這裡是 `data.total_tonnes.date` 直接寫著 —— 「資料前進了沒有」從此是顯性的，
+    # 不必再靠 `unchanged` 指紋去推。
+    #
+    # ⚠️ **還沒在 Mac 上驗過 curl。** 2026-09-06 是從瀏覽器內（帶 Referer）取得
+    # 200／`application/json`／2,378 位元組；同一個網址用無 Referer 的 HTTP 取回是**空的**。
+    # 那可能是工具層、也可能是 header 把關，**在 Mac 上實跑之前不要當它已經通**。
+    # 驗法寫在 `skills/advisory/SKILL.md` 步驟 1 的 `top_ups` 那一段。
+    "SPDR:GLD_NOW": {
+        "url": ("https://api.spdrgoldshares.com/api/v1/data"
+                "?product=gld&exchange=NYSE&lang=en"),
+        "kind": "json", "unit": "噸／美元", "empty_ok": True,
+        "note": ("GLD 當日值（產品頁在叫的那個端點）。噸數在 "
+                 "`data.total_tonnes.value`、**資料日在同層的 `.date`**"
+                 "（形如 `September 4, 2026`）；另有 `total_ounces`、`close_usd`、"
+                 "`nav_share_usd`、`shares_outstanding`，各自帶自己的 `date`。"
+                 "**`empty_ok` 是刻意的**：curl 能不能過還沒在 Mac 上驗過，"
+                 "取不到時要讓 archive 那條照常落地，不要把整份保底檔擋掉。"),
+    },
+    "SPDR:GLDM_NOW": {
+        "url": ("https://api.spdrgoldshares.com/api/v1/data"
+                "?product=gldm&exchange=NYSE&lang=en"),
+        "kind": "json", "unit": "噸／美元", "empty_ok": True,
+        "note": "同上，GLDM。",
+    },
 }
 
 
