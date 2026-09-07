@@ -76,6 +76,12 @@ REQUIRED_BY_LABEL = {
     # **裝一支新 plist 有兩個動作，不是一個**：載進 launchctl、登記進這張表。
     # 只做第一個，系統會跑得好好的，而看門狗會安靜地紅到有人來看。
     "com.kenny.kbpublish.convergence": ["git"],
+    # 2026-09-07：**第五次同一形狀，而這一次是在裝之前先登記的。**
+    # 排程缺口哨兵（`tools/schedule_gaps.py`，每天 13:10）。它只跑 venv 的 python
+    # （絕對路徑），整支沒有 `subprocess`／`shutil.which`／`os.system`，
+    # 唯一的 import 是標準庫加上同目錄的 `usage_report`（那一支也沒有）——
+    # **空陣列是「想過了，答案是零」**（同 `kbfile.research` 與 `kbprefetch.chart`）。
+    "com.kenny.kbschedgaps":       [],
     # 2026-08-21：下面四支裡有三支是 08-20／08-21 裝上去的，而**沒有一支被登記進來**。
     # 這個機制是對的（沒登記就 FAIL），漏的是有人去登記 —— 兩件事。
     "com.kenny.kbcorepush":        ["git"],   # push_kbcore.py 自動 commit kb-core

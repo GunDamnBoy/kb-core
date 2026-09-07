@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 七套系統 · 排程缺口哨兵。安裝位置 ~/Library/LaunchAgents/。
+
+       為什麼有這一支，而 com.kenny.kbgaps 不夠：那一支問的是「**有回執**卻沒有
+       usage 列」——它拿回執在不在當成「那天跑了」。輪次**根本沒被觸發**時回執不在，
+       它判定「那天沒跑，不是缺口」而回 0，一聲都不會出。
+
+       2026-09-07 就是這個形狀：advisory（07:35）與 bubble（09:04）兩支都沒有產出，
+       而七支哨兵、兩個發布器、三份 log 全部安靜。那天被發現的唯一原因是人自己注意到。
+
+       **為什麼跑在 launchd 上而不是桌面排程器上**：同一天 launchd 全綠
+       （保底層 07:20 有跑、三個 publish 迴圈都在寫 log），漏的是桌面排程器。
+       **哨兵掛在被監視的對象上，就會跟著一起安靜。**
+
+       **為什麼它不讀排程器自述的 lastRunAt**：同一天實測那個欄位會少報——
+       chart 11:30 觸發、11:59 回執 exit 0、12:00 執行報告，而 lastRunAt 到 13:2x
+       仍停在 2026-09-06。拿它當判準會把「跑了」讀成「沒跑」。**這一支只讀產出檔。**
+
+       為什麼是 13:10：它要等到當天最晚的那一支日排程跑完才判得準。
+       chart 排定 11:30、餘裕 90 分鐘（實測 11:30→11:59），13:00 到期，
+       13:10 留 10 分鐘緩衝。週排程的 convergence（週一 15:10）與 houseview（週五 16:36）
+       當天查不到，會由隔天那一輪查出來——**只報不補，晚一天報比誤報好**。
+
+       跑一次的成本是列出七個目錄的檔名。它不跑 git、不寫任何系統的資料、
+       不啟動任何排程，只寫一份 ~/.kbusage/schedule-gaps.md。
+
+       退出碼 12 代表有缺口。launchd 不會因此做任何事（沒設 KeepAlive），
+       真正給人看的是 ~/.kbusage/schedule-gaps.md。 -->
+  <key>Label</key>
+  <string>com.kenny.kbschedgaps</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/schedule_gaps.py</string>
+  </array>
+
+  <!-- watch.external_binaries 讀的是 plist，不是腳本。這一支需要的外部指令
+       登記在 kbcore/env.py 的 REQUIRED_BY_LABEL，答案是零：它只跑 venv 的
+       python（絕對路徑），沒有任何 subprocess。 -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>13</integer>
+    <key>Minute</key><integer>10</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/kbschedgaps.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/kbschedgaps.err</string>
+</dict>
+</plist>
