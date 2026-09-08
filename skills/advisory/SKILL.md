@@ -47,7 +47,7 @@ description: 產出投顧知識庫的今日儀表板。每天台北 07:30 在 Ma
 | 採集與撰寫 | 這一輪（Mac 桌面版） | LLM、已登入的 Chrome | 網路寫入、git |
 | 發布 | Mac launchd（`publish.py`） | 網路、SSH 金鑰 | LLM |
 
-**這一輪不推 GitHub。** 產出寫進 `~/outbox`，`publish` 每分鐘掃一次、跑檢查當閘門、
+**這一輪不推 GitHub。** 產出寫進 **outbox**（絕對路徑在步驟 1-0 量出來，**不要寫 `~/outbox`**），`publish` 每分鐘掃一次、跑檢查當閘門、
 原子寫入、rebase、push、寫回執。你要做的是把草稿交出去，不是把它送上線。
 
 **這一輪不跑任何 git 指令。** 要確認落地用 `wc -c`；要確認進版讀回執。
@@ -97,6 +97,37 @@ description: 產出投顧知識庫的今日儀表板。每天台北 07:30 在 Ma
 
 ### 1. 清點手上有什麼
 
+#### 1-0. 第一個動作：把 outbox 的絕對路徑量出來
+
+**這一步是本輪唯一量 outbox 路徑的地方，步驟 7、8、9 全部沿用它量到的那個前綴。**
+
+**⚠️ 不要在任何地方寫 `~/outbox`。** `~` 在 Mac 上是 `/Users/macmini`（對），
+在沙箱裡是 `/sessions/<session-id>`（**錯，掛載點在 `/sessions/<session-id>/mnt/`**）。
+**它不是「寫錯了」，是「在一邊對、在另一邊錯」** —— 所以任何寫死的字串都救不了它。
+
+```bash
+ls -d /sessions/*/mnt/outbox 2>/dev/null || ls -d "$HOME/outbox"
+```
+
+**把回傳的那個字串記在你的上下文裡**，本輪之後每一次碰 outbox 都把它填進去。
+
+**⚠️ 不要用 shell 變數傳遞它。** 每一次 `bash` 呼叫都是獨立的、沒有環境延續，
+所以在後面的呼叫裡寫 `$OUT` 會展開成**空字串**，路徑變成 `/floor/<今天>.json` ——
+**那又是一次不會報錯的失敗**（同本節下面那條「不要在沙箱裡重跑 `fetch_advisory.py`」的形狀）。
+**要嘛每次呼叫都重新量一次，要嘛把量到的字面值抄進去。**
+
+> **這一段是 2026-09-08 加的，而它修的是同一天真的踩到的一個失效。**
+> 那一輪照舊寫法把草稿寫到 `~/outbox/`，**檔案順利寫出、`wc -c` 回 284,230、
+> JSON 讀得開、`advisory_verify` 19 PASS · 0 FAIL** —— 只有 `publish` 永遠掃不到，
+> 因為它掃的是掛載點那一邊。**沒有任何東西報錯**，是下一步 `ls` 掛載目錄才看見的。
+> **當時本檔有六處在用 `~`，而修掉踩到的那一處並不會修好其餘五處** ——
+> 所以現在改成只在這裡量一次、其餘全部沿用。
+
+**完成條件**：手上有一個**字面的**絕對路徑（例如 `/sessions/<id>/mnt/outbox`
+或 `/Users/macmini/outbox`），而且你已經用它成功列出 `<outbox>/floor/` 的內容。
+
+#### 1-1. 清點
+
 讀 `advisory/anchors.json`，讀 `data/index.json` 最近幾天的 entry
 （`thermo`／`threads`／`watch`／`pulse`／`snap` —— 跨日推理全部從這裡來，不開舊日檔）。
 
@@ -106,7 +137,7 @@ description: 產出投顧知識庫的今日儀表板。每天台北 07:30 在 Ma
 
 | 看哪裡 | 看到什麼 | 這一輪要做的事 |
 |---|---|---|
-| **① 預抓快取 `~/outbox/floor/<今天>.json`** | 有這個檔 | **用它，而且這一層現在真的讀得到。** `com.kenny.kbprefetch.advisory` 每天 07:20 產出，**已經驗過 `date` 是今天、`failed_essential` 是空的才落地** —— 不合格它不會寫檔，不會有一份日期不對的東西騙你。**順手看一眼 `produced_by`**：`actions` ＝ GitHub 那一班正常；`mac-local` ＝ **Actions 今天沒產出、是本機自己抓的**，那要在步驟 9 記一筆。同目錄的 `prefetch.log` 也讀得到，預抓失敗的理由在裡面。**還要看 `top_ups`**，見下面那一段 |
+| **① 預抓快取 `<outbox>/floor/<今天>.json`**（`<outbox>` ＝ 步驟 1-0 量到的那個字面路徑） | 有這個檔 | **用它，而且這一層現在真的讀得到。** `com.kenny.kbprefetch.advisory` 每天 07:20 產出，**已經驗過 `date` 是今天、`failed_essential` 是空的才落地** —— 不合格它不會寫檔，不會有一份日期不對的東西騙你。**順手看一眼 `produced_by`**：`actions` ＝ GitHub 那一班正常；`mac-local` ＝ **Actions 今天沒產出、是本機自己抓的**，那要在步驟 9 記一筆。同目錄的 `prefetch.log` 也讀得到，預抓失敗的理由在裡面。**還要看 `top_ups`**，見下面那一段 |
 | ② 本機 `advisory-rewrite/raw/<今天>.json` | `fetched_at` 是今天，且 `failed_essential` 是空的 | 用它 |
 | ② 同上 | 沒有這個檔，或 `fetched_at` 是舊的 | **這是時序，不是故障。** Actions 推上 origin 之後，本機要等 `com.kenny.kbpublish` 下一次 `pull --rebase` 才拿到，而**發布是這一輪的最後一步** —— 所以輪次開跑時本機最新的通常就是昨天的（2026-08-23 實測 `raw/2026-08-23.json` 的 mtime 是 09:31 ＝ 當輪回執時刻）。往 ③ 走，不要因此判定 Actions 失敗 |
 | **③ Chrome 讀 origin** | 前兩層都沒有 | `navigate` 到 `raw.githubusercontent.com/GunDamnBoy/advisory-rewrite/main/raw/<今天>.json?cb=<時間戳>`。**這一層每次約 4 分鐘、6 次工具呼叫**，走到這裡就要在步驟 9 記一筆「預抓沒生效」 |
@@ -700,16 +731,11 @@ takeaway 首句粗體、帶當日硬數字，其後說明它為什麼成立；th
 
 **先寫成 `<outbox>/<今天>.draft.json.staging`，驗過了再改名成 `<今天>.draft.json`。**
 
-**⚠️ 路徑一律寫絕對的掛載路徑，不要用 `~`。這一條是 2026-09-08 真的踩到的。**
-沙箱裡 `~` 展開成 `/sessions/<session-id>`，而 outbox 的掛載點是
-**`/sessions/<session-id>/mnt/outbox`** —— 差一層 `mnt`。
-那一輪照本節原本的寫法跑 `~/outbox/<今天>.draft.json.staging`，
-**檔案順利寫出、`wc -c` 回 284,230、JSON 讀得開、`advisory_verify` 19 PASS**，
-**只有 publish 永遠掃不到，因為它掃的是掛載點那一邊。**
-**沒有任何東西報錯** —— 是下一步 `ls` 掛載目錄才看見的。
-**所以每一輪動手前先確認 outbox 的實際絕對路徑**（`ls` 一下掛載根目錄），再把它填進下面三行。
+**`<outbox>` ＝ 步驟 1-0 量到的那個字面路徑，直接沿用，不要在這裡重新想一次、更不要寫 `~/outbox`。**
+（2026-09-08 就是在這一步踩到的：草稿寫進 `~/outbox/`，**所有檢查全綠而 publish 掃不到**。
+經過寫在步驟 1-0 那個引言區塊裡。）
 
-三個動作，順序不能換（`<outbox>` 換成你這一輪實際量到的絕對路徑）：
+三個動作，順序不能換：
 
 ```bash
 # ① 寫 staging（publish 掃的是 *.draft.json，這個檔名不會被它撿走）
@@ -770,7 +796,7 @@ mv <outbox>/<今天>.draft.json.staging <outbox>/<今天>.draft.json
 
 ### 8. 等回執
 
-`publish` 每分鐘掃一次 outbox，跑完會寫 `~/outbox/<今天>.receipt.json`。
+`publish` 每分鐘掃一次 outbox，跑完會寫 `<outbox>/<今天>.receipt.json`（`<outbox>` 同步驟 1-0）。
 
 讀它的 `exit`：
 
@@ -876,7 +902,7 @@ OGJ 的兩個日期、注入字串已擴散到 WSJ。
 **那是正本，這裡不抄** —— 這一段曾經被抄成三份，然後工具加了 `--until-receipt`
 而三份都沒跟上。
 
-你要做的只有一件事：**交完草稿之後，寫一個 `~/outbox/<今天>.usage.json`**。
+你要做的只有一件事：**交完草稿之後，寫一個 `<outbox>/<今天>.usage.json`**（`<outbox>` 同步驟 1-0）。
 **欄位與範例去讀 `metrics/MEASURE.md` 的〈sidecar 的格式〉那一節 —— 那是唯一的家，
 這裡不抄。**（2026-08-24 這裡曾經抄過一份，當天就被認出來是同一種副本，撤掉了。）
 

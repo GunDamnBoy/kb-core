@@ -40,6 +40,23 @@ OUT = os.path.join(HERE, "preamble")
 
 ALL = "＊全體＊"
 
+# 只給維護者、不進切片的行。2026-09-08 加：`preamble.md` 有幾節被 `SKILL.md`
+# 引用結論，那幾節底下掛了一行反向指標，提醒「改這裡的結論就要回頭改那裡」。
+# **那一行的讀者是維護者，不是採集員** —— 讓它進切片等於每天送七份沒人會用的內容。
+# 剝的是「整行以這個前綴開頭」，不是關鍵字比對，所以不會誤傷正文。
+MAINTAINER_ONLY_PREFIX = "**↩ 被引用：**"
+
+
+def strip_maintainer_only(text):
+    """去掉只給維護者看的行（見 MAINTAINER_ONLY_PREFIX）。"""
+    keep = [ln for ln in text.split("\n")
+            if not ln.startswith(MAINTAINER_ONLY_PREFIX)]
+    out = "\n".join(keep)
+    # 剝掉之後可能留下連續空行，收斂成一個
+    while "\n\n\n" in out:
+        out = out.replace("\n\n\n", "\n\n")
+    return out
+
 # 節標題（去掉 `## ` 之後的開頭）→ 誰要。值是 ALL，或一串「來源關鍵字」，
 # 關鍵字經 roster 換算成採集員。**新增節而沒列進來，這支會非零退出。**
 SECTION_OWNER = {
@@ -187,7 +204,8 @@ def build(code, secs, owners):
             continue
         parts.append(filter_table(sec, code, owners)
                      if sec.startswith("## 六、來源") else sec)
-    return "\n\n".join(parts).rstrip("\n") + "\n" + ESCAPE
+    body = "\n\n".join(parts).rstrip("\n")
+    return strip_maintainer_only(body) + "\n" + ESCAPE
 
 
 def main():
