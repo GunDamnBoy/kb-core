@@ -50,6 +50,7 @@ import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _repo  # noqa: E402
 from kbcore.repo import write_day_json  # noqa: E402  （_repo 匯入時已把 kb-core 根加進 sys.path）
+from kbcore.series import is_monthly as _is_monthly  # noqa: E402
 REPO = _repo.repo()
 # 同目錄的兄弟模組。舊制是 os.path.join(REPO, "tools")——
 # 那綁在「程式住在資料 repo 底下」這個佈局上，搬家就斷。
@@ -57,9 +58,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch as F                                       # noqa: E402
 
 
-def _is_monthly(d: list) -> bool:
-    """FRED 月頻序列一律以每月 1 號標記。"""
-    return len(d) > 2 and all(x.endswith("-01") for x in d)
+# `_is_monthly` 2026-09-10 搬進 `kbcore/series.py`（見上面的 import）。
+# **這一份本來就是三份實作裡唯一對的那一份** —— 另外兩份（`prep_chart._stale`、
+# `checks/chart.py` 的 `series_freshness`）只看末日那一筆，
+# 於是 2026-09-01 那天的日頻序列被當成月頻。搬家是為了讓那兩份 import 得到它，
+# 名字保留是因為這個檔內部有四處在用。
 
 
 def _shift_months(day: str, n: int) -> str:

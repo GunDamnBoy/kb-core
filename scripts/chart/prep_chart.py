@@ -40,6 +40,8 @@ TPE = dt.timezone(dt.timedelta(hours=8))
 # （2026-08-23 這個坑在 houseview_weekly.py 上踩過一次。）
 KBCORE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SIB = os.path.dirname(KBCORE)
+sys.path.insert(0, KBCORE)
+from kbcore.series import is_monthly  # noqa: E402
 WD = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 ZH = ["一", "二", "三", "四", "五", "六", "日"]
 
@@ -47,6 +49,100 @@ ZH = ["一", "二", "三", "四", "五", "六", "日"]
 def sib(name):
     p = os.path.join(SIB, name)
     return p if os.path.isdir(p) else os.path.expanduser("~/" + name)
+
+
+def _failure_streaks(pre, anchors):
+    """今天失敗的每一條，各自**連續失敗了幾輪**。回一串要印的行。
+
+    ## 為什麼要有
+
+    2026-09-10 那一期的執行報告寫著「`^GSPC` 429 **連續第五天**」——
+    而那個「第五天」是執行者翻前幾期的報告數出來的，**不在任何程式的輸出裡**。
+    prep 只印一個「失敗 1」，連是哪一條都沒說。
+
+    這正是 `anchors.data_paths.streak_note` 記過的形狀：
+    **降級若每天都成功，就不會有人把它升級成問題。** `^GSPC` 每天被 FRED 的
+    `SP500` 與 ETF 代理 `SOXQ` 接住，於是一個持續五天的結構性故障，
+    每天都長得像「今天有一條小失敗」。
+
+    **帳早就在了，缺的只是讀者**：`_prefetch_history.jsonl` 從 2026-09-01 起
+    每輪記一行，裡面就有 `failed`。這支把它讀出來數連續幾輪。
+
+    門檻 `anchors.prefetch.failure_streak_warn` —— **這裡不抄數字**。
+    """
+    failed = pre.get("failed") or {}
+    if not failed:
+        return []
+    hi = ((anchors or {}).get("prefetch") or {}).get("failure_streak_warn") or 3
+    rows = []
+    try:
+        path = os.path.join(sib("chart-of-the-day"), "data", "_prefetch_history.jsonl")
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        rows.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass                 # 壞行跳過，不讓一行壞掉整本帳讀不出來
+    except Exception:                        # noqa: BLE001
+        rows = []                            # 沒有帳就只印今天這一次，不要靜靜不印
+    since = rows[0].get("run", "")[:10] if rows else ""
+    out = [f"　**取數失敗 {len(failed)} 條**（連續輪數取自 `_prefetch_history.jsonl`，"
+           f"帳從 {since or '—'} 起）："]
+    for sid in sorted(failed):
+        streak = 0
+        for r in reversed(rows):
+            if sid in (r.get("failed") or []):
+                streak += 1
+            else:
+                break
+        # **數到帳的第一行就停了＝這是下界，不是答案。** 帳從 2026-09-01 才開始記，
+        # 在那之前失敗了幾輪這裡答不出來 —— 而「10」與「至少 10」是兩個不同的陳述。
+        floor = "（帳只到這裡，所以這是**下界**）" if rows and streak == len(rows) else ""
+        if streak >= hi:
+            head = (f"**連續 {streak} 輪**{floor} —— 已達 {hi} 輪門檻。"
+                    "每天都被代理接住不代表它好了：照 `anchors.data_paths.streak_note`，"
+                    "在 `about.run` 具名寫一句，並判斷要不要改登錄")
+        elif streak:
+            head = f"連續 {streak} 輪{floor}"
+        else:
+            head = "（帳上查不到連續紀錄——今天第一次失敗，或那幾輪根本沒跑）"
+        out.append(f"　　{sid:<14}{head}")
+        out.append(f"　　　　{str(failed[sid]).splitlines()[0][:100]}")
+    return out
+
+
+def _cadence(s):
+    """這條序列是不是月頻。回 `(monthly, how)`，`how` 是這個答案哪來的。
+
+    **`how` 是這個函式存在的一半理由。** 2026-09-10 那次之所以難看見，
+    正是因為判定與判定的來源在畫面上長得一樣 —— 一個猜出來的「月頻」
+    跟一個量出來的「月頻」印出來一模一樣。所以來源要跟著答案一起走。
+
+    · `status` —— 預抓在取數當下量的（`prefetch.py` 寫進狀態檔的 `monthly`）
+    · `cache`  —— 回頭讀 `data/series/<id>.csv` 的整條日期
+    · `unknown`—— 兩條都拿不到，**當日頻**（嚴的那把尺）
+
+    判準本身在 `kbcore/series.is_monthly`，**這裡不另寫一份**。
+    """
+    if isinstance(s.get("monthly"), bool):
+        return s["monthly"], "status"
+    sid = s.get("id")
+    if sid:
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import fetch as _F
+            d, _v = _F.read_cache(_F.cache_path(sid))
+            if d:
+                return is_monthly(d), "cache"
+        # **`SystemExit` 要一起接。** `fetch.py` 在 import 時就呼叫 `_repo.repo()`，
+        # 沒有 `CHART_REPO` 時它 `sys.exit()` —— 那是 `_repo` 刻意的「大聲失敗」，
+        # 對它的呼叫者是對的，對這裡不是：這裡問的是「有沒有快取可讀」，
+        # 答案「沒有」不該讓整支程式停下來（`selftest_offline` 就在這個情境裡跑）。
+        except (Exception, SystemExit):                  # noqa: BLE001
+            pass                                         # 讀不到快取不是錯誤，往下走
+    return False, "unknown"
 
 
 def _stale(ser, anchors, today):
@@ -67,6 +163,25 @@ def _stale(ser, anchors, today):
     門檻一律從 `anchors.freshness` 讀，日／週／月三套各自判 —— **這裡不抄數字**。
     日頻的交易日換算直接用 `checks.chart._weekdays_after`，
     **不在這裡再寫一份**：兩份實作遲早會漂，而漂的那天 prep 與檢查會給出不同答案。
+
+    ## 月頻怎麼判（2026-09-10 訂正）
+
+    原本是 `last.endswith("-01")` —— **只看末日那一筆**。
+    任何日頻序列每個月都會有一天剛好落在 1 號，那一天它的門檻會從
+    「5 個交易日」鬆成「3 期（約 90 天）」，而畫面上完全看不出來。
+
+    2026-09-10 真的發作：`DCOILBRENTEU` 末日 2026-09-01、落後 7 個交易日，
+    `9 // 30 = 0` 期 —— **它在硬失敗與警示兩堆裡都沒有出現**。
+    那一輪的軌道圖因此改了題，而 `chart_verify` 是全綠的。
+
+    現在的來源優先序，**兩條都看得到整條日期，不再靠猜**：
+
+    1. 預抓寫進狀態檔的 `monthly` 欄（`prefetch.py` 在取數當下量的）。
+    2. 狀態檔沒有那個欄位（舊檔）就回頭讀 `data/series/<id>.csv` 的整條日期。
+
+    兩條都拿不到就**當日頻**並在說明裡標 `頻率未知`。
+    這是刻意的不對稱：判錯成月頻會讓門檻鬆 30 倍、而且安靜，
+    判錯成日頻只會多響一次警示。
     """
     F = (anchors or {}).get("freshness") or {}
     weekly_ids = F.get("weekly_release_series") or {}
@@ -89,7 +204,8 @@ def _stale(ser, anchors, today):
             continue
         gap = (now - ld).days
         sid = s.get("id")
-        if last.endswith("-01"):                          # 月頻以每月 1 號標記
+        monthly, how = _cadence(s)
+        if monthly:
             n, unit = gap // 30, "期（月頻）"
             hi, lo = F.get("monthly_fail_periods", 3), F.get("monthly_warn_periods", 2)
         elif sid in weekly_ids:
@@ -101,10 +217,11 @@ def _stale(ser, anchors, today):
             else:
                 n, unit = gap, "個日曆日"
             hi, lo = F.get("daily_fail_days", 5), F.get("daily_warn_days", 2)
+        tail = "　頻率未知，照日頻判" if how == "unknown" else ""
         if n >= hi:
-            bad.append((s, f"落後 {n} {unit}，≥ 硬失敗門檻 {hi}"))
+            bad.append((s, f"落後 {n} {unit}，≥ 硬失敗門檻 {hi}{tail}"))
         elif n >= lo:
-            warn.append((s, f"落後 {n} {unit}，≥ 警示門檻 {lo}"))
+            warn.append((s, f"落後 {n} {unit}，≥ 警示門檻 {lo}{tail}"))
     bad.sort(key=lambda t: str(t[0].get("last")))
     warn.sort(key=lambda t: str(t[0].get("last")))
     return bad, warn
@@ -273,6 +390,8 @@ def main(argv):
               f"　門檻 {vh}h → **{mark}**")
         print(f"　{pre.get('ok','?')}/{pre.get('requested','?')} 條成功　"
               f"失敗 {len(pre.get('failed') or {})}　跳過 {len(pre.get('skipped') or {})}")
+        for line in _failure_streaks(pre, anchors):
+            print(line)
         hs = (pre.get("handshake") or {}).get("failed") or []
         if hs:
             print(f"　**握手失敗**：{'、'.join(hs)} —— 這幾條今天退回代理或改題，"
@@ -355,10 +474,15 @@ def main(argv):
 
 
 def selftest_offline() -> int:
-    """`_dead()` 的回歸。**四個案例對應它的四條出口**，不連外、不讀預抓狀態檔。
+    """`_dead()` 與 `_stale()` 頻率判定的回歸。不連外、不讀預抓狀態檔。
 
-    第 4 條是這支自檢真正的理由：「今天沒抓它」**不可以**被讀成復活，
+    第 4 條是這支自檢當初的理由：「今天沒抓它」**不可以**被讀成復活，
     否則預抓清單一改，這裡就會噴一堆假的好消息 —— 而假的好消息會讓人把登錄拿掉。
+
+    2026-09-10 加上頻率那一組。**在那之前這支自檢自己就活在那個歧義裡** ——
+    五個案例裡有兩個的 `last` 是 `-01` 結尾（`2026-06-01`、`2026-08-01`），
+    於是它們一直是以「月頻」的門檻在跑，而案例的期望值剛好兩種判法都成立。
+    **一個回歸測試如果它的案例對缺陷不敏感，它就只是在陪跑。**
     """
     a = {"freshness": {"daily_fail_days": 5, "daily_warn_days": 2,
                        "daily_counts_trading_days": True,
@@ -388,6 +512,33 @@ def selftest_offline() -> int:
         if got != want:
             print(f"✗ {label}：得到 {got}、應為 {want}")
             ok = False
+
+    # ── 頻率判定（2026-09-10 加）──────────────────────────────────
+    # **三個案例的 `last` 完全相同，只有頻率不同，而期望值相反。**
+    # 這正是缺陷的形狀：`2026-09-01` 這一天，日頻已經落後 7 個交易日、
+    # 而月頻是 `9 // 30 = 0` 期。舊寫法只看末日字串，兩者分不開。
+    day2 = "2026-09-10"
+    freq_cases = [
+        ("日頻末日落在 1 號 → 硬失敗（這是 2026-09-10 的 DCOILBRENTEU）",
+         {"id": "^D", "last": "2026-09-01", "monthly": False}, "bad"),
+        ("月頻末日落在 1 號 → 兩堆都不進",
+         {"id": "^M", "last": "2026-09-01", "monthly": True}, "none"),
+        ("**狀態檔沒有 monthly、快取也讀不到 → 當日頻**（嚴的那把尺）",
+         {"id": "^UNKNOWN-SERIES", "last": "2026-09-01"}, "bad"),
+    ]
+    for label, s, want in freq_cases:
+        bad, wrn = _stale([s], a, day2)
+        got = "bad" if bad else "warn" if wrn else "none"
+        if got != want:
+            print(f"✗ {label}：得到 {got}、應為 {want}")
+            ok = False
+    # `_cadence` 的來源標示：答案與答案的出處要一起走，見那支的病歷。
+    for s, want in [({"id": "^A", "monthly": True}, "status"),
+                    ({"id": "^UNKNOWN-SERIES"}, "unknown")]:
+        if _cadence(s)[1] != want:
+            print(f"✗ _cadence 來源：{s} 得到 {_cadence(s)[1]}、應為 {want}")
+            ok = False
+
     print("selftest-offline 全部通過 ✓" if ok else "★ selftest-offline 有錯")
     return 0 if ok else 1
 

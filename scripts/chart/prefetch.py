@@ -37,6 +37,7 @@ import fetch as F
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _repo  # noqa: E402
+from kbcore.series import is_monthly  # noqa: E402  （_repo 匯入時已把 kb-core 根加進 sys.path）
 REPO = _repo.repo()
 STATUS = os.path.join(REPO, "data", "_prefetch_status.json")
 # **狀態檔每天被覆寫，所以「某條序列的末日多久跳一次」沒有任何資料可以回答。**
@@ -325,7 +326,13 @@ def main(argv):
             # use_cache=False：預抓的重點就是刷新，讀快取等於什麼都沒做
             s = F.get(ident, use_cache=False)
             last = s["d"][-1] if s.get("d") else "?"
-            ok.append({"id": ident, "n": len(s.get("d") or []), "last": last})
+            # **頻率在這裡量，因為只有這裡拿得到整條日期。**（2026-09-10 加）
+            # 下游的 `prep_chart._stale()` 只收得到 `{id, n, last}`，
+            # 用末日那一筆去猜頻率會在每個月 1 號猜錯一次 ——
+            # 2026-09-10 `DCOILBRENTEU` 就是這樣從硬失敗那一堆消失的。
+            # 判準的家在 `kbcore/series.py`，**這裡不另寫一份**。
+            ok.append({"id": ident, "n": len(s.get("d") or []), "last": last,
+                       "monthly": is_monthly(s.get("d") or [])})
             streak[src] = 0
             if ident in F.BLOCKED:
                 print(f"  ★ {ident} 又通了——Yahoo 可能已解除封鎖，"

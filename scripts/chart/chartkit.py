@@ -232,6 +232,32 @@ def _d(s):
 def _fmt(f):
     return FuncFormatter(lambda v, p: f.format(v))
 
+
+def _end_label(v: float) -> str:
+    """末值標籤的字串。**位數跟著量級走，不是硬寫兩位小數。**（2026-09-10）
+
+    原本是 `f"{last:,.2f}".rstrip("0").rstrip(".")`。對 1 以上的數字它是對的，
+    對小數量級的序列它會把整個標籤吃掉：2026-09-10 的軌道圖畫銅金比
+    （CPER÷GLD），末值 **0.10177 被印成「0.1」** —— 軸刻度是三位小數、
+    `y_fmt` 也寫著 `{:.3f}`，但**末值標籤從來不讀 `y_fmt`**，
+    於是圖上唯一標了數字的地方是那三個字元。
+
+    **不改成直接套 `y_fmt`**，因為 `y_fmt` 是刻度的格式，兩者要的東西不一樣：
+    同一張圖的刻度常寫 `{:.0f}`（軸上不需要小數），而末值標籤正是要那幾位小數 ——
+    2026-09-10 的記憶體圖 `y_fmt` 是 `{:.0f}`，末值標籤卻該印 157.06。
+    套過去會讓那張圖從「157.06」退化成「157」，**修一張、壞四張**。
+
+    規則：補到大約三位有效數字，**下限兩位小數**。
+    所以 **|末值| ≥ 1 的標籤一個字都不會變** —— 這是這次改動的安全性論證，
+    也是 `--selftest-label` 在驗的那一條。
+    """
+    a = abs(v)
+    d = 2
+    if 0 < a < 1:
+        d = min(6, 2 - math.floor(math.log10(a)))
+    s = f"{v:,.{d}f}"
+    return s.rstrip("0").rstrip(".") if "." in s else s
+
 # ---------------------------------------------------------------- PNG / SVG
 NEW_KINDS = ("waterfall", "grouped_bar", "stacked_bar", "pct_stacked_bar",
              "range_area", "heatmap", "gauge")
@@ -585,7 +611,7 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
                         if abs(prev - frac) < 0.06:
                             dy += 12
                     used.append(frac)
-                    tgt.annotate(f"{last:,.2f}".rstrip("0").rstrip("."),
+                    tgt.annotate(_end_label(last),
                                  (x[-1], last), textcoords="offset points",
                                  xytext=(5, dy), fontsize=8.5, color=col,
                                  fontweight="bold")
@@ -618,6 +644,21 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
         _pad(ax, [s for s in ch.series if s.axis != "right"])
         if ax2 is not None:
             _pad(ax2, [s for s in ch.series if s.axis == "right"])
+            # **雙軸圖的末值標籤沒有畫布外的空間可以站。**（2026-09-10）
+            # 標籤畫在最後一點右邊 5pt、在座標區之外；單軸圖右邊是空白邊界，
+            # 放得下，雙軸圖右邊是右軸的刻度與框線，於是標籤壓在框線上 ——
+            # `anchors.known_limits.static_end_label_vs_right_axis` 登錄的
+            # 2026-08-21 圖 3（`415.26` 壓到右軸 `4.90`）就是這一格。
+            #
+            # 修法是在**資料軸**留 4% 的白，把最後一點往左推，而不是動標籤的位置：
+            # 標籤往左移會蓋到自己那條線最近的走勢，那是拿一個看得見的問題
+            # 換一個看不見的問題。
+            #
+            # **只對雙軸圖做** —— 單軸圖本來就放得下，動它等於讓所有既有折線圖
+            # 的橫軸範圍都變一次，而那不解決任何問題。
+            lo_x, hi_x = ax.get_xlim()
+            if hi_x > lo_x:
+                ax.set_xlim(lo_x, hi_x + (hi_x - lo_x) * 0.04)
 
     ax.grid(axis="x", visible=(ch.kind == "scatter"))
     ax.tick_params(length=0)
@@ -1067,3 +1108,34 @@ def echarts_option(ch: Chart) -> dict:
     # 正負值不分色之後，零線是唯一區分正負的視覺元素——兩軌都要有，
     # 否則網頁上的讀者看不出正負的分界，而 PNG 上看得出來。
     return _apply_zero_line(ch, base)
+
+
+def _selftest_label() -> int:
+    """`_end_label()` 的回歸。**不畫圖、不讀檔、不連外。**
+
+    上半組是「|末值| ≥ 1 一個字都不能變」—— 這是 2026-09-10 那次改動的安全性論證，
+    每一筆的期望值都是舊寫法 `f"{v:,.2f}".rstrip("0").rstrip(".")` 當場算出來的。
+    下半組是壞掉的那一半：小數量級的序列。
+    """
+    ok = True
+    unchanged = [157.06, 4.8, 2.58, 0.0, -17.68, 7636.36, 1.0, 26421.41, -0.48]
+    for v in unchanged:
+        old = f"{v:,.2f}".rstrip("0").rstrip(".") if "." in f"{v:,.2f}" else f"{v:,.2f}"
+        if _end_label(v) != old:
+            print(f"✗ |v| ≥ 1 應該不變：{v} 舊 {old}、新 {_end_label(v)}")
+            ok = False
+    fixed = [(0.10177, "0.102"), (0.0074, "0.0074"), (0.5, "0.5"),
+             (-0.10177, "-0.102"), (0.000012345, "0.000012")]
+    for v, want in fixed:
+        if _end_label(v) != want:
+            print(f"✗ 小數量級：{v} 得到 {_end_label(v)}、應為 {want}")
+            ok = False
+    print("selftest-label 全部通過 ✓" if ok else "★ selftest-label 有錯")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    import sys as _s
+    if "--selftest-label" in _s.argv[1:]:
+        _s.exit(_selftest_label())
+    _s.exit("chartkit 是函式庫。目前唯一的入口是 --selftest-label。")

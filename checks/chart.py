@@ -34,6 +34,7 @@ from kbcore.check import Check, fail, ok, register, skipped, warn
 # 純函式（就是 json.dumps 的一個固定寫法），不做 IO——**檢查不做 IO 這條沒有破**。
 # 用它是因為「日檔長什麼樣」只有一個家，逐圖歸因若自己另寫一種序列化就不可比。
 from kbcore.repo import day_json
+from kbcore.series import is_monthly
 
 TPE = dt.timezone(dt.timedelta(hours=8))
 
@@ -420,21 +421,26 @@ def _freshness(p):
             #
             # 兩種形狀都認，因為 `pts` 那條路是給手工序列與未來圖型留的；
             # 但 `dates` 擺在前面，那才是每天實際走的那一條。
-            last = None
+            seq = []
             dates = s.get("dates")
             if isinstance(dates, list):
-                for d in dates:
-                    if isinstance(d, str) and len(d) >= 10:
-                        last = d[:10] if last is None or d[:10] > last else last
+                seq = [d[:10] for d in dates if isinstance(d, str) and len(d) >= 10]
             else:
                 pts = s.get("data") or s.get("points") or []
                 for pt in pts:
                     d = pt[0] if isinstance(pt, (list, tuple)) else pt.get("d") or pt.get("date")
                     if isinstance(d, str) and len(d) >= 10:
-                        last = d[:10] if last is None or d[:10] > last else last
+                        seq.append(d[:10])
+            last = max(seq) if seq else None
             if not last:
                 continue
-            monthly = last.endswith("-01")
+            # **月頻要看整條序列，不是看末日那一筆**（2026-09-10 訂正）。
+            # 原本是 `last.endswith("-01")` —— 任何日頻序列每個月都有一天落在 1 號，
+            # 那一天它的門檻會從「5 個交易日」鬆成「3 期（約 90 天）」。
+            # 2026-09-10 實際發作：`DCOILBRENTEU` 末日 2026-09-01、落後 7 個交易日，
+            # 而 `9 // 30 = 0` 期，這條檢查與 `prep_chart` 同時判它沒事。
+            # 判準的家在 `kbcore/series.py`，`build_series` 用的一直是那一份。
+            monthly = is_monthly(seq)
             gap_days = (now - dt.date.fromisoformat(last)).days
             tag = f"{c.get('slug', '?')}／{s.get('name', '?')} 末日 {last}"
             sid = spec_id.get(s.get("name"))
@@ -488,7 +494,15 @@ register(Check(
         "**第三種序列形狀**——2026-08-21 之前它只認 `data`／`points`，而真實產出是 `dates`／`values`，"
         "於是它對著 13 天封存全綠、一個數字都沒讀到。fixture 現在用真實形狀，但**再冒出第四種鍵名，"
         "它一樣會安靜地全部跳過**；形狀變了要回來改這裡",
-        "月頻的判準是「末日以每月 1 號標記」，**日頻資料剛好落在 1 號會被誤判成月頻**",
+        # ~~「月頻的判準是『末日以每月 1 號標記』，**日頻資料剛好落在 1 號會被誤判成月頻**」~~
+        # **2026-09-10 撤回：已經修掉，不再是盲點。** 判準改成看整條序列
+        # （`kbcore/series.is_monthly`）。留這一行是因為它示範了一個更難看見的形狀：
+        # **這個缺陷被正確地登錄成 blind_to，然後就以「已知限制」的身分活了下來** ——
+        # 登錄讓它不再意外，不讓它不再發生，而它真的在 2026-09-10 發作了
+        # （`DCOILBRENTEU` 末日 2026-09-01、落後 7 個交易日，兩側同時判它沒事）。
+        # 寫 blind_to 的時候要順手問一句：**這一條是「驗不到」還是「還沒修」？**
+        "**點數少於 3 的序列一律當日頻**（`kbcore/series.MIN_POINTS`）——"
+        "分不出頻率時寧可用嚴的那把尺，但真的只有兩個點的月頻序列會被誤判成日頻",
         "序列是新的但值是錯的",
         "末日很新但中間有缺口",
         "已發布的舊日期檔",
