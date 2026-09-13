@@ -485,6 +485,23 @@ def write_draft(digest, outbox, digest_dir, repo):
     d["date"] = (d.get("range") or ["", ""])[1]
     if not d["date"]:
         return ["  草稿沒寫：digest 沒有 range，**取不到週日就沒有檔名**"]
+    # **草稿一定要落在這一套自己的 outbox 子目錄（2026-09-14 加）。**
+    # 七套共用 `~/outbox`，而**草稿檔名只帶日期不帶系統**：這一套的
+    # `2026-09-13.draft.json` 跟 advisory 的 `2026-09-13.draft.json` 同名。
+    # advisory 的回執就住在 `~/outbox` 根目錄，所以把 `--outbox` 少給一層，
+    # 寫出去的是「一個放在別套收件區、而且跟它自己的草稿同名」的檔。
+    #
+    # 2026-09-14 實際發生過：`--outbox ~/outbox` 把 W37 的草稿寫進根目錄。
+    # 那次沒有被誤取，但**那是運氣** —— advisory 當天的發布輪次剛好已經跑完
+    # （回執停在 02:48Z，誤置發生在 16:49Z）。下一次不會這麼剛好。
+    #
+    # 這裡**拒絕而不是出聲**：一行警告在幾十行輸出裡看不見，
+    # 而這個錯的後果是跨系統污染，不是自己這一套變醜。
+    if os.path.basename(os.path.normpath(outbox)) != "research":
+        return [f"  **草稿沒寫：`--outbox` 指向 `{outbox}`，而它不是這一套的收件區。**",
+                "  七套共用 `~/outbox`，草稿檔名只帶日期不帶系統 ——"
+                " 寫進別套的目錄會跟那一套的草稿同名。",
+                "  要的是 `~/outbox/research`（argparse 的預設就是它）。"]
     os.makedirs(outbox, exist_ok=True)
     f = os.path.join(outbox, f"{d['date']}.draft.json")
     tmp = f + ".tmp"

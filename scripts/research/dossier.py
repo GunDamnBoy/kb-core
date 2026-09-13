@@ -34,8 +34,34 @@ A = json.load(open(os.path.join(_KB, "research", "anchors.json"), encoding="utf-
 ADV = json.load(open(os.path.join(_KB, "advisory", "anchors.json"), encoding="utf-8"))
 
 # 揭露頁佔內文 10%，而它對撰稿沒有任何用處。**剃掉它是為了讓目錄短，不是為了省那 10%。**
+#
+# **2026-09-14：這裡曾經有一條 `Global Investment Research`，而那是高盛印在
+# 每一頁的頁尾，不是揭露頁標記。** 它一條從卷宗目錄裡靜默刪掉了 **153 頁**，
+# 全部是高盛（高盛總共掉 214 頁，花旗 15、野村 13、JPM 6）。
+# 實例：農業分析 13 頁內文只留 5 頁，被剃的 8 頁裡有 7 頁是被它打中的，
+# 而那 7 頁裝著三個風險中兩個的全部量化憑據。
+#
+# 它能安靜一個月的原因很具體：**卷宗從來沒有印出它剃掉幾頁。**
+# `extract.py` 的檔頭寫著「一個剃太多的清洗器，跟一個乾淨的文件，輸出長得一樣」——
+# 這支沒有繼承那條紀律，所以下面的目錄標頭現在會把剃掉的頁數印出來。
+#
+# 被歸因錯過一次：當輪子代理猜是「首行不是標題／以 Exhibit 開頭」，
+# 那個猜測被寫進 W37 的 notes 發布出去了。**真因是一個券商專屬的字串
+# 混進了一張宣稱通用的表。** 換下來的這幾條全部取自實測樣本：
+# 153 頁中 25 頁是真法遵頁，新規則抓 25/25，**誤殺內文 0/128**。
 DISC = re.compile(r"Disclosure Appendix|Reg AC|analyst certification|"
-                  r"Distribution of ratings|Global Investment Research", re.I)
+                  r"Distribution of ratings|"
+                  # ↓ 高盛真正的法遵頁開頭語（實測，不是預防性地想出來的）
+                  r"Differing Levels of Service|"
+                  r"Rating Distribution\s+Investment Banking|"
+                  r"conducts a global full-service, integrated investment banking|"
+                  r"Certain transactions, including those involving futures, options|"
+                  r"options and futures disclosure documents|"
+                  r"Additional disclosures required under the laws|"
+                  # **不是裸的 `Global Investment Research`** —— 那是頁尾。
+                  # 要連著 `had investment ratings` 才是評等分佈那一頁。
+                  r"Global Investment Research had investment ratings|"
+                  r"views attributed to third party presenters", re.I)
 
 CH = json.load(open(os.path.join(_KB, "chart", "anchors.json"), encoding="utf-8"))["kinds"]
 
@@ -104,9 +130,15 @@ def build(d):
               "**兩份讀起來哪一份是通順的，你一眼看得出來，偵測程式看不出來。**",
               "", "```", (d.get("page_one_columns") or "").rstrip(), "```", "",
               "---", ""]
-    L += [f"## 內文目錄（{len(keep)} 頁，已剃除揭露頁；"
-         f"合計 {sum(len(p) for _, p in keep):,} 字元）", "",
-         "**要哪一頁就取哪一頁，不要整份載入。** 下面每一行是那一頁的第一句可讀的話。", ""]
+    # **剃掉多少要印出來，跟 `extract.py` 同一條紀律。**
+    # 2026-09-14 之前這裡只印保留了幾頁 —— 於是一條把 153 頁誤判成揭露頁的規則
+    # 安靜了一個月，而卷宗讀起來完全正常。**剃太多與文件本來就短，長得一樣。**
+    cut = len(body) - len(keep)
+    L += [f"## 內文目錄（內文 {len(body)} 頁，**剃除揭露頁 {cut} 頁**，"
+         f"列出 {len(keep)} 頁；合計 {sum(len(p) for _, p in keep):,} 字元）", "",
+         "**要哪一頁就取哪一頁，不要整份載入。** 下面每一行是那一頁的第一句可讀的話。", "",
+         "剃除的判準是法遵頁的開頭語。**如果你取頁時發現目錄少了你需要的那一頁，"
+         "那就是這條規則又誤判了 —— 直接取那個 `body[i]`，並在回報裡具名說出來。**", ""]
     for i, pg in keep:
         L.append(f"- **第 {i + 2} 頁**（`body[{i}]`，{len(pg):,} 字元）　{head(pg)}")
     # **這一行不能寫死絕對路徑。** 卷宗會活過產生它的那個工作階段，而
