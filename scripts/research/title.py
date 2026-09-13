@@ -21,17 +21,23 @@
 
 ## 三家券商，三個來源 —— 這不是調參，是三家的匯出器不一樣
 
-先量過再接（27 份全部量過，見 `--selftest`）：
+先量過再接（39 份全部量過，見 `--selftest`）：
 
 | 券商 | 用什麼 | 為什麼不是別的 |
 |---|---|---|
 | Nomura | 第一頁字級座標（pdfplumber） | **`/Title` 是空的**，檔名是流水號 —— 另外兩條路都沒有東西 |
 | Citi | `/Title` | 它本來就帶正確標點（`Oil Monitor: At visible draw rates…`），且 5 份全部未觸上限 |
 | Goldman Sachs | `/Title` ＋ 用檔名還原冒號；觸到上限時再用第一頁補尾 | 它的 `/Title` 把所有冒號丟掉，而**檔名正好把冒號寫成 `_`**；`/Title` 在第 139 字元硬截（13 份中 2 份中招），那 2 份的完整標題在第一頁 |
+| JPM | 第一頁座標，**副標錨在標題的左緣** | `/Title` 沒量過所以不用；它有兩種版型，固定欄寬比例對其中一種會**遞補出部門名當標題**（見來源 4 的檔頭） |
+| Citi Velocity（網頁匯出） | 第一頁座標 | **`/Title` 是 `Citi Velocity`** —— 平台名不是報告名。走 `/Title` 會綠著上線然後在公開頁面上叫錯名字 |
 
-**沒有一條規則對三家都成立，而這是三家匯出器的性質，不是門檻沒調好。**
-把它寫成一張對照表，比寫成一條「通用」規則誠實 —— 通用規則會在第四家出現時
+**沒有一條規則對五種都成立，而這是各家匯出器的性質，不是門檻沒調好。**
+把它寫成一張對照表，比寫成一條「通用」規則誠實 —— 通用規則會在下一家出現時
 安靜地給出一個看起來很正常的錯答案。
+
+> 第四、第五條（2026-09-14 加）本身就是這句話的例子：JPM 進來時我先試了
+> **把野村那條的固定欄寬比例直接套用** —— 11 份裡 2 份錯；濾掉字距浮水印之後
+> **錯的變成 5 份**。比例不是參數沒調好，是**量錯的維度**。錨到左緣才對。
 
 ## 試過而放棄的：一條通用的「裁切第一頁大字塊」
 
@@ -293,6 +299,118 @@ def from_page_one_nomura(pdf_path: str, side_frac=0.68, gap_mult=1.4):
     return clean(g[0]["text"]), (clean(g[1]["text"]) if len(g) > 1 else None)
 
 
+# ── 來源 4：第一頁座標，左欄切齊 ── JPM ／ Citi Velocity ──────────────
+# 野村那支（來源 3）用「字級 ＋ 垂直間距」分組，切在固定的 0.68W。
+# **那個固定比例對 JPM 不成立**，而且它失敗的方式會給出一個看起來很正常的標題：
+#
+# | 版型 | 標題 x0 | 右欄 x0 | 0.68W=416 切得到嗎 |
+# |---|---|---|---|
+# | A（`J P M O R G A N` 開頭，9/11 份） | 85 | ~340 | **切不掉** → 部門名遞補成標題 |
+# | B（作者信箱開頭，雙欄，2/11 份） | 45 | ~230 | **切不掉** → 正文碎片黏進副標 |
+#
+# 2026-09-14 實測：固定比例那一版，11 份裡 2 份錯（`Credit Market Outlook` 變成
+# `J P M O R G A N: …`、`US: Little room for improvement` 尾巴黏上
+# `: A surprising and underappreciated`）。把浮水印濾掉之後**錯的變成 5 份** ——
+# 拿掉字距浮水印只是讓右欄的部門名遞補上來。**比例本身就是錯的維度。**
+#
+# 改成錨在 x0：**副標必須與標題切齊同一個左緣**（±3pt）。部門名、分析師欄、
+# 第二欄正文的 x0 都不同，這一條把它們全部排除，而且不必知道欄寬是多少。
+# 11 份全部重現人工讀出來的標題（見 `title_fixture.json`）。
+#
+# 另外兩個濾除，兩個都是量出來的，不是預防性的：
+#   * `•` 開頭的行 —— JPM 的 bullet 是 13.5pt、副標是 13.0pt，**字級分不開**，
+#     只有行首符號分得開。
+#   * 字距版 `J P M O R G A N` —— 它的字級跟標題同級，不濾掉會變成標題本身。
+_BULLET = "•"
+_JPM_WORDMARK = re.compile(r"^(jpmorgan|jpmorganchasebankna)$")
+_BOILER = re.compile(r"^(see page \d+|this document is being provided)", re.I)
+# Velocity 匯出的頁尾印著來源網址，那是它跟 Citi Research PDF 最穩定的差別
+VELOCITY_RX = re.compile(r"citivelocity\.com", re.I)
+
+
+def _left_title_block(pdf_path, col_gap=40.0, x_tol=3.0, gap_mult=4.2):
+    """第一頁：最大字級那一塊，加上與它左緣切齊的次級那一塊。
+
+    回 (標題, 副標)；副標可能是 None（`US Weekly Prospects` 那種只有系列名的）。
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        return None, None
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if not pdf.pages:
+                return None, None
+            words = pdf.pages[0].extract_words(extra_attrs=["size"])
+    except Exception:
+        return None, None
+    if not words:
+        return None, None
+
+    rows = {}
+    for w in words:
+        rows.setdefault(round(w["top"], 1), []).append(w)
+    seq = []
+    for top in sorted(rows):
+        g = sorted(rows[top], key=lambda w: w["x0"])
+        col = [g[0]]                      # 行內水平間隙 > col_gap 就斷欄，只留第一欄
+        for a, b in zip(g, g[1:]):
+            if b["x0"] - a["x1"] > col_gap:
+                break
+            col.append(b)
+        txt = " ".join(w["text"] for w in col)
+        if txt.lstrip().startswith(_BULLET):
+            continue
+        if _JPM_WORDMARK.match(re.sub(r"[^a-z]", "", txt.lower())):
+            continue
+        if _BOILER.match(txt.strip()):
+            continue
+        seq.append({"top": top, "x0": round(col[0]["x0"], 1),
+                    "size": max(round(w["size"], 1) for w in col), "text": txt})
+    if not seq:
+        return None, None
+
+    mx = max(r["size"] for r in seq)
+    tit = [r for r in seq if abs(r["size"] - mx) < 0.6]
+    x0, last = tit[0]["x0"], tit[-1]["top"]
+    title = " ".join(r["text"] for r in tit)
+
+    # 內文字級 ＝ 最常見的那一級（沿用野村那支的算法，理由見它的 docstring）
+    freq = {}
+    for r in seq:
+        freq[round(r["size"])] = freq.get(round(r["size"]), 0) + 1
+    body = max(freq, key=lambda k: (freq[k], k))
+
+    head = []
+    for r in seq:
+        if r["top"] <= last:
+            continue
+        if abs(r["x0"] - x0) > x_tol:              # ← 沒切齊的一律不是副標
+            continue
+        if r["size"] <= body + 1.5 or r["size"] >= mx - 0.6:
+            break
+        if r["top"] - last > r["size"] * gap_mult:
+            break
+        head.append(r["text"])
+        last = r["top"]
+    return clean(title), (clean(" ".join(head)) or None)
+
+
+def from_page_one_jpm(pdf_path):
+    """JPM：系列名／標題 ＋ 一句話主張。**兩種版型同一條路**（11 份實測）。"""
+    return _left_title_block(pdf_path)
+
+
+def from_page_one_velocity(pdf_path):
+    """Citi Velocity 網頁匯出：`/Title` 是平台名，真標題在第一頁。
+
+    **這一條只量過 1 份**（`CETS: a syllabus for the final third of 2026`）。
+    n=1 不是量過，是碰巧對了一次 —— 第二份 Velocity 進來時要重新驗，
+    不要因為這裡已經有一條就當它成立。
+    """
+    return _left_title_block(pdf_path)
+
+
 # ── 對照表 ──────────────────────────────────────────────────────────
 def resolve(broker, source_file, page_one, pdf_path=None):
     """回 `{"title", "title_source", "title_confident", "title_note"}`。
@@ -307,6 +425,18 @@ def resolve(broker, source_file, page_one, pdf_path=None):
     if broker == "Citi":
         if not pdf_path or not os.path.exists(pdf_path):
             fallback["title_note"] = "花旗要 PDF 中繼資料，而原檔不在手上"
+            return fallback
+        # **Velocity 匯出要先攔下來，順序不能反。** 它的 `/Title` 是
+        # `Citi Velocity`（平台名），而 `title_resolved` 只驗標題**從哪裡來**、
+        # 不驗內容 —— 走 `pdf_meta` 那條路它會**綠著上線，然後在公開頁面上
+        # 叫「Citi Velocity」**。這正是本支檔頭第三種壞法（「檔名只有系列名」）
+        # 的同一個形狀：一個量錯維度的欄位，壞掉的時候跟正常輸出長得一樣。
+        if VELOCITY_RX.search(page_one or ""):
+            t, _ = from_page_one_velocity(pdf_path)
+            if t:
+                return {"title": t, "title_source": "page_one", "title_confident": True,
+                        "title_note": "Citi Velocity 匯出：`/Title` 是平台名，標題取自第一頁"}
+            fallback["title_note"] = "Citi Velocity 匯出，但第一頁切不出標題塊"
             return fallback
         t, complete = meta_title(pdf_path)
         if not t:
@@ -352,6 +482,20 @@ def resolve(broker, source_file, page_one, pdf_path=None):
                 "title_confident": bool(head), "title_note":
                 "" if head else "只切到系列名，沒有標題行"}
 
+    if broker == "JPM":
+        # `/Title` 這條對 JPM 沒有量過，所以不拿它頂替 —— 檔頭那張表的第二、
+        # 第三種壞法都是「另一條沒驗過的路給出一個看起來正常的答案」。
+        if not pdf_path or not os.path.exists(pdf_path):
+            fallback["title_note"] = "JPM 要第一頁座標，而原檔不在手上"
+            return fallback
+        series, head = from_page_one_jpm(pdf_path)
+        if not series:
+            fallback["title_note"] = "JPM 第一頁切不出標題塊"
+            return fallback
+        return {"title": join([series, head]), "title_source": "page_one",
+                "title_confident": bool(head), "title_note":
+                "" if head else "只切到系列名，沒有標題行"}
+
     fallback["title_note"] = f"沒有 {broker!r} 的取法 —— **新券商要先量過再加進對照表**"
     return fallback
 
@@ -376,9 +520,23 @@ def selftest(fixture, extracted_dir, inbox_dir, filed_dir=None):
         # 讓帶浮水印的原文留在那裡累積跟 `anchors.privacy` 是矛盾的）。
         # 只找 inbox 的話，這個驗證集會隨著封存一份一份地變成「沒有原檔」——
         # **而它退化的樣子是「通過的份數變少」，不是「檢查壞了」。**
-        pdf = os.path.join(inbox_dir, d.get("source_file") or "")
-        if not os.path.exists(pdf) and filed_dir and d.get("archived_to"):
+        # **`archived_to` 優先於 inbox，順序不能反（2026-09-14 修）。**
+        # 舊順序是「先找 inbox，找不到才去 filed」，而那**假設了檔名唯一**。
+        # 花旗的週刊每期都叫 `US Economics Weekly.pdf`：8/21 那份已封存、
+        # 8/28 那份還在 inbox，於是驗證集拿 **8/28 的 PDF 去對 8/21 的期望值**，
+        # 報成「標題抽錯了」。兩份存起來的標題其實都是對的。
+        #
+        # `archived_to` 是**這一筆紀錄自己的事實**（我的原檔在這裡），
+        # 而 inbox 那條路只是拿檔名去猜。有事實就不要用猜的。
+        #
+        # 這個 bug 一直在，只是被預設路徑蓋住了：不給 `--inbox` 時它只看得到
+        # `filed/`，於是永遠走對。**指定了正確的路徑才讓它現形** ——
+        # 一個「用預設值跑就是綠的」檢查，綠的原因可能是它沒在看。
+        pdf = ""
+        if filed_dir and d.get("archived_to"):
             pdf = os.path.join(filed_dir, d["archived_to"])
+        if not os.path.exists(pdf):
+            pdf = os.path.join(inbox_dir, d.get("source_file") or "")
         got = resolve(d.get("broker"), d.get("source_file"), d.get("page_one"), pdf)
         if norm(got["title"]) != norm(want):
             bad.append(f"{slug}\n     期望 {want}\n     得到 {got['title']}"

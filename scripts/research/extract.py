@@ -78,6 +78,13 @@ BROKERS = [
     ("Nomura",        re.compile(r"\bNomura\b", re.I)),
     ("Goldman Sachs", re.compile(r"\bGoldman\s+Sachs\b", re.I)),
     ("Citi",          re.compile(r"\bCiti\s*(?:Research|group)\b", re.I)),
+    # **兩種寫法都要收，而漏掉的那一種會讓整家認不出來。** JPM 第一頁的商標是
+    # 逐字母加空白的 `J P M O R G A N` —— 任何 `\bJPMorgan\b` 形態對它得分是 **0**，
+    # 跟野村那條靠頁尾字串的舊規則是同一個形狀的錯：**規則量的維度跟紙上印的不一樣。**
+    # 2026-09-14 實測 33 份：JPM 自家命中 114–999 次、餘裕全部 ∞；
+    # 其餘 22 份的歸屬**一份都沒有改變**，非 JPM 報告提到 J.P. Morgan 最多 2 次
+    # （低於 `min_hits=3`）。
+    ("JPM",           re.compile(r"\bJ\.?\s?P\.?\s?Morgan\w*\b|J\s+P\s+M\s+O\s+R\s+G\s+A\s+N", re.I)),
 ]
 DATE_RX = [
     (re.compile(r"\b(\d{1,2}\s+[A-Z][a-z]{2,8}\s+20\d\d)\b"), "%d %B %Y"),
@@ -430,6 +437,19 @@ def extract(path, engine=None):
                 break
             except ValueError:
                 pass
+    # Citi Velocity 網頁匯出**沒有絕對日期** —— 第一頁只寫「5 hours ago」。
+    # 退而取頁尾列印時戳（`2026/9/8 9:36 上午`）。**那是匯出日不是報告日**，
+    # 所以記進 `date_note` 讓它在下游看得見：一個估出來的日期跟一個抽出來的日期
+    # 在欄位裡長得一模一樣，不標記就沒有人分得出來。
+    date_note = ""
+    if not date and title.VELOCITY_RX.search(id_src):
+        m = re.search(r"\b(20\d\d)/(\d{1,2})/(\d{1,2})\b", p1_raw)
+        if m:
+            try:
+                date = dt.date(*map(int, m.groups())).isoformat()
+                date_note = "Citi Velocity 匯出：第一頁只有相對時間，此日期取自頁尾列印時戳（**匯出日，非報告日**）"
+            except ValueError:
+                pass
     # **`product` 與 `slug` 刻意還是從檔名來，即使檔名是 `1317180`。**
     # slug 是這一套的身分：`dossier` 的條目 id 是 `{slug}-{n}`、圖檔名、
     # `digest/*.json` 的鍵、已發布的 `data/*.json` 全部指著它。
@@ -437,6 +457,19 @@ def extract(path, engine=None):
     # 而且 `build_index.merge` 對新 slug 的反應是「新增」而不是「更新」——
     # 重跑一次抽取就會多出五筆孤兒。標題可以改，身分不行。
     product = base.split("_")[0].strip() if "_" in base else base
+    if broker == "JPM":
+        # **「第一個底線之前」對 JPM 整條失效。** 那條規則量的是「macOS 把 `:` 存成 `_`」，
+        # 而 JPM 的匯出檔名是 `JPM_<系列被截斷>_<日期>_<流水號>.pdf` ——
+        # 第一個底線是**分隔符不是冒號**，於是 11 份全部取到 `product='JPM'`，
+        # slug 塌成 `<日期>-jpm-jpm`，同一天的兩份就撞號。
+        # 2026-09-14 那一輪實際有 5 份因此沒有寫入。
+        #
+        # 改取結尾的文件流水號 —— 跟野村同一條路（`1317180`）：**身分不是顯示**，
+        # 標題照樣由 `title.py` 從第一頁取。流水號唯一，所以撞不了號。
+        # 取不到流水號時退回整個檔名（長但唯一），**不退回 `JPM`** ——
+        # 那會把撞號變回沉默的覆蓋。
+        m = re.search(r"_(\d{6,})$", base)
+        product = m.group(1) if m else base
     issue = (re.search(r"ISSUE\s+(\d+)", p1_raw) or [None, None])[1]
     claimed = (re.search(r"(\d+)\s+pages\b", p1_raw) or [None, None])[1]
     # 真實標題：見 title.py 的檔頭（三家券商三個來源，認不出來就回檔名並標記）
@@ -445,6 +478,7 @@ def extract(path, engine=None):
     return {
         "slug": f"{date or 'undated'}-{slugify(broker or 'unknown')}-{slugify(product)}",
         "broker": broker, "broker_tally": tally, "product": product, "date": date,
+        "date_note": date_note,
         "title": tt["title"], "title_source": tt["title_source"],
         "title_confident": tt["title_confident"], "title_note": tt["title_note"],
         "source_file": os.path.basename(path),
