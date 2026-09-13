@@ -42,9 +42,10 @@ budget:
 `quality{completeness,status,speakerNote,timestampNote}`／`takeaways`／`sections`／`quotes`，
 以及只在觸發下界例外時出現的 **`lowerBoundException`**。
 
-- **下界例外是欄位，不是回報裡的一句話。** `chars` 低於下界時該集要帶
-  `lowerBoundException`（一句話理由），**否則 `chars_in_tier` 直接 FAIL、擋掉整輪發布**
-  —— 閘門讀不到回報。這與上一條是同一個形狀的反面：**那兩個缺了安靜放行，這個缺了硬擋。**
+- **下界例外是欄位，不是回報裡的一句話**，但**先確定它真的是例外**。`chars` 低於下界時
+  有三條路：素材撐不起 → 帶 `lowerBoundException`（一句話理由）；**素材充足只是寫少了 → 補內容**；
+  都不是 → 停下來問。**閘門只驗欄位在不在、不驗理由真假，所以填一句假的例外會安靜通過並永久留在日檔**
+  —— 那比漏填更糟，漏填會 FAIL、看得見。缺欄時 `chars_in_tier` 直接 FAIL、擋掉整輪發布。
 
 - **`trackId` 與 `minutes` 都是閘門的必要輸入**，而漏掉的後果不一樣，所以分開講：
   **`minutes` 缺了 `chars_in_tier` 直接 FAIL**（看得見）；

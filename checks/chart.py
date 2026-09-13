@@ -403,7 +403,16 @@ def _freshness(p):
     # 資料沒壞，是門檻的形狀不對。識別靠 series_spec 的 id：序列名稱是寫給讀者看的。
     weekly_ids = F.get("weekly_release_series") or {}
     since_wk = F.get("weekly_release_from") or "9999-12-31"
-    weekly_on = bool(weekly_ids) and p["doc"].get("date", "") >= since_wk
+    # **逐條的生效日優先於全域那一個**（2026-09-13，理由在
+    # `anchors.freshness.weekly_release_series_from_source`）：清單是逐條長出來的，
+    # 而全域日期是第一條上線的日子。沿用它等於回頭把新登錄的那一條套到
+    # 08-22 以後每一份封存上，於是舊期的警示會在回測時安靜消失。
+    since_by_id = F.get("weekly_release_series_from") or {}
+    doc_date = p["doc"].get("date", "")
+
+    def _weekly_on(sid):
+        return bool(sid) and sid in weekly_ids and \
+            doc_date >= (since_by_id.get(sid) or since_wk)
     # 日頻改以交易日計，帶生效日；生效日之前的封存維持日曆日判定（舊期不回溯）。
     trading_on = bool(F.get("daily_counts_trading_days")) and \
         p["doc"].get("date", "") >= (F.get("trading_days_from") or "9999-12-31")
@@ -444,7 +453,7 @@ def _freshness(p):
             gap_days = (now - dt.date.fromisoformat(last)).days
             tag = f"{c.get('slug', '?')}／{s.get('name', '?')} 末日 {last}"
             sid = spec_id.get(s.get("name"))
-            if weekly_on and sid in weekly_ids and not monthly:
+            if _weekly_on(sid) and not monthly:
                 periods = gap_days // 7
                 if periods >= F["weekly_fail_periods"]:
                     wk_bad.append(f"{tag}（{sid}，週頻發布，落後 {periods} 期）")
@@ -490,6 +499,7 @@ register(Check(
         "**週頻發布只認得出 series_spec 裡有 id 的序列**——手工序列（沒有 spec）會回頭走日頻門檻，"
         "而週頻那兩條若被寫成手工序列就會照舊硬失敗",
         "**這份週頻清單是人工登錄的**——FRED 改了某條的發布頻率，這裡不會自己知道",
+        "**週頻登錄是逐條帶生效日的**（`weekly_release_series_from`），所以同一條序列在生效日前後會得到不同判定。回測跨過那個日期的舊期時，看到的是那一期當時的尺，不是現在的尺",
         "**只看 timeseries 的 `series`**——scatter 的 pts、heatmap 的 matrix 沒有日期軸，這條看不到它們",
         "**第三種序列形狀**——2026-08-21 之前它只認 `data`／`points`，而真實產出是 `dates`／`values`，"
         "於是它對著 13 天封存全綠、一個數字都沒讀到。fixture 現在用真實形狀，但**再冒出第四種鍵名，"

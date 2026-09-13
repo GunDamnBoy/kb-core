@@ -714,18 +714,26 @@ def describe_divergence(local, origin):
 def check_worktree():
     """repo 有沒有**非 `data/` 的未提交變更**——它們會擋住 publish 的 rebase。
 
-    **這是同一件事第三次發生之後才加的檢查**（2026-09-03）：
+    **這是同一件事第三次發生之後才加的檢查**（2026-09-03），而它**第四次還是發生了**：
 
     | 日期 | 形態 | 檔案 |
     |---|---|---|
     | 08-24 | 191 輪 `exit 14 @ rebase`、188 筆推不出去的 commit | README.md、AGENT_BRIEF.md、MAINTENANCE.md |
     | 08-31 | `exit 15 @ worktree-dirty` 卡兩個半小時 | 兩個非 `data/` 的檔案 |
     | 09-03 | `exit 15 @ worktree-dirty`，03:31 卡到人介入 | AGENT_BRIEF.md、MAINTENANCE.md（**同兩個**） |
+    | 09-13 | `exit 15 @ worktree-dirty` **連續八小時**、四個 Word 轉檔時刻全部拒絕轉檔 | AGENT_BRIEF.md（**第三次是它**） |
 
     08-24 加的那道護欄（`publish.py` 的 `worktree-dirty`）成功把「191 輪無聲重試」
-    換成「一次具名的停止」，**但它只在 03:00 那一輪才會叫**。三次的成因都一樣：
+    換成「一次具名的停止」，**但它只在 03:00 那一輪才會叫**。前三次的成因都一樣：
     **維護場改了 repo 根目錄的文件、沒有提交**，而在維護當下沒有任何東西問這句話。
     這一條把發現時點從「隔天凌晨被擋」提前到「維護場跑 healthcheck 的那一刻」。
+
+    **而 09-13 那次證明這個提前還不夠**：它**不是維護場改的**（第 1 節有 09-02 與 09-12
+    兩處改動，兩次都沒提交也沒進第 8 節變更紀錄），於是「維護場收工前跑一次 healthcheck」
+    這個觸發點根本沒被走到。**這條檢查只在有人跑它的時候才存在**，
+    而動這個 repo 的人不一定是維護場。規則因此於 09-13 升成 repo 層級通則
+    （`MAINTENANCE.md` 第 6 節、`AGENT_BRIEF.md` 第 8 節）：
+    **任何人、任何場次動了非 `data/` 的檔，當場提交。**
 
     **判法不呼叫 git**，改成解析 `.git/index`（v2／v3，DIRC 格式：
     62 位元組固定欄位 ＋ NUL 結尾路徑，補齊到 8 的倍數）。
@@ -775,9 +783,13 @@ def check_worktree():
         # （podcast／tracer）、常數多一個**檔案** `["data", "index.html"]`（投顧）、
         # **條件式**——chart 與 research 是 `["data"]` 再視 `charts/<date>`
         # （research 是 `charts/<week>`）**存在才加**，convergence 則刻意寫成函式
-        # 來拒絕預設值。**08-24 出事的正是「宣告不是常數」那一類**，
-        # 而 `MODIFY.md` 教的那行 `grep "staged_paths="` 只看得到六行裡的三行，
-        # 另外三支寫的是 `staged_paths=staged_paths`。
+        # 來拒絕預設值。**08-24 出事的正是「宣告不是常數」那一類**。
+        # **`MODIFY.md` 教的那行 `grep "staged_paths="` 六行全看得到**
+        # （2026-09-13 實跑訂正：本註解原本寫「只看得到六行裡的三行」，**那是錯的** ——
+        # `staged_paths=staged_paths` 本身就含有子字串 `staged_paths=`）。
+        # 真正的限制是**那一行看不出形狀**：其中三支印出來只有 `staged_paths=staged_paths`，
+        # 要再跳到函式定義才知道它是條件式。**「看不到」與「看得到但看不出形狀」是兩件事**，
+        # 而寫成前者會讓人去找一個不存在的替代指令。
         if path == "data" or path.startswith("data/"):
             continue
         full = os.path.join(REPO, path)

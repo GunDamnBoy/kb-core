@@ -65,8 +65,30 @@ CORE = [
     "^TWII", "2330.TW", "2317.TW",
     # 原物料與能源
     "BZ=F", "GLD", "HG=F", "XLE",
+    # 日本。**`^N225` 在這裡不是為了抓它自己**（它在 BLOCKED 裡，每輪只會被略過），
+    # 是為了讓 FRED_EQUIV 把 `NIKKEI225` 帶進來。2026-09-13 之前兩者都不在核心清單，
+    # 而 `scan_moves.DEFAULT` 一直在掃 `NIKKEI225` —— 於是那條快取從 2026-08-28 起
+    # 沒有再被刷新，**落後 10 個交易日還照樣印在掃描表裡，跟當天收盤的列長得一樣**。
+    # 這是「兩份各自維護的清單漂開了」最便宜的修法：讓被掃的那些留在涵蓋內。
+    "^N225",
     # 三大月度數據
     "CPIAUCSL", "CPILFESL", "PAYEMS", "PCEPI", "PCEPILFE",
+    # 題材涵蓋不到的那幾組（2026-09-13 加）。
+    # **不是因為選題偏好，是因為畫不出圖**：2026-09-13 回頭量近 14 期的 theme 分布，
+    # 中國／美國政治與政策／金融、併購與企業／生技健護**一次都沒有出現**，
+    # 而央行、利率與匯率出現 12 期。根因是投顧那十五組（題材的值域）與這份清單
+    # （序列的值域）是兩個不同的宇宙 —— 那四組沒有任何一條快取序列畫得出來，
+    # 於是「上游天天有卡、我們天天畫不了」在輸出上長得像「那幾組今天沒題材」。
+    # 各補一條最不需要解釋的代表：
+    "FXI",            # 中國：iShares China Large-Cap ETF（日頻，Tiingo）
+    "XLF",            # 金融、併購與企業：Financial Select Sector SPDR（日頻，Tiingo）
+    "XBI",            # 生技健護：SPDR S&P Biotech（日頻，Tiingo）
+    "MTSDS133FMS",    # 美國政治與政策：月頻聯邦收支差額（FRED，月度財政收支表）
+    # **這四條在加進來的當下沒有被實測過** —— 沙箱連不到 FRED 與 Tiingo。
+    # 三條 ETF 與已經在跑的 SOXQ／GLD／XLE 同一條路、同一種標的，風險低但不是零；
+    # `MTSDS133FMS` 是月頻，照 `anchors.freshness` 平常會落在警示（同 PCEPI），不該硬失敗。
+    # **驗收點是 2026-09-14 11:00 的第一次預抓**：任何一條落進 `failed` 就把它從這裡拿掉，
+    # 不要留著讓它每天貢獻一條假的失敗 —— 那正是同一天剛從 `failed` 清掉哨兵的理由。
     # 指數與期貨的 ETF 代理（見 fetch.PROXY）。**以自己的代號預抓，不冒充原標的**——
     # 要用就在 series_spec 明寫，並依 brief §3.2 在 note 標明「ETF 非指數」。
     "SOXQ", "FEZ", "CPER",
@@ -305,8 +327,17 @@ def main(argv):
     # **它會永遠紅，而永遠紅的訊號跟沒有訊號一樣**。
     # 留著它是因為它仍答得出一件事：Yahoo 哪天不再要求握手（它會轉綠）。
     # 真正在替握手那條路做體檢的，是 CORE 裡那幾條允許清單的代號。
+    #
+    # **2026-09-13：哨兵失敗不再寫進 `failed`。** 在此之前它同時被記兩次 ——
+    # 一次在 `canary.red`（正確的家），一次在 `failed["^GSPC"]`。後者的代價是
+    # 2026-09-10 才蓋好的 `prefetch.failure_streak_warn`（用來抓「藏起來的結構性故障」）
+    # **整條被這一個依設計會失敗的序列佔滿**：09-10 起連四輪的 `about.run` 都在寫
+    # 「^GSPC 連續 N 輪」，每天多一個數字、沒有多一分資訊，而那正是上面這段註解
+    # 自己預言過的「**永遠紅的訊號跟沒有訊號一樣**」。
+    # 一個永遠會響的計數器，跟一個沒有計數器，在輸出上長得一模一樣。
     CANARY = "^GSPC"
     canary_done = False
+    canary_err = None
 
     for i, ident in enumerate(ids, 1):
         if ident in F.BLOCKED and not (ident == CANARY and not canary_done):
@@ -341,7 +372,13 @@ def main(argv):
                 print(f"  [{i}/{len(ids)}] {ident:<16} {len(s.get('d') or []):>5} 點，末日 {last}")
         except Exception as e:
             msg = f"{type(e).__name__}: {e}"[:200]
-            failed[ident] = msg
+            if ident == CANARY and ident in F.BLOCKED:
+                # **哨兵的失敗是預期值，不是故障** —— 它的家是 `canary`，見 CANARY 上面那段。
+                # 熔斷計數照舊加：那一格問的是「這一輪還要不要再敲 Yahoo」，
+                # 而哨兵 429 確實是「對方在說不」的證據，與這裡的分流是兩件事。
+                canary_err = msg
+            else:
+                failed[ident] = msg
             if "429" in msg or "Too Many Requests" in msg:
                 streak[src] = streak.get(src, 0) + 1
             if not quiet:
@@ -361,7 +398,15 @@ def main(argv):
             "id": CANARY, "client": "bare",
             "means": "裸客戶端通不通，不是 Yahoo 通不通。紅＝維持現狀（2026-08-22 起的已知值）；"
                      "綠＝Yahoo 不再要求握手，此時應回頭檢討 handshake_allowlist 是否還需要",
-            "red": CANARY in failed,
+            "red": canary_err is not None,
+            "error": canary_err,
+            "not_in_failed": "**哨兵的失敗不寫進 `failed`**（2026-09-13 起）。它依設計每天都會紅，"
+                     "而在此之前它同時被記在這裡與 `failed`，於是 `prefetch.failure_streak_warn` "
+                     "（2026-09-10 蓋來抓「藏起來的結構性故障」的那一條）整條被它佔滿 —— "
+                     "連四輪的 about.run 都在寫「^GSPC 連續 N 輪」，而那不是新資訊。"
+                     "**一個永遠會響的計數器，跟一個沒有計數器，在輸出上長得一模一樣。** "
+                     "所以 `failed` 現在只裝「不該失敗卻失敗了」的那些，"
+                     "而這一格裝「本來就預期會失敗、要看它哪天不再失敗」的那一條。",
         },
         "handshake": {
             "ids": list(F.handshake_allowlist()),
@@ -393,6 +438,11 @@ def main(argv):
           + (f"，{len(failed)} 條失敗：{', '.join(list(failed)[:6])}" if failed else "")
           + (f"，{_n_blocked} 條來源已知被擋（用替代品）" if _n_blocked else "")
           + (f"，{_n_break} 條因熔斷未嘗試" if _n_break else ""))
+    # **哨兵單獨印一行，不要讓「不進 failed」變成「不見了」。**
+    # 這一整個改動的重點是把它從「每天的失敗」降級成「每天的體檢」，不是讓它安靜。
+    print(f"　哨兵 {CANARY}（裸客戶端）：" +
+          ("紅 —— 維持現狀，Yahoo 仍要求握手" if canary_err else
+           "★ 綠 —— Yahoo 可能已解除封鎖，回頭檢討 handshake_allowlist 是否還需要"))
     # 全部失敗＝網路整條不通，要讓 launchd 的錯誤日誌看得出來
     return 1 if not ok else 0
 

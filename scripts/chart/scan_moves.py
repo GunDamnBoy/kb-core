@@ -39,8 +39,28 @@ import _repo  # noqa: E402
 
 REPO = _repo.repo()
 SERIES = os.path.join(REPO, "data", "series")
+KBCORE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 預設掃描清單：跨資產各一條，全部在預抓核心清單內。
+# 月頻判準的唯一的家。取不到就留 None 讓 `_stale` 自己回頭讀 csv ——
+# **不要退回一份手寫的 `endswith("-01")`**，那正是 2026-09-10 訂正掉的第二份實作。
+try:
+    sys.path.insert(0, KBCORE)
+    from kbcore.series import is_monthly as _is_monthly
+except Exception:                                        # noqa: BLE001
+    _is_monthly = None
+
+# 預設掃描清單：跨資產各一條。
+#
+# **「全部在預抓核心清單內」這句話原本寫在這裡，而 2026-09-13 量到它已經不成立。**
+# 這兩份清單是各自維護的：這裡是硬寫的 11 條，預抓的涵蓋是「核心清單 ∪ 近 14 天用過的」。
+# 當天 `NIKKEI225` 兩邊都不在 —— 連請求都沒發出（不在 `ok`／`failed`／`skipped` 任何一堆），
+# 快取從 2026-08-28 起就沒再刷新，**落後 10 個交易日，是硬失敗門檻 5 的兩倍**，
+# 而它在表裡跟新鮮的列長得一模一樣。
+#
+# 兩份清單會漂是結構性的，所以修法不是「把它們對齊一次」，
+# 是**讓漂出去的那一刻在表上看得見**：下面的 `run()` 對每一列判 freshness，
+# 過門檻的加 ⚠︎。判準整段委外給 `prep_chart._stale()`，這裡不抄數字也不另寫一份。
+#
 # **代理就是代理**：SOXQ／FEZ／CPER 是 ETF，不是指數或期貨本身，名稱裡直接寫出來，
 # 免得表格被複製進判讀時混過去（anchors.proxies）。
 DEFAULT = [
@@ -143,7 +163,12 @@ def scan_one(sid: str, name: str, windows: list, years: int) -> dict:
     row = {"id": sid, "name": name, "last": d[-1], "value": v[-1],
            "unit": "abs" if absolute else "pct", "since": sw["since"],
            "span_years": sw["span_years"], "truncated": sw["truncated"],
-           "cut": sw["cut"], "short_by_days": sw["short_by_days"], "w": {}}
+           "cut": sw["cut"], "short_by_days": sw["short_by_days"],
+           # **頻率在這裡量，因為只有這裡拿得到整條日期。** 判準的家是
+           # `kbcore/series.is_monthly()`（anchors.freshness.monthly_detection_home），
+           # 不在這裡另寫一份。給不出來就留 None，讓 `_stale` 自己回頭讀 csv。
+           "monthly": _is_monthly(d) if _is_monthly else None,
+           "stale": None, "w": {}}
     for w in windows:
         if len(v) <= w or len(d) <= s + w:
             continue
@@ -154,7 +179,43 @@ def scan_one(sid: str, name: str, windows: list, years: int) -> dict:
     return row
 
 
-def run(ids: list, windows: list, years: int) -> dict:
+def _mark_stale(rows: list, today: str) -> None:
+    """對每一列判 freshness，過門檻的把理由寫進 `row["stale"]`。就地改。
+
+    **為什麼要有**（2026-09-13）：這支的 ★ 治的是「樣本太短」，
+    而「末日太舊」在此之前**沒有任何記號**。2026-09-13 實測，
+    `NIKKEI225` 末日 2026-08-28、落後 10 個交易日（硬失敗門檻 5 的兩倍），
+    在表裡跟當天收盤的列長得完全一樣 —— 而它那一列還印著「1日 +0.41%」，
+    照字面讀會以為那是今天的事。
+
+    **閘門擋得住它上線**（`chart.series_freshness` 在 publish 前會紅），
+    但那是最後一步。中間會浪費一個選題，而且判讀可能已經把那個數字寫進去了 ——
+    **擋得住不等於看得見**，這支是「看得見」那一半。
+
+    判準整段委外給 `prep_chart._stale()`：日／週／月三套門檻、交易日換算、
+    `weekly_release_series` 全部在那裡，**這裡不抄數字也不另寫一份**。
+    委外失敗就整批不標並在表尾說出來 —— **安靜跳過會讓它退回改動之前的樣子**。
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, KBCORE)
+        from prep_chart import _stale
+        import fetch as _F
+        anchors = _F.anchors()
+    except Exception as e:                               # noqa: BLE001
+        rows and rows[0].__setitem__("stale_unavailable", f"{type(e).__name__}: {e}"[:120])
+        return
+    ser = [{"id": r["id"], "last": r["last"], "monthly": r.get("monthly")} for r in rows]
+    bad, warn = _stale(ser, anchors, today)
+    by = {s["id"]: ("硬失敗", why) for s, why in bad}
+    by.update({s["id"]: ("警示", why) for s, why in warn if s["id"] not in by})
+    for r in rows:
+        hit = by.get(r["id"])
+        if hit:
+            r["stale"] = {"level": hit[0], "why": hit[1]}
+
+
+def run(ids: list, windows: list, years: int, today: str = "") -> dict:
     rows, missing = [], {}
     for sid, name in ids:
         try:
@@ -163,6 +224,7 @@ def run(ids: list, windows: list, years: int) -> dict:
             missing[sid] = "快取裡沒有這條——預抓沒抓到或從未用過，**不代表沒有變動**"
         except Exception as e:
             missing[sid] = f"{type(e).__name__}: {e}"[:160]
+    _mark_stale(rows, today or dt.date.today().isoformat())
     return {"years": years, "windows": windows, "rows": rows, "missing": missing}
 
 
@@ -222,6 +284,22 @@ def selftest() -> int:
         print(f"✗ _cut_date(閏日): {_cut_date('2028-02-29', 3)}")
         ok = False
 
+    # （6）**末日太舊要標 ⚠︎**（2026-09-13 加，回歸自 NIKKEI225 那一次）。
+    # 只讀 anchors.json、不碰快取，所以照樣是離線的。
+    rows = [{"id": "SP500", "last": "2026-09-11", "monthly": False, "stale": None},
+            {"id": "NIKKEI225", "last": "2026-08-28", "monthly": False, "stale": None}]
+    _mark_stale(rows, "2026-09-13")
+    if rows[0]["stale"] is not None:
+        print(f"✗ _mark_stale(新鮮的不該標): {rows[0]['stale']}")
+        ok = False
+    if not rows[1]["stale"] or rows[1]["stale"]["level"] != "硬失敗":
+        print(f"✗ _mark_stale(落後 10 個交易日應判硬失敗): {rows[1]['stale']}")
+        ok = False
+    # 委外失敗時**不可以安靜地變成「每一列都新鮮」** —— 那正是改動之前的樣子。
+    if "stale_unavailable" in rows[0] and rows[1]["stale"] is None:
+        print("✗ _mark_stale(委外失敗卻沒有留下 stale_unavailable)")
+        ok = False
+
     print("selftest 全部通過 ✓" if ok else "★ selftest 有錯")
     return 0 if ok else 1
 
@@ -252,7 +330,24 @@ def main(argv) -> int:
         tail = f"  樣本 {r['since']} 起 {r['span_years']} 年"
         if r["truncated"]:
             tail = "  ★" + tail.strip()
-        print(head + "  " + "  ".join(cells) + tail)
+        # ⚠︎ 在**行首**，★ 在行尾 —— 兩個記號問的不是同一件事：
+        # ★ 說「這一列的分位跟別人不是同一把尺」，⚠︎ 說「這一列的末日太舊，
+        # 上面那個『1日變動』不是今天的事」。混成同一個記號會讓後者被當成前者忽略掉。
+        pre = "⚠︎ " if r.get("stale") else "   "
+        print(pre + head + "  " + "  ".join(cells) + tail)
+    stale = [r for r in res["rows"] if r.get("stale")]
+    if stale:
+        print("⚠︎ " + "、".join(
+            f"{r['name']}（末日 {r['last']}，{r['stale']['why']}）" for r in stale)
+            + " —— **這幾列的『變動』不是今天的變動**。"
+              "硬失敗的那幾條用它出圖會被 `chart.series_freshness` 擋下來，"
+              "但那是發布前的最後一步；**在這裡就不要拿它當選題**。"
+              "成因多半是這支的預設清單與預抓的涵蓋清單漂開了（見 DEFAULT 上面那段）。")
+    _unavail = next((r.get("stale_unavailable") for r in res["rows"]
+                     if r.get("stale_unavailable")), None)
+    if _unavail:
+        print(f"  ✗ 這一輪沒有判 freshness（{_unavail}）—— "
+              "**沒有 ⚠︎ 不代表每一列都新鮮**，逐列自己看末日。")
     short = [r for r in res["rows"] if r["truncated"]]
     if short:
         # **這一行是給複製表格的人看的。** 單看一列的 `n=` 讀不出樣本有多長，

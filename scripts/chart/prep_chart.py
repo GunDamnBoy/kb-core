@@ -145,6 +145,64 @@ def _cadence(s):
     return False, "unknown"
 
 
+def _kind_variety(anchors, today, n=14):
+    """近 n 期用過哪些非折線圖型、各自上一次是哪一天。回一串要印的行。
+
+    ## 為什麼要有（2026-09-13）
+
+    `anchors.diversity.min_non_line_per_day` 是「每期至少一張非折線」，
+    2026-08-09 立的，理由是前五期 25 張圖有 24 張是 timeseries。
+    2026-09-13 回頭量近 14 期：規則**天天都滿足**，而 19 張非折線圖
+    只有兩種圖型（`grouped_bar` 12、`scatter` 6，加上當期）；
+    `range_area` 上一次是 08-30、`waterfall` 08-27，
+    `heatmap`／`gauge`／`stacked_bar`／`pct_stacked_bar` 一次都沒有。
+
+    **規則沒有失效，是它想防的事換了一個形狀回來** —— 從「五張都是折線」
+    變成「那一張永遠是同一種」。`chart.diversity` 的 blind_to 裡逐字寫著
+    「同一種非折線圖型連續用了一個月」，它現在成真了。
+
+    ## 為什麼是量測、而且放在 prep 而不是 checks
+
+    放進檢查就得決定「幾種算夠」，而那個數字沒有人量得出來 ——
+    當天每個題目真的都適合長條圖時，硬換圖型比重複更糟
+    （`anchors.diversity.source` 自己就是這麼寫的）。
+    所以它不擋任何東西，只在**選題發生之前**把事實擺在桌上：
+    `scan_moves` 的註解那句「**掃到什麼才會想到什麼**」對圖型一樣成立。
+
+    **它看不到的**：index 的 `kinds` 是逐日去重的，所以同一天用了兩張
+    `grouped_bar` 在這裡只算一次；2026-08-20 之前的 entry 沒有 `kinds`
+    （那批寫的是 `slots`），整筆跳過而不是當成零。
+    """
+    line_kinds = set((anchors.get("diversity") or {}).get("line_kinds") or ["timeseries"])
+    # **認「有 `data` 欄位的那些鍵」，不認「不是底線開頭的鍵」。**
+    # 第一版用後者，於是 `range_area_is_heavy`（一段散文）被當成一種圖型，
+    # 印進了「一次都沒出現」那一行 —— **一個不存在的圖型，看起來跟真的一樣。**
+    # `anchors.kinds` 裡圖型與說明是混住的，唯一分得開的特徵就是 `data`。
+    known = [k for k, v in (anchors.get("kinds") or {}).items()
+             if isinstance(v, dict) and v.get("data")]
+    idx, _e = load(os.path.join(sib("chart-of-the-day"), "data", "index.json"), "index.json")
+    days = [x for x in ((idx or {}).get("days") or []) if x.get("date", "") < today]
+    days = [x for x in days if isinstance(x.get("kinds"), list)][:n]
+    if not days:
+        return ["**圖型多樣性**：index 讀不到或沒有帶 `kinds` 的 entry —— 這一輪沒有量到"]
+    last_seen, counts = {}, {}
+    for x in days:                                   # index 是由新到舊
+        for k in x["kinds"]:
+            if k in line_kinds:
+                continue
+            counts[k] = counts.get(k, 0) + 1
+            last_seen.setdefault(k, x["date"])
+    used = "、".join(f"{k} {counts[k]} 期（上次 {last_seen[k]}）"
+                     for k in sorted(counts, key=lambda z: -counts[z]))
+    never = [k for k in known if k not in line_kinds and k not in counts]
+    out = [f"**圖型多樣性**（近 {len(days)} 期，量測不是閘門）：非折線用過 {len(counts)} 種 —— {used}"]
+    if never:
+        out.append(f"　這 {len(never)} 種 {n} 期內一次都沒出現：{'、'.join(never)}"
+                   "　—— **不是要你今天硬用一種**（硬塞比重複更糟），"
+                   "是提醒「每期至少一張非折線」正在窄化成「每期至少一張同一種」")
+    return out
+
+
 def _stale(ser, anchors, today):
     """把預抓涵蓋的序列照**各自的**門檻分成硬失敗與警示兩堆。回 (bad, warn)。
 
@@ -185,6 +243,13 @@ def _stale(ser, anchors, today):
     """
     F = (anchors or {}).get("freshness") or {}
     weekly_ids = F.get("weekly_release_series") or {}
+    # **逐條的生效日優先於全域那一個**（2026-09-13）。理由與讀法在
+    # `anchors.freshness.weekly_release_series_from_source`，**這裡不抄第二份**。
+    # 這一支與 `checks/chart.py` 的 `_freshness` 是同一條規則的兩個讀者，
+    # 兩邊要同時改 —— 只改一邊的話，prep 說「不能用」而檢查說 PASS，
+    # 而那一天沒有任何東西會說是哪一邊變了。
+    weekly_since = F.get("weekly_release_series_from") or {}
+    weekly_global = F.get("weekly_release_from") or "9999-12-31"
     try:
         sys.path.insert(0, KBCORE)
         from checks.chart import _weekdays_after
@@ -208,7 +273,7 @@ def _stale(ser, anchors, today):
         if monthly:
             n, unit = gap // 30, "期（月頻）"
             hi, lo = F.get("monthly_fail_periods", 3), F.get("monthly_warn_periods", 2)
-        elif sid in weekly_ids:
+        elif sid in weekly_ids and today >= (weekly_since.get(sid) or weekly_global):
             n, unit = gap // 7, "期（週頻發布）"
             hi, lo = F.get("weekly_fail_periods", 3), F.get("weekly_warn_periods", 2)
         else:
@@ -371,6 +436,9 @@ def main(argv):
     S = anchors.get("structure") or {}
     print(f"**版位**：{'／'.join(S.get('slots') or [])}"
           f"　theme 不得重複＝{S.get('theme_unique_within_day')}\n")
+    for line in _kind_variety(anchors, day):
+        print(line)
+    print()
 
     # ── 預抓 ──────────────────────────────────────────────
     print("## 預抓")
@@ -392,6 +460,20 @@ def main(argv):
               f"失敗 {len(pre.get('failed') or {})}　跳過 {len(pre.get('skipped') or {})}")
         for line in _failure_streaks(pre, anchors):
             print(line)
+        # **哨兵單獨一行，而且只有轉綠時才要處置。**（2026-09-13 加）
+        # 在此之前它躲在 `failed` 裡，於是它每天都被 `_failure_streaks` 報成
+        # 「取數失敗 1 條、連續 N 輪」—— 那條計數器是拿來抓結構性故障的，
+        # 而一個依設計每天都會紅的東西把它整條佔滿了。現在分開：
+        # **紅是預期值，不必處置；綠才是新聞。**
+        can = pre.get("canary") or {}
+        if can.get("id"):
+            if can.get("red"):
+                print(f"　哨兵 {can['id']}（裸客戶端）：紅 —— 預期值，Yahoo 仍要求握手，"
+                      "**不必在 `about.run` 寫它**")
+            else:
+                print(f"　**哨兵 {can['id']} 轉綠了** —— Yahoo 可能不再要求握手，"
+                      "回頭檢討 `anchors.rate_limits.handshake_allowlist` 是否還需要，"
+                      "並在 `about.run` 寫一句")
         hs = (pre.get("handshake") or {}).get("failed") or []
         if hs:
             print(f"　**握手失敗**：{'、'.join(hs)} —— 這幾條今天退回代理或改題，"
