@@ -125,12 +125,53 @@ def frozen(old: dict, new: dict):
     return "已存在且內容不同 —— 改草稿沒有用，掛 errata"
 
 
+# 敘述欄：撰寫者寫的、不屬於任何單一報告的那幾格。
+# **2026-09-14 之前它們完全不在守衛裡** —— 見 `append_only` 的檔頭。
+NARRATIVE_FIELDS = ("crosscut", "watch", "notes")
+
+
+def _grew(field: str, was, now):
+    """舊的那一段還在不在、而且還在原來的位置。回 None ＝ 通過。
+
+    字串要求**舊的是新的前綴**，串列要求**舊的每一個元素還在原位**。
+    兩者都是同一句話：可以往後接，不可以改寫或刪除前面的。
+    """
+    if not was:
+        return None                      # 本來是空的，怎麼寫都算長大
+    if isinstance(was, str):
+        if isinstance(now, str) and now.rstrip().startswith(was.rstrip()):
+            return None
+        return (f"`{field}` 被改寫了（原本 {len(was)} 字）")
+    if isinstance(was, list):
+        if isinstance(now, list) and len(now) >= len(was) and now[:len(was)] == was:
+            return None
+        return (f"`{field}` 被改寫了（原本 {len(was)} 條）")
+    return None
+
+
 def append_only(old: dict, new: dict):
-    """只准長大：**已發布的每一份報告都要原封不動還在**，可以多、不可以改。
+    """只准長大：**已發布的東西都要原封不動還在**，可以多、不可以改。
 
     這條在意的不是「有沒有變」，是「**變的是不是已經給人看過的那些**」。
     加一份遲到的報告不會改變任何人已經讀過的東西；
     改一份已發布報告的精華或原句會，而那正是不可改寫守衛存在的理由。
+
+    ## 敘述欄（2026-09-14 加）
+
+    在那之前這支**只比對 `reports`** —— `crosscut`／`watch`／`notes`
+    完全不在涵蓋範圍內，可以任意改寫而守衛一聲不出。那天實測才發現：
+    對已發布的一期只改 `crosscut` 或 `notes`，回 `None`。
+
+    **那是缺口，但它同時也指出一件真的事**：補登會改變「這一週長什麼樣子」，
+    而 `crosscut` 就是在描述它 —— 一期從 5 份長到 18 份之後，
+    原本那句「本週無，這一期五份、題目彼此不相交」就變成假的。
+    所以這裡收的不是 `frozen`（完全不准動），是**跟報告同一條規矩**：
+    **舊的那一段要原封不動留著，新的接在後面。**
+    這個 repo 自己早就在用這個形狀 —— W35 的 `crosscut` 裡那段
+    「**（2026-08-31 補收第 12 份之後）**」就是。
+
+    這樣做同時避開一件事：**一個每次補登都得繞過的守衛，遲早會被繞過
+    它不該被繞過的那一次。** 這條不必繞 —— 照著往後接就會過。
     """
     import json as _j
     was = {r.get("slug"): r for r in (old.get("reports") or [])}
@@ -144,6 +185,13 @@ def append_only(old: dict, new: dict):
     if changed:
         return (f"已發布的 {len(changed)} 份內容被改了：{changed[:3]} —— "
                 "**加新的可以，改舊的不行**（那是已經給人看過的東西）")
+    for f in NARRATIVE_FIELDS:
+        why = _grew(f, old.get(f), new.get(f))
+        if why:
+            return (why + " —— **加新的可以，改舊的不行**。"
+                    "補登改變了這一期的組成時，把新的接在舊的後面"
+                    "（例：`**（YYYY-MM-DD 補登之後）**` 起一段），"
+                    "不要重寫前面那一段：那是已經給人看過的東西。")
     return None
 
 

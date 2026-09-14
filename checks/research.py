@@ -735,6 +735,24 @@ def _ledger_no_overdue(p):
         return fail(f"{len(bad)} 筆的 status 不在受控詞表裡："
                     f"{sorted({i.get('status') for i in bad})[:4]} —— 值域的家在 "
                     "`anchors.observations.status_vocab`，**跟 podcast 共用一套**")
+    # **一筆立場不會在它進到這個庫之前就逾期（2026-09-14 加）。**
+    #
+    # 報告依它自己的日期分期，而使用者會把幾個月前的報告丟進 inbox ——
+    # 2026-09-14 補登了一份 2026-04-17 的高盛報告，它的 `due`（報告日 + 3 個月）
+    # 是 2026-07-16，**一進帳本就已經逾期 60 天**。而 `data/stances.json` 是
+    # 一個全域檔，所以那 3 筆把**五期的發布一起擋掉了**，包括本來已經發布成功的 W37。
+    #
+    # 試過而放棄的解法：把 `due` 改成 `max(報告日, 入庫日) + 3 個月`。
+    # 實測 312 筆裡 **302 筆的 due 會改變** —— 入庫日幾乎總是晚於報告日，
+    # 於是那不是修補特例，是**把所有人的期限一起往後推**，而且會改到已發布的資料。
+    #
+    # 收下的作法是把「誠實的期限」與「合理的問責起點」分開：
+    # `due` 保持不動（分析師哪天說的，就從那天起算三個月 —— 那才是這個庫想問的問題），
+    # 但**逾期要同時超過 `due` 與「入庫日 + 寬限期」兩條線**。
+    # 你不可能遲到一個沒有人通知過你的會。
+    #
+    # `filed` 由 `assemble.py` 寫入；舊資料沒有這一欄時**退回只看 `due`**，
+    # 那是原本的行為 —— 不要因為缺欄位就默默放行。
     over = []
     for i in items:
         if i.get("status") != vocab[0] or not i.get("due"):
@@ -743,8 +761,16 @@ def _ledger_no_overdue(p):
             d = (now - dt.date.fromisoformat(i["due"])).days
         except ValueError:
             continue
-        if d > 0:
-            over.append((d, i))
+        if d <= 0:
+            continue
+        filed = i.get("filed")
+        if filed:
+            try:
+                if (now - dt.date.fromisoformat(filed)).days <= grace:
+                    continue          # 才剛入庫，還沒有人有機會判它
+            except ValueError:
+                pass
+        over.append((d, i))
     if not over:
         watching = sum(1 for i in items if i.get("status") == vocab[0])
         judged = len(items) - watching
@@ -763,7 +789,9 @@ register(Check(
     id="research.ledger_no_overdue",
     covers="`data/stances.json` 裡沒有已過到期日、卻仍是「觀察中」的立場"
            "（超過 anchors.observations.overdue_grace_days 才判 FAIL）；"
-           "且每筆的 status 都在受控詞表裡",
+           "且每筆的 status 都在受控詞表裡。"
+           "**逾期要同時超過 `due` 與「`filed` ＋ 寬限期」兩條線** —— "
+           "補登的舊報告一進帳本就已經過了 `due`，而在那之前沒有人有機會判它",
     blind_to=[
         "**判決下得對不對** —— 這條只看有沒有人判，不看判得準不準",
         "**為了讓燈變綠而全部改判「無法驗證」** —— 擋不住，"
@@ -771,6 +799,13 @@ register(Check(
         "到期日訂得合不合理（報告日期 + 3 個月是慣例不是規則）",
         "同一份報告的多筆立場其實該一起判",
         "**沒有資料 repo 的輪次整條跳過**（SKIPPED，不是 PASS）",
+        "**`filed` 缺欄位的舊資料會退回只看 `due`** —— 那是 2026-09-14 之前的行為，"
+        "所以一批沒有 `filed` 的帳本在這條線上跟修正前一模一樣，而它不會出聲",
+        "**`filed` 本身可不可信** —— 它來自 `extracted_at`，"
+        "整批重抽會把它推成重抽當天，於是**看起來像剛入庫、寬限期重新開始**。"
+        "這條只讀欄位，分不出「真的剛入庫」與「剛重抽過」",
+        "**寬限期一過就再也擋不住的那一種拖延** —— 這條只保證「有機會判」，"
+        "不保證有人真的會去判",
     ],
     run=_ledger_no_overdue,
     fixture={"anchors": {"observations": {"overdue_grace_days": 14,

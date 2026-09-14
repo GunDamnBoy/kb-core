@@ -365,7 +365,7 @@ def main(argv=None):
     # 一個永遠會紅的排程，比一個沒有排程更糟：它會訓練人略過那段 log。
     if a.publish:
         print("\n".join(write_draft(digest, os.path.expanduser(a.outbox), O,
-                                     os.path.expanduser(a.repo))))
+                                     os.path.expanduser(a.repo), E)))
     else:
         print(f"  （沒有加 `--publish`，草稿沒有進 outbox）\n"
               f"  先確認 crosscut／watch／notes 寫好了，再跑一次帶 --publish。"
@@ -373,7 +373,23 @@ def main(argv=None):
     return 0
 
 
-def build_stances(digest_dir, repo):
+def _filed_on(extracted, slug):
+    """這一份是哪一天進到這個庫的 —— 取 `extracted/<slug>.json` 的 `extracted_at`。
+
+    **不是報告日，也不是今天。** 用途見 `checks/research.py` 的
+    `_ledger_no_overdue`：報告依它自己的日期分期，而使用者會把幾個月前的報告
+    丟進 inbox，那種立場一進帳本就已經逾期。取不到就回 None，由呼叫端退回報告日。
+    """
+    if not extracted:
+        return None
+    f = os.path.join(extracted, f"{slug}.json")
+    try:
+        return (json.load(open(f, encoding="utf-8")).get("extracted_at") or "")[:10] or None
+    except Exception:
+        return None
+
+
+def build_stances(digest_dir, repo, extracted=None):
     """跨期的立場帳本 —— **原句牆與帳本是同一份資料，差一個欄位。**
 
     原句是這個庫唯一可以被驗證的一層：精華是我們寫的、圖是我們畫的，
@@ -426,6 +442,12 @@ def build_stances(digest_dir, repo):
                 due = (dt.date.fromisoformat(r["date"])
                        + dt.timedelta(days=30 * O["horizon_months"])).isoformat()
                 prev = old.get(sid, {})
+                # **`filed` ＝ 這一份是哪一天進到這個庫的**，給
+                # `research.ledger_no_overdue` 當第二條線用（理由寫在那條檢查裡）。
+                # `due` 一字不動 —— 分析師哪天說的就從那天起算，那才是這個庫想問的問題；
+                # `filed` 回答的是另一個問題：**從哪一天起，才有人有機會去判它。**
+                # 已經有值的就沿用，不要每輪重算成今天。
+                filed = prev.get("filed") or _filed_on(extracted, r["slug"]) or r.get("date")
                 items.append({
                     "id": sid, "week": dg.get("week"), "slug": r["slug"],
                     "broker": r.get("broker"), "title": r.get("title"),
@@ -434,7 +456,7 @@ def build_stances(digest_dir, repo):
                     # 全部缺這個欄位，是 2026-08-31 之前站台不部署的大宗。
                     "title_source": r.get("title_source"),
                     "title_confident": r.get("title_confident"),
-                    "date": r.get("date"), "due": due,
+                    "date": r.get("date"), "due": due, "filed": filed,
                     "theme": st.get("theme"), "tags": r.get("tags") or [],
                     "quote": st.get("quote"), "quote_zh": st.get("quote_zh"),
                     "page": st.get("page"),
@@ -454,7 +476,7 @@ def build_stances(digest_dir, repo):
     return f"→ {dst}（{len(items)} 筆立場，已判 {judged} 筆）"
 
 
-def write_draft(digest, outbox, digest_dir, repo):
+def write_draft(digest, outbox, digest_dir, repo, extracted=None):
     """發布用的草稿。**跟本機那一份不是同一個東西，差別是刻意的。**
 
     1. **`file` 與 `file_url` 拿掉。** 它們是 `file:///Users/…` ——
@@ -528,7 +550,7 @@ def write_draft(digest, outbox, digest_dir, repo):
             shutil.copy2(f2, os.path.join(dst, n))
     lines.append(f"→ {dst}（{len(want) - len(miss)}/{len(want)} 個圖檔）"
                  + (f"　**{len(miss)} 個在本機也找不到：{miss[:3]}**" if miss else ""))
-    lines.append(build_stances(digest_dir, repo))
+    lines.append(build_stances(digest_dir, repo, extracted))
     return lines
 
 
