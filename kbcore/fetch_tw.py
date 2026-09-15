@@ -125,12 +125,74 @@ ROUTES = {
         "kind": "json", "unit": "噸／美元", "empty_ok": True,
         "note": "同上，GLDM。",
     },
+    # ── LBMA 定盤。2026-09-15 加，而在那之前保底層沒有任何 LBMA 來源。 ──
+    #
+    # **觸發事件**：09-15 那一輪的黃金卡拿到的 PM 定盤是 **4,386.25、資料日 09-11**，
+    # 而當天真正的定盤是 **4,267.10、資料日 09-14** —— **差 119.15 美元／−2.72%**。
+    # 落後的那個數字來自 `SPDR:GLD_NOW` payload 裡的 `pm_fix_usd` 欄位，
+    # 也就是說**我們一直在用 SPDR 轉手的代用值當定盤**，而它自己帶的 `date` 就是舊的。
+    # 是採集員 D 現場開產品頁磁磚才發現的。
+    #
+    # **這與已知的「SPDR archive 落後一個交易日」是兩件事，不要混**：
+    # archive 落後的是**持倉序列**，這裡落後的是**定盤價**，
+    # 兩者住在不同的端點、各自有各自的資料日。09-06 判掉了前者、沒有人去看後者。
+    #
+    # **為什麼是加來源而不是改用法**：`pm_fix_usd` 是 SPDR 為了自己的頁面帶的，
+    # 它什麼時候更新由 SPDR 決定，而我們對那個節奏沒有任何控制力也沒有任何訊號。
+    # 直接端點回的是 IBA 每個交易日在倫敦 10:30（AM）與 15:00（PM）定的那一個值本身。
+    #
+    # **形狀是實測的**（09-15 從瀏覽器取）：`[{"d": "2026-09-14", "is_cms_locked": 0,
+    # "v": [4267.1, 3168.75, 3702.56]}, …]`，`v` 依序是 **USD／GBP／EUR**，
+    # 共 **14,682 列、1968-04-01 起**。**所以這兩條一定要帶 `keep_last`** ——
+    # 理由見 `keep_last_rows` 的 docstring。
+    #
+    # **`empty_ok` 是刻意的，而且理由與 `_NOW` 那兩條不同**：那兩條當時是「還沒驗過」，
+    # 這兩條是**已經驗過會通**（09-15 實測 200、14,682 列），
+    # 標它是因為**定盤有假日**：倫敦休市那天這個端點不會長出新的一列，
+    # 而「今天沒有新定盤」不該讓整份保底檔掛掉。**這兩條都不在 `ESSENTIAL` 裡。**
+    "LBMA:GOLD_PM": {
+        "url": "https://prices.lbma.org.uk/json/gold_pm.json",
+        "kind": "json", "unit": "美元／英鎊／歐元", "empty_ok": True,
+        "keep_last": 120,
+        "note": ("LBMA 黃金 PM 定盤（IBA，倫敦 15:00）。每列 `d` 是 ISO 日期、"
+                 "`v` 是 **[USD, GBP, EUR]** 三個幣別。**這是定盤價的正本**，"
+                 "保底檔裡 `SPDR:*_NOW` 的 `pm_fix_usd` 只是 SPDR 轉手的代用值、"
+                 "會落後一個交易日（2026-09-15 實測差 119.15 美元）——**兩者都在時以本條為準**。"
+                 "`prices.lbma.org.uk/` 根路徑回 401，只有 `/json/*.json` 取得到。"),
+    },
+    "LBMA:GOLD_AM": {
+        "url": "https://prices.lbma.org.uk/json/gold_am.json",
+        "kind": "json", "unit": "美元／英鎊／歐元", "empty_ok": True,
+        "keep_last": 120,
+        "note": ("同上，AM 定盤（倫敦 10:30）。**AM 與 PM 一起收**，理由同 "
+                 "`anchors.dedup_exempt` 在 2026-08-29 同時收兩條那一筆："
+                 "它們是兩條不同的序列、卡片本來就會同時引用，"
+                 "只收 PM 會留下「為了閃去重而改指 AM」的動機。"),
+    },
 }
 
 
 # 一天保留幾列。**截斷要看得見** —— raw 每天一個檔進 git，
 # 完整歷史每天存一次會讓 repo 爆掉；但安靜的截斷比檔案大更危險。
 XLSX_KEEP_LAST = 120
+
+
+def keep_last_rows(rows, keep: int) -> Dict:
+    """JSON 端點回整條歷史序列時只留最後 `keep` 列 —— 與 XLSX 同一個理由、同一種帳。
+
+    2026-09-15 加，觸發物是 LBMA：`prices.lbma.org.uk/json/gold_pm.json` 回
+    **14,682 列（1968 年起）**，而保底檔本身才 1.5 MB；兩條原樣收進去會讓它翻倍，
+    而那個檔每天一份進 git。
+
+    **回傳的是包裝物而不是一個短一截的 list**，欄位刻意與 `parse_xlsx` 對齊
+    （`total_rows`／`kept_last`／`dropped`／`rows`），理由同 `XLSX_KEEP_LAST` 那一段：
+    **安靜的截斷比檔案大更危險** —— 下游看到 `rows` 只有 120 列時，
+    要能從同一個物件裡讀出「原本有 14,682 列、丟掉了 14,562 列」，
+    而不是以為這個端點本來就只給 120 列。
+    """
+    kept = rows[-keep:]
+    return {"total_rows": len(rows), "kept_last": len(kept),
+            "dropped": len(rows) - len(kept), "rows": kept}
 
 
 def parse_xlsx(raw: bytes, ident: str) -> Dict:
@@ -276,6 +338,13 @@ def get_tw(ident: str, ymd: str) -> Dict:
     else:
         kind = spec["kind"]
         data = parse_json(raw, ident) if kind == "json" else parse_csv(raw, ident)
+
+    # 只有宣告了 `keep_last` 而且真的回一個 list 的端點才裁。**不猜形狀** ——
+    # 端點改成回 dict 的那一天，這裡不動它，下游會看到原樣而不是一個空包裝。
+    keep = spec.get("keep_last")
+    if keep and isinstance(data, list):
+        data = keep_last_rows(data, keep)
+
     return {"ident": ident, "url": url, "unit": spec["unit"],
             "note": spec["note"], "kind": kind, "content_type": ctype, "data": data}
 

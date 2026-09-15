@@ -227,7 +227,14 @@ fi
 # 而 `/api/v1/data` 是產品頁在叫的那一個、當日就有。**兩條都補，不是二選一** ——
 # archive 給 120 列的跨期序列，`_NOW` 給當日一筆，黃金卡兩個都要。
 # 它們宣告了 `empty_ok`，所以取不到不會擋掉整份保底檔。
-TOPUP_IDENTS="SPDR:GLD,SPDR:GLDM,SPDR:GLD_NOW,SPDR:GLDM_NOW,TWSE:REV_L,TWSE:REV_O,TWSE:CONF"
+# 2026-09-15 加進 `LBMA:GOLD_PM` 與 `LBMA:GOLD_AM`：保底層在那之前沒有任何 LBMA 來源，
+# 黃金卡的定盤價一直是 `SPDR:*_NOW` 的 `pm_fix_usd` 代用值，而它落後一個交易日
+# （09-15 實測 4,386.25／資料日 09-11，對真正的 4,267.10／09-14 差 −2.72%）。
+# **嚴格說凌晨那一班應該就抓得到**（倫敦 PM 定盤 15:00 BST ＝ 14:00Z，早於 cron 的 16:15Z），
+# **放進補抓是第二道保險**：Actions 的實際開跑時刻會浮動好幾小時，
+# 而 07:20 這一班（＝前一日 23:20Z）無論如何都晚於當日定盤。成本是兩個請求。
+# 兩條都宣告了 `empty_ok`、都不在 `ESSENTIAL` 裡，所以倫敦休市那天不會擋掉整份保底檔。
+TOPUP_IDENTS="SPDR:GLD,SPDR:GLDM,SPDR:GLD_NOW,SPDR:GLDM_NOW,TWSE:REV_L,TWSE:REV_O,TWSE:CONF,LBMA:GOLD_PM,LBMA:GOLD_AM"
 if [ ! -x "$VENV_PY" ]; then
   log "略過補抓：找不到可執行的 ${VENV_PY}（凌晨那一份仍然可用）"
 elif [ ! -f "$FETCHER" ]; then
