@@ -55,6 +55,51 @@ def write_day_json(path, doc) -> int:
     return len(body.encode("utf-8"))
 
 
+def git_failure_detail(returncode: int, argv, stderr: str = "",
+                       stdout: str = "", limit: int = 400) -> str:
+    """把一次失敗的 git 呼叫寫成**回執讀得懂的一句話**。
+
+    2026-09-16 的事故教的：`git` 這支程式在 Mac 上對**每一個**子指令回 exit 69
+    （`/usr/bin/git` 是 Xcode CLT 的 xcrun shim，developer path 失效時就這樣），
+    而三支 `kbpublish` 與 `kbcorepush` 全部失效了一天多。
+
+    **它藏住的方式有兩層，而兩層都跟這個函式有關。**
+
+    第一層：`tools/publish.py` 的 `git()` 用 `capture_output=True, check=True`，
+    於是 git 自己的 stderr 被裝進 `CalledProcessError.stderr` **而沒有任何人讀它**。
+    日誌裡只剩一個 traceback 與「returned non-zero exit status 69」——
+    **診斷所需的那一行字一直都在物件上，只是從來沒有被取出來。**
+
+    第二層：`tools/push_kbcore.py` 的 `git()` 預設 `check=False`，於是
+    `git status --porcelain` 回 69、stdout 空 → `dirty=False`、`ahead=0`
+    → 它每 300 秒印一次「kb-core 乾淨且未領先 origin —— 空輪次，不是失敗」。
+    **git 全掛與「沒事做」在那支的輸出上長得一模一樣**，印了一天多。
+
+    所以這個函式只有一件事要做得對：**把 stderr 放進回執**。
+    分類、猜原因、給修法都不是它的工作——那些會過期，stderr 不會。
+
+    `limit` 是截斷長度：回執要留得住、也要讀得完，而 git 偶爾會吐一整段建議。
+    截斷時明寫「截斷」，**不要安靜地砍掉**（否則下一個人會以為 git 只說了這麼多）。
+    """
+    # `CalledProcessError.cmd` 帶著整條 argv（開頭就是 `git`），而這裡自己也要印
+    # 一個 `git`。不正規化的話回執會寫成 `git git -C …` —— 不影響判讀，
+    # 但那種小髒汙會讓人懷疑訊息是拼出來的，而這一句話的用途正是被相信。
+    parts = [str(a) for a in (argv or [])]
+    if parts and parts[0].rsplit("/", 1)[-1] == "git":
+        parts = parts[1:]
+    cmd = " ".join(parts)
+    err = (stderr or stdout or "").strip()
+    if len(err) > limit:
+        err = err[:limit] + " …（截斷，完整內容在 stderr）"
+    said = f"；git 說：{err}" if err else (
+        "；**git 一個字都沒說** —— 那本身就是線索：git 自己的錯誤一定會寫 stderr，"
+        "所以沉默多半代表 git 這支程式根本沒跑起來（找不到、被包在壞掉的 shim 裡、"
+        "或執行環境不給跑）")
+    return (f"`git {cmd}` 回 exit {returncode}{said} —— **重跑不會好，要人看**。"
+            "第一件事是拿同一行去問另一個 repo：**也失敗就壞的是 git 這支程式或它的"
+            "執行環境，不是這個 repo**（2026-09-15 起三個 repo 同時卡住就是這一種）。")
+
+
 def check_destination(repo: Path, system_id: str) -> str:
     """回傳錯誤訊息；空字串表示通過。"""
     marker = Path(repo) / MARKER

@@ -1,5 +1,124 @@
 # 每日五圖｜重建紀錄
 
+## 2026-09-16（三）｜`git` 整支壞掉，而三套系統的回報機制同時把它讀成別的東西
+
+這一輪從當天執行輪次結束後的維護進來，症狀是「今天沒有發布」。
+**根因不在 chart，也不在任何一個 repo**：`git` 這支指令在這台 Mac 上對**每一個**
+子指令回 `exit 69`，而三支 `kbpublish` 與 `kbcorepush` 用了兩種不同的方式把它讀成別的東西。
+
+### 量測
+
+| | 量到的事 | 出處 |
+|---|---|---|
+| 最後一次成功的 git | 2026-09-15 **10:44**，`kb-core` commit `1c1d8bc` | `kb-core/.push-receipt.json` |
+| 次後一次 | 2026-09-15 **09:18**，advisory commit `b828d9e` | `~/outbox/2026-09-15.receipt.json` |
+| 第一次失敗 | 2026-09-15 **11:46** 之後，`chart-of-the-day/.git/index` 的 mtime 再也沒動 | 檔案 mtime |
+| 卡住的草稿 | **4 份**：advisory `2026-09-16`、chart `2026-09-15`＋`2026-09-16`、podcast `2026-09-16` | outbox |
+| 失敗的 repo | **3 個**，路徑參數各不相同，退出碼都是 69 | 三份 `publish.log` |
+
+`launchd` 給的 `PATH` 是 `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`（**沒有 `/opt/homebrew/bin`**），
+所以 `git` 幾乎確定解析到 `/usr/bin/git`，也就是 Xcode CLT 的 shim。
+
+**根因（改動上線後 60 秒內量到的，不是推論）**：新的回執把 git 的 stderr 原文帶了出來 ——
+
+> `You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license'
+> from within a Terminal window to review and agree to the Xcode and Apple SDKs license.`
+
+三套系統的回執逐字相同，只有 repo 路徑不同。修法是在 Mac 上跑一次
+`sudo xcodebuild -license accept`（需要人，需要 sudo）。
+
+**這一段值得留痕。** 本輪動手前的假設是「developer path 失效的 `xcrun` shim」，
+而真正的訊息是「Xcode 授權條款沒同意」。**機制家族猜對了、字句猜錯了**，
+而兩者的修法完全不同（`xcode-select --install` vs `xcodebuild -license`）。
+假設當時已經很有說服力：退出碼對、時間點對、三個 repo 同時壞也對 ——
+**這正是這份 CHANGELOG 一再記的那種形狀，只是這一次它在造成代價之前就被量測推翻了。**
+把 stderr 放進回執之所以值得做，理由全在這裡：**它不需要任何人猜對。**
+
+### 它藏住的方式（兩層，兩種相反的寫法）
+
+1. **`tools/publish.py` 的 `git()` 是 `capture_output=True, check=True`。**
+   git 的 stderr 被裝進 `CalledProcessError.stderr` **而沒有任何人讀它**，
+   例外一路拋到 `main` 之外、整支行程帶著 traceback 死掉，**於是回執一份都沒寫**。
+   而 `publish.py` 的設計原則 4 明寫「每一輪都寫回執……『沒有回執』代表 publish 根本沒跑」——
+   **這個例外剛好製造出那條原則想排除的狀態**：它跑了、跑到最後一步、
+   卻留下一個「它根本沒被啟動」的現場。09-15 的執行報告只能寫「這是第七種情形，
+   exit 對照表上一個都不適用」。**對照表沒有錯，是它從來沒有機會被讀到。**
+
+   第二個代價比較難看見：`for d in drafts` 在第一份草稿丟例外時就斷了，
+   **後面的草稿連試都沒試**。chart 的 outbox 裡剛好有兩份。
+
+2. **`tools/push_kbcore.py` 的 `git()` 預設 `check=False`，寫法完全相反，結果一樣糟。**
+   `git status --porcelain` 回 69、stdout 空 → `dirty=False`；
+   `rev-list --count` 同理 → `ahead=0` → 它印
+   「kb-core 乾淨且未領先 origin —— 空輪次，不是失敗」然後回 `EMPTY_ROUND`。
+   **git 全掛與「真的沒事做」在這支的輸出上長得一模一樣**，而它每 300 秒說一次，
+   說了一天多都沒有人發現 —— **因為那句話本身是設計成常態的**。
+
+   兩層合起來是這個 repo 記過很多次的同一個形狀：
+   **一個永遠說得出話的檢查，與一個不存在的檢查，在輸出上沒有差別。**
+
+### 動到哪些檔
+
+| 檔 | 改了什麼 |
+|---|---|
+| `kbcore/repo.py` | 新增 `git_failure_detail()` —— 把一次失敗的 git 呼叫寫成回執讀得懂的一句話。**它只有一件事要做得對：把 stderr 放進回執。** 分類、猜原因、給修法都不是它的工作（那些會過期，stderr 不會）。兩支共用它，不各寫一份 |
+| `tools/publish.py` | `main()` 的迴圈攔 `subprocess.CalledProcessError` → 寫 `exit 14 @ stage `git``，detail 帶 argv／退出碼／git 的 stderr。**每份草稿各自獨立**，一份壞的不再擋住後面的 |
+| `tools/push_kbcore.py` | 先問 `status` 的退出碼、再讀 stdout；非 0 就寫 `.push-receipt.json`（`exit 14 @ git`），不再印「乾淨且未領先」 |
+| `skills/chart/SKILL.md` | 第 8 步的 exit 表：14 加註「除非 `stage` 是 `git`」，並補一段說明「沒有回執」曾經是假的 |
+| `scripts/chart/RUN-PROMPT.md` | 同上，一行 |
+
+**碼取 ENVIRONMENT(14) 不是 CONFLICT(15)**：git 修好之後下一輪就會自己完成，
+草稿不必改、也不該掛 errata。兩者的差別是「要不要動草稿」，不是「要不要找人」——
+要找人這件事寫在 detail 裡，而 SKILL 的表現在指得到它。
+
+### 怎麼驗的
+
+`/tmp` 另建 bare origin ＋ 工作 repo，**沒有碰真 repo**（照 MAIN.md 的硬規矩）。
+用今天已驗過的 `2026-09-16.json` 當草稿，並放一支對每個子指令回 exit 69 且
+寫 `xcrun: error: invalid active developer path` 的假 `git` 到 PATH 最前面：
+
+| 情境 | 結果 |
+|---|---|
+| A. git 壞掉 | `exit 14 @ git`，**回執裡有 git 的 stderr 原文**，行程乾淨結束、沒有 traceback |
+| B. 同一份草稿、git 恢復 | `exit 0 @ **already-published**`，草稿被 unlink；origin 上 `data/2026-09-16.json` ＋ `charts/2026-09-16/` **10 個檔**都在 |
+| C. git 失敗但沉默（exit 127、空 stderr） | 走「**git 一個字都沒說**」分支，明說那本身是線索 |
+| D. `push_kbcore` 對壞掉的 git | 寫 `.push-receipt.json` `exit 14 @ git`；git 正常時仍正確落到靜置閘門（exit 13），**沒有製造新的假警報** |
+
+**B 是這次最重要的一條**：它證明真機上的四份草稿在 git 修好之後會自己被收掉，
+不需要人去動草稿、也不會撞 exit 11。
+
+其餘照 `MODIFY.md` 的驗收清單：`py_compile` 全綠、檢查自檢 0 失敗、
+`build_series --selftest`／`fetch --selftest-cache`／`fetch_tw_price --selftest-offline` 全過、
+`chart_verify` 對 2026-09-16 是 19 PASS · 1 WARN · 0 FAIL（WARN 是 `DGS10` 落後 2 個交易日，
+subtitle 已寫基準日）、回測 09-14 與 09-13 判定未變（各 18 PASS · 1 WARN · 0 FAIL · 1 SKIPPED）、
+43 份 `data/*.json` 與 `anchors.json` 全部 `json.load` 得開、
+`index.html` 抽 script 後 `node --check` 通過、兩個 repo 符號連結各 0。
+
+### 怎麼倒回去
+
+三處都是加法，沒有刪掉任何既有分支：
+`kbcore/repo.py` 刪掉 `git_failure_detail()`、`tools/publish.py` 把 `try/except` 拆回
+單行呼叫、`tools/push_kbcore.py` 把 `st = git(...)` 那一段還原成原本的一行。
+文件那兩處各刪一段。**沒有資料格式變更，已發布的封存一個位元都沒動。**
+
+### 當時已知的風險
+
+- **根因未修，而且不是這一輪修得了的。** 這一輪只讓失敗變大聲。git 本身要人在 Mac 上
+  跑 `git -C ~/chart-of-the-day status --porcelain` 看 stderr 才能確診。
+  **在 git 恢復之前，這三個檔的改動推不上 origin** —— 而且 `kbcorepush` 現在會
+  誠實地寫一份 `exit 14` 的回執說明它推不動（改動前它會說「乾淨」）。
+- **`exit 14` 現在有兩種意思**，靠 `stage` 分辨。SKILL 與 RUN-PROMPT 已同步，
+  但**排程裡那份 prompt 副本還沒**（`update_scheduled_task` 是整份取代，本輪未動）。
+  在它同步之前，排程輪次讀到 `exit 14 @ git` 會照舊表理解成「它會自己完成」——
+  **而 detail 第一句就是「重跑不會好，要人看」，所以代價是讀到矛盾、不是讀到錯誤。**
+  這是本輪刻意留下的缺口，下一輪要補。
+- `git_failure_detail()` 的 detail 裡寫了「2026-09-15 起三個 repo 同時卡住就是這一種」，
+  **那是一個會過期的例子**。留著是因為它給的是查法不是結論；哪天它不再是最有用的
+  那個例子，換掉它。
+- 另外三套系統（research／convergence／houseview）也吃同一支 `publish.py`，
+  所以這個攔截對它們同時生效。**本輪沒有對它們做端到端測試**，理由是
+  `publish_one` 的迴圈與例外處理不分系統，而 B 情境已證明它不改變成功路徑。
+
 ## 2026-09-13（日）｜三個「每天都在響、所以等於沒有響」的訊號
 
 這一輪從當天執行輪次結束後的維護盤點進來。七項漂移裡動了五項，

@@ -55,6 +55,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from kbcore.repo import git_failure_detail  # noqa: E402
 from kbcore.result import Exit  # noqa: E402
 
 QUIET_MINUTES = 5
@@ -142,7 +143,26 @@ def main(argv) -> int:
     #   (b) 本機有沒有領先 origin（上一輪 commit 完卡在 push 的情形）
     # 只問 (a) 會讓一顆推不出去的 commit 永遠留在本機，而每一輪都說「沒事做」。
     # 這就是 publish.py 那條「已經寫好了不等於已經發布了」的同一個坑。
-    dirty = bool(git(repo, "status", "--porcelain").stdout.strip())
+    # **這一支的 `git()` 預設 `check=False`，所以 git 失敗不會拋錯，只會回空 stdout。**
+    # （2026-09-16 加）在此之前這裡直接吃 `.stdout`：git 回 exit 69、stdout 空，
+    # 於是 `dirty=False`、`ahead=0`，下面那個 `if` 成立，它印
+    # 「kb-core 乾淨且未領先 origin —— 空輪次，不是失敗」然後回 EMPTY_ROUND。
+    # **git 全掛與「真的沒事做」在輸出上長得一模一樣**，而它每 300 秒說一次，
+    # 說了一天多都沒有人發現 —— 因為那句話本身是設計成「常態」的。
+    #
+    # 這正是這個 repo 反覆記的那個形狀：**一個永遠說得出話的檢查，
+    # 與一個不存在的檢查，在輸出上沒有差別。** 所以先問退出碼，再讀 stdout。
+    #
+    # 只擋 `status`：`rev-list @{u}..HEAD` 在沒設 upstream 時本來就會失敗，
+    # 下面的 `ValueError` 分支是刻意留給它的，把它也擋掉會製造新的假警報。
+    st = git(repo, "status", "--porcelain")
+    if st.returncode != 0:
+        return receipt(repo, Exit.ENVIRONMENT, "git",
+                       git_failure_detail(st.returncode,
+                                          ["git", "-C", str(repo),
+                                           "status", "--porcelain"],
+                                          st.stderr or "", st.stdout or ""))
+    dirty = bool(st.stdout.strip())
     ahead = git(repo, "rev-list", "--count", "@{u}..HEAD").stdout.strip() or "0"
     try:
         ahead_n = int(ahead)

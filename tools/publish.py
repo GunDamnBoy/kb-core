@@ -55,7 +55,7 @@ sys.path.insert(0, str(ROOT))
 import checks  # noqa: F401,E402
 import systems  # noqa: F401,E402  匯入即登記
 from kbcore.report import run_all  # noqa: E402
-from kbcore.repo import check_destination, day_json  # noqa: E402
+from kbcore.repo import check_destination, day_json, git_failure_detail  # noqa: E402
 from kbcore.result import Exit, Level  # noqa: E402
 from kbcore.system import REGISTRY as SYSTEMS, get as get_system  # noqa: E402
 
@@ -366,7 +366,33 @@ def main(argv) -> int:
         return Exit.EMPTY_ROUND
     worst = Exit.OK
     for d in drafts:
-        code = publish_one(d, repo, outbox, system)
+        # **git 這支指令本身失敗時，這裡原本是一個未攔截的例外。**（2026-09-16 加）
+        #
+        # `git()` 是 `check=True`，所以任何一個非零退出碼都會 raise 到 main、
+        # 整支行程帶著 traceback 死掉 —— **於是沒有回執**。而設計原則 4 明寫
+        # 「每一輪都寫回執，成功或失敗都寫，因為『沒有回執』與『回執說失敗』
+        # 是兩件不同的事——前者代表 publish 根本沒跑」。
+        # 這個例外剛好製造出那條原則想排除的狀態：**publish 跑了、跑到最後一步、
+        # 卻留下一個「它根本沒被啟動」的現場。**
+        #
+        # 2026-09-15 起三套系統同時撞到（git 對每個子指令都回 exit 69），
+        # 四份草稿卡了一天多，而 chart 的執行輪次只能在報告裡寫「這是第七種情形，
+        # exit 對照表上一個都不適用」——**對照表沒有錯，是它從來沒有機會被讀到。**
+        #
+        # 另外一半代價比較難看見：`for d in drafts` 在第一個草稿丟例外時就斷了，
+        # **後面的草稿連試都沒試**。同一個 outbox 裡有兩份草稿時（chart 09-15 與
+        # 09-16 就是），一份壞的會擋住一份好的，而日誌只會顯示壞的那一份。
+        #
+        # 碼取 ENVIRONMENT(14) 不是 CONFLICT(15)：git 修好之後**下一輪就會自己完成**，
+        # 草稿不必改、也不該掛 errata。它與 15 的差別是「要不要動草稿」，
+        # 不是「要不要找人」—— 要找人這件事寫在 detail 裡。
+        try:
+            code = publish_one(d, repo, outbox, system)
+        except subprocess.CalledProcessError as e:
+            code = Exit.ENVIRONMENT
+            write_receipt(outbox, d.name, code, "git",
+                          git_failure_detail(e.returncode, e.cmd,
+                                             e.stderr or "", e.stdout or ""))
         worst = code if code != Exit.OK else worst
     return worst
 
