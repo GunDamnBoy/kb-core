@@ -162,9 +162,22 @@ def index_transcripts(sessions: str, markers_by_date: dict) -> dict:
 
     只收**開在那一天**（台北）的那些：維護對話也可能提到同一個草稿路徑，
     但它通常開在別天。同一天而且也提到的話，由 `pick()` 的「不唯一就不寫」擋下來。
+
+    **session 目錄那一層一律用 `*`，不要寫死 `local_*`。**（2026-09-17 修）
+    Cowork 的 session 目錄格式在 2026-09-15 至 09-17 之間從 `local_<uuid>`
+    換成了 8 碼短前綴（`01848aa2`），而這一行寫死 `local_*` —— 於是**掃描對新格式
+    的 session 一份都掃不到，回傳空 hits，而空 hits 與「那天沒跑」在輸出上一模一樣**。
+    代價已經發生：`usage.csv` 的 chart 最後一列停在 2026-09-15（09-16 那輪有回執、
+    有日檔、有 `window.to`，掃描照樣沒補），podcast 09-15 同樣缺。
+    **同一個錯誤同時出現在三個地方** —— 這裡、`usage_report.pick_transcript()` 的
+    錯誤訊息、以及 `metrics/MEASURE.md` 的 sidecar 找法，
+    所以那一天 sidecar 與掃描**兩條路一起斷**，而斷的樣子是「那幾天沒花 token」。
+    改成 `*` 而不是再列一個 `[0-9a-f]*` 的樣式：這一層底下**只有 session 目錄**，
+    而真正把候選收斂掉的是後面的 `.claude/projects/*/*.jsonl`——
+    **用格式去猜目錄名，就是在賭下一次改名**，而這已經賭輸一次了。
     """
     hits = {}
-    for p in glob.glob(os.path.join(sessions, "*", "*", "local_*", ".claude",
+    for p in glob.glob(os.path.join(sessions, "*", "*", "*", ".claude",
                                     "projects", "*", "*.jsonl")):
         if os.sep + "subagents" + os.sep in p:
             continue

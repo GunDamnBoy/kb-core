@@ -67,6 +67,14 @@ python3 ~/kb-core/scripts/chart/prep_chart.py
 上游還沒好就等（`anchors.schedule.upstream_wait_minutes`），仍無則用前一日並在
 `about.run` 註明 —— prep 會把等多久印出來。
 
+**「快取裡有、但這一輪沒抓」那一段是量測，不是閘門**（2026-09-13 的圖型多樣性那一行同類，2026-09-17 加）。
+它列的是 `data/series/` 底下**這一輪連試都沒試**的序列與它們的末日 ——
+不在 `failed`、不在 `skipped`、不在「不能用」，因為它們根本不在涵蓋清單裡。
+**不必處置，但選題前要看一眼**：那些檔案在磁碟上跟新鮮的序列長得一模一樣，
+一樣讀得進 `build_series`，差別只在最後一次刷新是什麼時候。
+2026-09-17 那一輪的當日主圖就是選完題、寫到一半才發現 `T10YIE` 的末日是 08-12
+（已於同日加進 `prefetch.CORE`，但**清單上永遠還有下一條**）。
+
 **完成條件**：prep 跑過，且它印的每一個「⚠︎」、每一條「不能用」、
 每一條達到門檻的連續失敗都有處置。**「沒有 ⚠︎」不等於沒有事情要處置** ——
 2026-09-10 那一輪 prep 一個 ⚠︎ 都沒印，而當天有一條落後 7 個交易日的序列
@@ -289,8 +297,16 @@ QA 旗標與處置、降級與理由、以及下一輪要修的事。
 **收尾要寫 sidecar `~/outbox/chart/<今天>.usage.json`**，四個必填欄位加 `until`，
 格式與各欄的意義去 `MEASURE.md` 看（那是它唯一的家）。三件事只有輪次自己知道，
 所以只有輪次寫得出來：`since`（這一輪的第一個時刻）、`until`（＝日檔的 `window.to`）、
-`transcript`（**這一場自己的主逐字稿絕對路徑**，用 `Glob` 找
-`…/local_<uuid>/.claude/projects/*/*.jsonl`，取不在 `subagents/` 底下的那一個）。
+`transcript`（**這一場自己的主逐字稿絕對路徑**，找法在 `MEASURE.md`，這裡不抄）。
+
+> **2026-09-17 訂正：這兩行原本寫「用 `Glob` 找 `…/local_<uuid>/.claude/projects/*/*.jsonl`」。**
+> `Glob` 的邊界只到那一場自己的 `outputs`，對上一層一律回 `outside this session's
+> connected folders`；而 `local_<uuid>` 這個目錄名也已經換成 8 碼短前綴。
+> **兩個細節都錯，而它們一起錯的樣子是「這台機器上沒有逐字稿」** ——
+> 當天那一輪照這兩行做，撞牆之後在報告裡寫了兩條不存在的待修事項，
+> 而正確的路（沙箱掛載裡的 `/sessions/<session>/mnt/.claude/projects/session/`）
+> 前一天的報告就寫著。**照抄一份過期的找法，比沒有找法更貴。**
+> 所以這裡改成只指路、不抄步驟 —— `MEASURE.md` 是它唯一的家。
 系統 id 是 `chart`。寫完等 `com.kenny.kbusage`（每 600 秒）撿走，檔案消失就是進帳了。
 
 **為什麼要明寫**：2026-08-30 盤 `usage.csv`，chart 有 **6 列 `sidecar`、4 列 `commit`**。

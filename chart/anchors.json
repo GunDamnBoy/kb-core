@@ -386,8 +386,10 @@
    "optional": [
     "hi_pts",
     "zero_line",
-    "x_label"
-   ]
+    "x_label",
+    "pts_labels"
+   ],
+   "_pts_labels": "**`pts` 帶第三個元素時，`pts_labels: true` 會把每一點的名字都標出來**（2026-09-17 加）。預設 false —— 點數多的時候標全部會糊成一團，那比不標更糟（同 `_fit_ticks` 的病歷：「標籤糊成一團跟沒有標籤一樣糟，而且更難發現」）。**它在這張表上不是裝飾**：這張表是「一年後能不能原樣重畫」的依據，而它會改變畫面，少了它就重畫不回來。兩軌都吃它（`render_static` 的 scatter 分支與 `echarts_option`），回歸是 `tools/chartkit_smoke.py` 的雙軌斷言 —— **新增任何會改變畫面的旗標都要補一條**，因為兩軌都跑得動、都不丟例外，而網頁那一側沒有人每天複查。"
   },
   "heatmap": {
    "data": [

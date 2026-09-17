@@ -2868,3 +2868,130 @@ E 27,573／F 32,887／G 32,407）—— **這就是 `strip_maintainer_only()` �
 5. **`_dedup_exempt_cost` 的手寫計數這次也是靠人記得回頭改的。** 連續兩輪沒漏改
    **不代表機制變好了，只代表連續兩輪有人記得**。真正的解法是讓那段話去讀 `len(dedup_exempt)`，
    而 `anchors.json` 是純資料檔、做不到。
+
+---
+
+## 2026-09-17｜十一條落地，而其中兩條要修的是前一輪報告自己寫錯的診斷
+
+**觸發事件是當天那一輪的 sidecar 被 `kbusage` 搬成 `.bad`。** 追下去發現兩件事：
+一是 `MEASURE.md` 的必填欄位寫法有一個依賴範例鍵順序的耦合，**而那個耦合當天真的錯了一次**；
+二是那一輪的執行報告裡有**兩條錯誤的待修事項**，成因是兩個近似觀測都撞牆就下了結論。
+**後者比前者重要** —— 一條錯的待修事項會被下一輪當成事實接手。
+
+### 動到哪些檔
+
+| 檔 | 改了什麼 |
+|---|---|
+| `metrics/MEASURE.md` | ①「前四個欄位必填」改成**具名列出 `system`／`date`／`transcript`／`since`**，並記下 09-17 那次事故；②〈找法〉整段重寫：改成沙箱路徑 `find /sessions/*/mnt/.claude/projects/session -maxdepth 1 -name '*.jsonl'`，附 Mac 端映射與「不要用 `Glob`、不要用 `list_sessions`」的兩條否定證據；③範例路徑的 `local_<c>/…/<mangled>/` 改成實際的 `<c>/.claude/projects/session/` |
+| `skills/advisory/SKILL.md` | ①步驟 3-0 標題由「派工前」改為「併行送出前」，**適用範圍擴到步驟 3、4、6 三處**；②末尾補 09-17 撰寫端漏送的經過；③步驟 6 拆分身那一段加一條指回 3-0 |
+| `scripts/advisory/preamble.md` | 十條來源觀測（見下），**含第七節新增一整列 `MI_INDEX`** |
+| `scripts/advisory/preamble/*.md` | 重跑 `slice_preamble.py`，七份重生成、`--check` exit 0 |
+| `~/outbox/2026-09-17.usage.json` | 重寫，補上 `transcript` |
+| `~/outbox/2026-09-17-run-report.md` | 更正兩條錯誤診斷，並改寫其餘四條 |
+
+**`preamble` 十條**：IBD `/feed/` 是 `text/plain`（要 `<pre>` ＋ `DOMParser`）／Mint `storyParagraph` 擴到 `/companies/news/`／Korea Herald 膨脹量常數補適用範圍（短稿 +28～31、中長稿約 +23）／STAT+ 前綴要用子字串不是 `startsWith`／STAT `Morning Rounds` 彙整頁判定不成卡／SemiAnalysis archive 日期全大寫要加 `i` 旗標／見聞端點要帶完整 host／MoneyDJ `NewsRealList` 每分類上限 20 列／**CME 能源與金屬同步第三次觀測收齊、結案**／**CME `Last Updated` 語意覆測完畢、09-13 的結論撤回**。
+**第七節新增 `MI_INDEX` 那一列**：`type=IND` 才取得到指數，`type=MS` 回 `stat:OK` 但前六個 `tables` 是空物件。
+
+### 量測
+
+- **`kbusage.sh` 的實際判準**（逐字）：`miss = [k for k in ("system","date","transcript","since") if not d.get(k)]`；`until` 走 `d.get("until") or "-"`。**所以 `transcript` 必填、`until` 不必填**，與 `MEASURE.md` 原本那句「前四個欄位必填」＋範例鍵順序 `system/date/since/until/transcript` 推出來的結論**恰好相反**。
+- **主逐字稿**：`5c7f6ed1-3060-49e4-a219-f1396288fbef.jsonl`，沙箱 4,312,870 位元組。**Mac 端路徑用 `Read` 開過、第一行的 `sessionId` 與檔名相符** —— 09-16 那一輪標成「推得」的映射，**09-17 升級成量到**。
+- **`Glob` 的邊界實測三次**：對自己的 `outputs` 可以；對 `outputs` 的父目錄、對另一場的 `outputs`，都回 `outside this session's connected folders`。
+- **`list_sessions` 拉 40 筆全部是別場**，不含自己。順帶量到目錄命名已由 `local_<完整 uuid>/outputs` 改為 `<uuid 前 8 碼>/outputs`（最近 5 筆新式、第 6 筆以後舊式）。
+- **切片**：正本 108,988 字元／18 節；七份由 573,858 增為 593,530 位元組（A 未變 —— 當天沒有一條觀測落在 A 的來源上，**那是對的**）。
+- **併行**：步驟 3 四個不同 `agentId`、子代理 64.6 分對牆鐘 21 分；步驟 4 三個、56.1 分對牆鐘 22 分；**步驟 6 宣告四個、實際送出三個，第四個序列 14.1 分**。
+
+### 怎麼驗的
+
+- sidecar：用 `kbusage.sh` 裡**那一段同樣的 Python** 跑一次，`缺欄位: 無`。
+- Mac 端逐字稿路徑：`Read` 第一行，`sessionId` 欄位與檔名逐字相符。
+- 切片：`slice_preamble.py --check` 七份全「一致」、exit 0；另**逐條抽驗十條觀測有沒有路由到對的採集員**（F 拿到 `MI_INDEX` 與 MoneyDJ 上限、E 拿到 IBD、G 拿到 STAT／Korea Herald／Mint、D 拿到 CME 與 SemiAnalysis、C 拿到見聞），十條全中；**維護端專用的 `↩ 被引用` 反向指標七份都沒有洩漏**（正本仍有 6 個）。
+- `SKILL.md` 引用 `preamble` 現行結論的點：逐一比對過，**本輪改掉的兩條 CME 結論沒有被 `SKILL.md` 轉述**（它對 CME 的引用只到 `dedup_exempt` 與節號指路）。
+- 其餘照 `MODIFY.md` 的〈驗證〉清單跑（py_compile、自檢、`advisory_verify`、`json.load`、符號連結歸零）。
+
+### 怎麼倒回去
+
+- **三個文件檔本輪只做追加與就地更正**，沒有刪除任何既有段落（唯二的改寫是 `MEASURE.md` 的必填那一句與〈找法〉那一段，兩者的舊文都在 CHANGELOG 這一筆裡留了逐字紀錄）。倒回去＝刪掉標 `09-17` 的那幾段、把必填那句改回「前四個欄位必填」、〈找法〉改回 `Glob` 樣式。
+- **倒回去之後一定要重跑 `slice_preamble.py`**，否則切片停在新版而正本是舊版 —— 那正是 `--check` 會抓到的那種不一致。
+- `SKILL.md` 步驟 3-0：把標題與「三處」那一段刪掉即可，步驟 6 那條指回去的話一起刪。
+- sidecar 與 run report 是 outbox 裡的當期檔，直接覆寫。
+
+### 當時已知的風險
+
+1. **`until` 不必填這件事，`MEASURE.md` 現在講對了，但沒有任何東西在驗它。** 下一次有人重排那個 JSON 範例的鍵順序時，具名列出的四個鍵不會跟著錯 —— **這一條算是修掉了耦合**；但「`kbusage.sh` 的必填清單改了而 `MEASURE.md` 沒跟上」這個方向**仍然沒有護欄**，形狀同本檔記過多次的「正本改了、讀者沒跟上」。
+2. **本輪改的十條來源觀測，仍然一條檢查都碰不到** —— 與 09-09、09-13、09-15 完全相同。`advisory_verify` 的 19 條沒有任何一條會驗「IBD `/feed/` 的 contentType」或「MoneyDJ 的 20 列上限」。**偵測方式仍然只有一種：下一輪的採集員撞到同一個坑。**
+3. **步驟 3-0 擴大適用範圍之後，感測器仍然是人。** 它要求的是「送出後自己數 `agentId`」，而**沒有任何程式在看那個數字** —— 這是它第三次以同一個形狀失敗（09-02 行文、09-13 事後完成條件、09-17 裝在別的步驟上）。**若下一輪再漏一次，該考慮的就不是再擴大範圍，而是承認這條規則需要一個機器讀得到的痕跡。**
+4. **`floor/2026-09-16.json` 缺席仍然未查。** 09-17 那一班完全正常（`produced_by: actions`、14 個 ident 全 `ok`），所以不影響當期。**列為待查，不寫成診斷** —— 只憑「檔案不在」推論「那一班沒跑」正是 08-28 與 08-30 連續判錯兩次的形狀。
+5. **Korea Herald 膨脹量那條改成「短稿 +28～31、中長稿 +20 以上」之後，中長稿那一半只有三個資料點**（+29／+23／+23，其中兩個來自同一輪）。**它現在是觀測不是常數**，下一輪再撞到請把膨脹量抄回報告。
+
+---
+
+## 2026-09-17 續｜一個只在資料完全正常時才會發動的安靜失敗，加三條漂移
+
+**這一筆是同日第二場維護的產物。** 起點是前一場留下的那個「待查」：
+`outbox/floor/` 少了 `2026-09-16.json`。**答案在 09-16 自己的 `about.notes` 與 `prefetch.log` 裡就寫著** ——
+這是同一天第二次「答案在前一輪的報告裡而我沒去看」（第一次是逐字稿路徑，見上一筆）。
+**追下去找到的根因比缺席本身重要得多。**
+
+### 動到哪些檔
+
+| 檔 | 改了什麼 |
+|---|---|
+| `launchd/kbprefetch-advisory.sh` | ①驗證段的 `d["produced_by"]` 與 `json.dump` **移進 `try`**，例外時 `print` 一行具名的 `0 寫回 produced_by 失敗（Type）`；②那段 python 加 `2>>"$LOG"` |
+| `skills/advisory/SKILL.md` | 「`preamble` 第六之二節已經收進**第三種**句型」更正為四種，並寫出第四種（`Only use to renew if text is incomplete or updated`，09-15 首見於 WSJ） |
+| `scripts/advisory/preamble.md` | 第七節補上 `↩ 被引用：` 反向指標（**先前五個被引用的章節裡只有四個有**） |
+| `scripts/advisory/preamble/*.md` | 重跑切片，`--check` exit 0（**七份大小不變 —— 反向指標是維護端專用、會被 `strip_maintainer_only()` 剝掉**，那是對的） |
+| `skills/maintain/advisory/MAIN.md` | 第 2 步刪掉「瀏覽器 HOME deviceId」那一項，照 08-29 徽章表的先例留刪節線與理由 |
+
+### 量測
+
+- **`prefetch.log` 244–246 行**（09-16）：`抓到了但不可用（來源 actions）：` **冒號後面是空的**，接著 `exit=10`。
+- **根因**：`read -r ok_flag summary < <( python3 … )` 那段裡，`d["produced_by"] = source` 與
+  `json.dump(d, open(path,"w"), …)` **在 `try` 之外**，而成功的 `print` 排在它們**之後**。
+  任何例外 → **stdout 全空** → 兩個變數雙雙為空 → 記一行沒有理由的訊息 → exit 10 → `rm -f` 掉那份檔。
+  **stderr 當時沒有被導進 log**（同支腳本另外兩處 python 呼叫都有 `>> "$LOG" 2>&1`，唯獨這一處沒有）。
+- **⚠️ 失效的方向是反的，這才是它真正危險的地方**：`else` 這一支只有在「date 對 ＋ `failed_essential` 空」
+  時才進得來，**所以它只在保底檔完全合格時才會發動**。三個已知失敗理由每一個都會印出具名原因，
+  **唯獨「一切正常」那條路上的例外是啞的**。當天 origin 上那份檔是完全合格的（14 個 ident 全 `ok`），
+  輪次因此得改走 Chrome 讀 origin。
+- **`SKILL.md` 的漂移延遲兩輪**：正本 09-15 收進第四種句型，本檔 09-17 才跟上 ——
+  與 `MAIN.md` 第 2 步預告的「偵測延遲約兩輪」完全相同，**這是那條通則的第二個實例**（第一個是 09-06 的 STAT+ 計數）。
+- **`deviceId` 在整個 `kb-core` 的命中數：1**，就是 `MAIN.md` 那一行自己。
+  `SKILL.md` 命中 1（引用本行的那句）、`preamble` 命中 0。
+
+### 怎麼驗的
+
+- **根因用重現證明，不是推論**：在 `/tmp` 造一份完全合格的保底檔、`chmod 444`，跑**修改前**那段程式，
+  產出的日誌行 `抓到了但不可用（來源 actions）：` **與 09-16 真實那一行逐字相同**。
+- **修完再跑同一個重現案**：`summary` 變成 `寫回 produced_by 失敗（PermissionError）`（第一層有效）。
+- **第二層另外測**：故意讓 `sys.argv` 不足、逼出 `try` 之外的 `IndexError`，
+  **traceback 確實寫進了 log**（修改前會整個消失）。
+- `bash -n launchd/kbprefetch-advisory.sh` exit 0。
+- `slice_preamble.py --check` 七份一致、exit 0；反向指標由 6 條增為 **7 條**，**七份切片零洩漏**。
+- 其餘照 `MODIFY.md` 的〈驗證〉清單跑。
+
+### 怎麼倒回去
+
+- `kbprefetch-advisory.sh`：把 `try`／`except` 兩層縮排拆掉、`2>>"$LOG"` 移除即可，**行為完全回到 09-16 那天**。
+- 三個文件檔都是就地更正 ＋ 留痕，倒回去＝刪掉標 `09-17` 的那幾段（`MAIN.md` 那一項把刪節線拿掉）。
+- **`preamble` 動過就要重跑 `slice_preamble.py`**（雖然這次七份大小不變，倒回去時仍要跑一次確認）。
+
+### 當時已知的風險
+
+1. **⚠️ `skills/maintain/advisory/MAIN.md` 改了，而技能裡那份副本這一場同步不了。**
+   快取是唯讀的，`save_skill` 只取代 `SKILL.md`、其餘檔案原樣保留 ——
+   **要把整個 `maintain` 目錄打包成 `.skill` 重裝才會生效**。
+   **在那之前，同步組是紅的**：正本與副本的 `MAIN.md` 大小不同。**這是本輪唯一一個已知未收斂的狀態。**
+2. **`json.dump` 仍不是原子寫入。** 例外發生在寫到一半時，檔案會是截斷的 ——
+   目前靠後面那句 `rm -f "$TMP"` 收掉，所以壞檔不會流到下游。**沒有改成 `.tmp` ＋ rename，
+   是因為那超出這次確認的範圍**；記在這裡，下次碰這支腳本時一起處理。
+3. **這個安靜失敗只在 09-16 出現過一次，成因（那個例外究竟是什麼）永遠查不到了** ——
+   stderr 當天就丟掉了。**修法補的是「下一次會留下證據」，不是「已經知道上一次為什麼」。**
+   下一輪若再出現，日誌裡會有具名理由或 traceback，**那時才談得上根因**。
+4. **反向指標補到七條之後，五個被引用的章節全部有了** —— 但**它仍然只在「改動的那一刻」有用**，
+   而且沒有任何程式在驗「被引用的章節是不是都有指標」。**這次是靠人逐條比對 `SKILL.md`
+   的引用點與 `preamble` 的指標才發現缺一個。**
+5. **`launchd/*.plist` 正本 19 份與 `~/Library/LaunchAgents` 的實裝沒有對帳** ——
+   沙箱與檔案工具都到不了那個目錄，**要在 Mac 終端機跑 `launchd/README.md` 的對帳指令**。
+   本輪改的 `kbprefetch-advisory.sh` 是包裝腳本、不是 plist，**所以不需要重裝 plist**；
+   但它是否真的被 `com.kenny.kbprefetch.advisory` 指到，這一輪沒有驗。

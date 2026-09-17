@@ -143,6 +143,39 @@ def run(outdir):
         if verdict and c is not None:
             bad.append(kind)
 
+    # ── 雙軌斷言：`pts_labels`（2026-09-17 加）──────────────────────
+    # **這一條驗的是「兩軌有沒有一起動」，不是「畫得出來」。**
+    # 上面那個迴圈只問渲染層丟不丟例外，而 `anchors.rendering` 記著的頭號缺陷
+    # 是**雙軌漂移** —— 改了靜態軌忘了互動軌，兩邊都跑得動、都不丟例外，
+    # 而網頁那一側沒有人每天複查。所以新增任何一個「會改變畫面」的旗標，
+    # 都要在這裡問一次 option 那一側有沒有跟上。
+    lab_pts = [[1.0, 2.0, "甲"], [2.5, 3.5, "乙"], [4.0, 1.5, "丙"]]
+    for flag, want in ((True, True), (False, False)):
+        ch = C.Chart(slug="smoke-pts-labels", title="冒煙測試：pts_labels",
+                     subtitle="", kind="scatter", pts=lab_pts,
+                     hi_pts=[[4.0, 1.5, "離群"]], pts_labels=flag, source="smoke")
+        try:
+            C.render_static(ch, outdir, "smoke-pts-labels")
+        except Exception as e:
+            rows.append(("pts_labels", "例外", f"靜態軌 {type(e).__name__}: {e}", None, None))
+            bad.append("pts_labels")
+            continue
+        opt = C.echarts_option(ch)
+        s0 = (opt.get("series") or [{}])[0]
+        got = bool((s0.get("label") or {}).get("show"))
+        # 資料形狀也要跟著換：要標籤就得是帶 `name` 的 dict，`{b}` 讀的就是它。
+        named = isinstance((s0.get("data") or [None])[0], dict)
+        drift = (got != want or named != want)
+        # **通過也要印一列。** 只在失敗時 append 的話，「這條斷言沒跑到」
+        # 與「跑了而且過了」在畫面上一模一樣 —— 這支自己的 docstring 就記著
+        # 那個形狀（`kinds._pick` 被當成一種圖型測、回報「畫得出來」）。
+        rows.append(("pts_labels", "漂移" if drift else "OK",
+                     f"pts_labels={flag} → option label.show={got}、data 帶 name={named}"
+                     + ("，兩者都應為 %s" % want if drift else "（兩軌一致）"),
+                     None, None))
+        if drift:
+            bad.append("pts_labels")
+
     w = max(len(k) for k in kinds)
     print(f"{'圖型'.ljust(w)}  {'結果':6s}{'位元組':>10}{'顏色數':>7}  說明")
     for kind, st, why, n, c in rows:

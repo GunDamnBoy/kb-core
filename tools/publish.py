@@ -161,7 +161,7 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     # 這裡原本硬寫「內容不同就擋」—— 對日頻是對的，對週頻不是：
     # 週摘依報告自己的日期分期，而報告不會在週末停止到達。
     # 這是同一道接縫漏掉的第四個維度（前三個是 index_entry／index_meta／staged_paths）。
-    already = False
+    already = prewritten = False
     if target.exists():
         if target.read_text() != body:
             try:
@@ -176,6 +176,21 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
             print(f"改寫 {target.name} —— 系統的 republish_rule 判定這是允許的變更")
         else:
             already = True
+            # **`already-published` 過去對兩種成因不可分辨，而它們的處置相反。**
+            # (一) publish 上一輪寫完、卡在 rebase/push，這一輪補推 —— 正常自癒。
+            # (二) **產生端自己先把日檔寫進 data/ 才交草稿** —— 那條路徑不該被走到，
+            #      只是內容剛好一字不差所以沒撞 exit 11。
+            # 分辨法是唯讀的：publish 每次都會把當日寫進 index，所以
+            # **(一) 的 index 一定已經有這一天，(二) 一定沒有**。
+            # 這一段必須在下面重建 index 之前讀，讀完就不再有第二次機會。
+            # 2026-09-17 podcast 那一輪是 (二)，回執卻報 exit 0 @ already-published、
+            # commit 也對、index 也更新了 —— **在輸出上完全看不出來**。
+            try:
+                _idx = json.loads((repo / "data" / "index.json").read_text())
+                prewritten = not any(d.get("date") == date
+                                     for d in _idx.get("days", []))
+            except Exception:
+                prewritten = False
 
     # 3. 原子寫入 ＋ index
     if not already:
@@ -322,8 +337,14 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
         return Exit.ENVIRONMENT
 
     sha = git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
-    stage = "already-published" if already else "pushed"
-    write_receipt(outbox, name, Exit.OK, stage, f"{target.name} 已發布", sha)
+    stage = ("already-published-prewritten" if prewritten
+             else "already-published") if already else "pushed"
+    detail = f"{target.name} 已發布"
+    if prewritten:
+        detail += ("　⚠ 這一份日檔在 publish 看到草稿之前就已經存在，而 index 裡沒有它"
+                   " —— 是產生端自己寫的，不是上一輪的自癒重試。"
+                   "產生端只該交草稿，日檔與 index 由 publish 寫。")
+    write_receipt(outbox, name, Exit.OK, stage, detail, sha)
     draft_path.unlink()
     return Exit.OK
 

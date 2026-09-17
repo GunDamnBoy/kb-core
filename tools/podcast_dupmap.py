@@ -44,7 +44,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from kbcore.transcript import significant_repeats, tokens_with_lines  # noqa: E402
+from kbcore.transcript import (  # noqa: E402
+    cycle_repeats, significant_repeats, tokens_with_lines,
+)
 
 TPE = dt.timezone(dt.timedelta(hours=8))
 
@@ -81,7 +83,7 @@ def _seg_of(starts, line):
     return n + 1
 
 
-def analyse(path, k, min_tokens, coldopen, drop):
+def analyse(path, k, min_tokens, coldopen, drop, cyc=None):
     text = path.read_text(encoding="utf-8")
     toks, owners, stamps = tokens_with_lines(text)
     reps = significant_repeats(text, k, min_tokens, coldopen)
@@ -106,6 +108,22 @@ def analyse(path, k, min_tokens, coldopen, drop):
             "dup_from": ts_at(b), "dup_to": ts_at(min(b + n - 1, len(toks) - 1)),
             "snippet": " ".join(toks[a:a + 14]),
         })
+    cycles, cyc_cov = [], set()
+    if cyc:
+        for c in cycle_repeats(text, k, coldopen,
+                               cyc["min_copies"], cyc["min_distinct"]):
+            for a, b in c["spans"]:
+                cyc_cov.update(range(a, min(b, len(toks))))
+            lo = c["spans"][0][0]
+            hi = min(c["spans"][-1][1] - 1, len(toks) - 1)
+            unit = c["spans"][0][1] - c["spans"][0][0]
+            cycles.append({
+                "copies": c["copies"], "covered": c["covered"],
+                "unit_tokens": unit,
+                "seg": _seg_of(starts, owners[lo]),
+                "from": ts_at(lo), "to": ts_at(hi),
+                "snippet": " ".join(toks[c["first"]:c["first"] + 14]),
+            })
     return {
         "total_tokens": len(toks),
         "covered": len(covered),
@@ -113,6 +131,8 @@ def analyse(path, k, min_tokens, coldopen, drop):
         "segments": len(starts),
         "seg_starts": [(_seg_of(starts, s), s) for s in starts],
         "blocks": sorted(blocks, key=lambda x: (x["dup_seg"], x["dup_from"] or 0)),
+        "cycles": sorted(cycles, key=lambda x: -x["covered"]),
+        "cycle_coverage": (len(cyc_cov) / len(toks)) if toks else 0.0,
     }
 
 
@@ -136,6 +156,10 @@ def main(argv) -> int:
     coldopen = q["block_repeat_coldopen_head"]
     drop = q["segment_reset_drop_seconds"]
     tiers = q["block_repeat_coverage_tiers"]
+    cyc = {"min_copies": q["cycle_min_copies"],
+           "min_distinct": q["cycle_min_distinct_tokens"],
+           "min_coverage": q["cycle_min_coverage"],
+           "min_covered_tokens": q["cycle_min_covered_tokens"]}
 
     eps = json.loads(mf.read_text(encoding="utf-8"))["episodes"]
     print(f"{date}｜{len(eps)} 集｜整段複製定位"
@@ -149,12 +173,37 @@ def main(argv) -> int:
             print(f"\n{e['file']}　⚠︎ 檔案不存在（manifest 寫了但沒落地）")
             dirty += 1
             continue
-        r = analyse(path, k, min_tokens, coldopen, drop)
+        r = analyse(path, k, min_tokens, coldopen, drop, cyc)
         head = f"\n{e['showKey']}｜{e['title'][:46]}"
-        if not r["blocks"]:
-            print(f"{head}\n  乾淨（{r['total_tokens']:,} token，{r['segments']} 段）")
+        # **兩個觸發條件是 OR，不是 AND，而那是量出來的。** 比例對長集數不利：
+        # 09-17 的 iltb 有一組 134 token 的內容塊循環三輪、369 token 被蓋掉，
+        # 但全集 12,753 token，算出來只有 2.89% —— **卡在 3% 門檻下 0.11 個百分點**，
+        # 而那一集是當天人工逐行核對過的真陽性。同樣 369 token 落在一集 3,000 token
+        # 的短節目上就是 12%。所以補一條絕對量下限。
+        cyc_tokens = round(r["cycle_coverage"] * r["total_tokens"])
+        has_cyc = bool(r["cycles"]) and (
+            r["cycle_coverage"] >= cyc["min_coverage"]
+            or cyc_tokens >= cyc["min_covered_tokens"])
+        if not r["blocks"] and not has_cyc:
+            print(f"{head}\n  乾淨（{r['total_tokens']:,} token，{r['segments']} 段）"
+                  f"——整段複製與循環重複兩種都沒觸發")
             continue
         dirty += 1
+        print(head)
+        print(f"  {r['segments']} 段轉錄"
+              + ("（時間戳有重置，**區間不可跨段比較**）" if r["segments"] > 1 else ""))
+        if has_cyc:
+            print(f"  ◆ 循環重複　覆蓋 {r['cycle_coverage']:.0%}"
+                  f"（{len(r['cycles'])} 組）——**這一種 `podcast_verify.py` 看不到**")
+            for i, c in enumerate(r["cycles"], 1):
+                print(f"    ~{i:<2} 單元 {c['unit_tokens']:>4} tok × {c['copies']} 份　"
+                      f"[段{c['seg']} {_hms(c['from'])}–{_hms(c['to'])}]")
+                print(f"        «{c['snippet']}…»")
+            print("    → 這幾個區間照缺漏處理，不要據它生成內容；"
+                  "回報要寫出時間戳區間、週期與次數")
+        if not r["blocks"]:
+            print("  整段複製：無")
+            continue
         cov = r["coverage"]
         # **這三個字串會被原樣貼進派工單，所以它們只描述事實、不下篇幅結論。**
         # 「覆蓋率高的集數可以額外授權 subagent 自行判定下界例外」是給主代理的話，
@@ -163,10 +212,7 @@ def main(argv) -> int:
         level = ("高（>%d%%）" % (tiers["brief"] * 100)) if cov > tiers["brief"] \
             else ("中（%d–%d%%）" % (tiers["note"] * 100, tiers["brief"] * 100)) if cov > tiers["note"] \
             else "低（<%d%%）" % (tiers["note"] * 100)
-        print(head)
-        print(f"  {r['segments']} 段轉錄"
-              + ("（時間戳有重置，**區間不可跨段比較**）" if r["segments"] > 1 else ""))
-        print(f"  重複覆蓋 {r['covered']:,}／{r['total_tokens']:,} token"
+        print(f"  ◆ 整段複製　覆蓋 {r['covered']:,}／{r['total_tokens']:,} token"
               f"（{cov:.0%}）　嚴重度：{level}")
         print(f"  {len(r['blocks'])} 個區塊：")
         for i, b in enumerate(r["blocks"], 1):
@@ -181,7 +227,7 @@ def main(argv) -> int:
                   f" **不要因為某一段髒就判定整集內容不足**")
 
     print("\n" + "=" * 74)
-    print(f"{dirty}／{len(eps)} 集有整段複製。"
+    print(f"{dirty}／{len(eps)} 集有整段複製或循環重複。"
           f"　把上面每一集自己那一段原樣貼進它的派工單。")
     print("嚴重度「高」的集數，派工單可以額外寫一句「下界例外由你讀完素材自己判」——"
           "**但不要替它預判會不會觸發**。這一行是給你看的，不要貼進派工單。")

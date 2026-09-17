@@ -157,8 +157,15 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
   **結論：來源異動不需要動 `index.html`。** 照舊版去找那張表會找不到，
   而「找不到」很容易被當成「表壞了」——所以刪掉比留著更安全。
   （順帶記一筆，不必動：`tagcls` 寫進了資料、檢查也驗它的值域，但外殼從頭到尾沒有讀它。）
-- 瀏覽器 HOME deviceId 是否仍在 `list_connected_browsers` 回傳中；
-  fallback 必須是排除 WORK，不可用 connectedAt。
+- ~~瀏覽器 HOME deviceId 是否仍在 `list_connected_browsers` 回傳中；
+  fallback 必須是排除 WORK，不可用 connectedAt。~~
+  **2026-09-17 查證後刪除這一項：`deviceId` 與 `list_connected_browsers` 在整個 `kb-core` 裡
+  只出現在這一行自己。** `skills/advisory/SKILL.md` 與 `scripts/advisory/preamble.md`
+  **都沒有任何瀏覽器 profile 選擇的步驟**（實測前者命中 1 次、正是引用本行的那一句，後者 0 次），
+  也沒有任何腳本在讀 deviceId。現行做法是每個採集員用 `tabs_create_mcp` 自建分頁、
+  明確帶 `tabId`、**且不准叫 `tabs_context_mcp`**（規則在 `SKILL.md` 步驟 3 與 `preamble` 第二節）。
+  **處置與 2026-08-29 刪掉徽章表那一項相同**：照這一行去找會找不到，
+  而「找不到」很容易被當成「壞了」——**刪掉比留著更安全**。
 - 排程與實裝：`kb-core/launchd/*.plist` vs `~/Library/LaunchAgents/` 裡的副本
   （對帳指令在 `launchd/README.md`）。
 

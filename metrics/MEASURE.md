@@ -45,14 +45,25 @@
 ~/outbox/<系統 outbox 目錄>/<日期>.usage.json   # 其餘六套
 ```
 
-前四個欄位必填，缺一個 `kbusage` 會把它搬成 `.bad` 並記在日誌裡；`until` 強烈建議填。
+**必填的是 `system`／`date`／`transcript`／`since` 這四個**，缺一個 `kbusage` 會把它搬成 `.bad` 並記在日誌裡；**`until` 不在必填裡，但強烈建議填**（理由見下一節）。
+
+> **⚠️ 這一行 2026-09-17 之前寫的是「前四個欄位必填」，而它害掉了那一天的那一列。**
+> 底下 JSON 範例的鍵順序是 `system`／`date`／`since`／`until`／`transcript`，
+> 所以「前四個」照字面數會得到 `system`／`date`／`since`／`until` —— **剛好把唯一真正必填的
+> `transcript` 排除在外，又把不必填的 `until` 算了進去**。
+> 2026-09-17 那一輪照字面寫了四欄、沒寫 `transcript`，`kbusage` 當場把它搬成
+> `2026-09-17.usage.json.bad`，**那一天的 sidecar 就此不存在**。
+> `kbusage.sh` 的實際判準是逐字的：`miss = [k for k in ("system", "date", "transcript", "since") if not d.get(k)]`，
+> 而 `until` 走的是 `d.get("until") or "-"`。
+> **改成具名列出四個鍵而不是說「前四個」，是因為「前四個」的正確性依賴範例的鍵順序 ——
+> 那是一個沒有任何東西在看的耦合，而範例重排一次它就會再錯一遍。**
 
 ```json
 {"system": "advisory",
  "date": "2026-08-24",
  "since": "2026-08-24T07:35:00+08:00",
  "until": "2026-08-24T09:41:00+08:00",
- "transcript": "/Users/macmini/Library/Application Support/Claude/local-agent-mode-sessions/<a>/<b>/local_<c>/.claude/projects/<mangled>/<uuid>.jsonl"}
+ "transcript": "/Users/macmini/Library/Application Support/Claude/local-agent-mode-sessions/<a>/<b>/<c>/.claude/projects/session/<uuid>.jsonl"}
 ```
 
 - `system`：下表第一欄的值域，打錯會被 `SYSTEMS` 擋下。
@@ -87,9 +98,39 @@ podcast 9 列全 `commit`，broker-research `commit` 與 `manual` 各 1，conver
 **既不挑也不做 90 分鐘的 staleness 判斷** —— Mac 睡著、launchd 延後、
 那一場後來又有人講話，都不影響結果。
 
-找法：`Glob` 樣式 `…/local_<uuid>/.claude/projects/*/*.jsonl`，
-**取不在 `subagents/` 底下的那一個**（只有一個，其餘全是子代理；
-`kbusage` 會自己從主逐字稿的路徑推出子代理目錄）。
+**找法：在沙箱裡列 `/sessions/<session>/mnt/.claude/projects/session/`，
+取不在 `subagents/` 底下的那一個 `.jsonl`**（只有一個，其餘全是子代理；
+`kbusage` 會自己從主逐字稿的路徑推出子代理目錄）。檔名去掉 `.jsonl` 就是 `sessionId`，
+**可以開檔讀第一行的 `"sessionId"` 欄位當場核對**。
+
+```bash
+find /sessions/*/mnt/.claude/projects/session -maxdepth 1 -name '*.jsonl'
+```
+
+Mac 端的絕對路徑是 **`<outputs 的 Mac 父目錄>/.claude/projects/session/<uuid>.jsonl`** ——
+`outputs` 的 Mac 路徑寫在工作階段的系統提示裡，把結尾的 `outputs` 換成
+`.claude/projects/session/<uuid>.jsonl` 即可。**這條映射 2026-09-16 與 09-17 各驗過一次**
+（09-16 那一輪標成推得的、當天 `usage.csv` 正常長出一列；09-17 那一輪直接用 `Read`
+開 Mac 端路徑、讀到第一行的 `sessionId` 與檔名相符，**從推得升級成量到**）。
+
+> **⚠️ 不要用 `Glob`，也不要用 `list_sessions`，兩條都不通 —— 而 2026-09-17 就是在這裡判錯的。**
+> - **`Glob` 的邊界只到那一場自己的 `outputs`**：對 `outputs` 本身可以，
+>   對它的父目錄、對 `.claude`、甚至對**另一場的 `outputs`**，一律回
+>   `outside this session's connected folders`。實測三種都試過。
+> - **`list_sessions` 不含自己**：2026-09-17 拉 40 筆全部是別場，
+>   所以輪次沒辦法從那裡查到自己的 `sessionId`。
+>
+> **那一輪因此在報告裡寫了兩條錯誤的待修事項**（「MEASURE.md 的 Glob 樣式與現行目錄佈局不符」、
+> 「輪次無法得知自己的完整 uuid」），**而正確的路就在沙箱掛載裡、前一天的報告裡也寫著**。
+> **它錯的形狀是這個 repo 記過三次的那一種**：兩個近似的觀測都撞牆，就把「我找不到」
+> 當成了「它不存在」。**成本是那一列的 sidecar 與一次錯誤的診斷。**
+>
+> 順帶更正一個會誤導的細節：舊寫法裡的 `local_<uuid>` **這一層的命名已經變了**。
+> 較舊的工作階段是 `local_<完整 uuid>/outputs`，**較新的是 `<uuid 前 8 碼>/outputs`**
+> （2026-09-17 實測 `list_sessions` 的 40 筆裡，最近 5 筆是新式、第 6 筆以後是舊式）。
+> **所以不要從目錄名去湊逐字稿檔名** —— 那個目錄名跟逐字稿的 uuid 本來就不是同一個
+> （實測 09-06 與 09-07 兩輪共用同一份逐字稿 `50818ed6-…`，而它們是兩場不同的排程）。
+> **用上面那個 `find`，不要用拼的。**
 
 ### 上界用 `window.to`，不要用回執 —— **回執檔會被覆寫**
 

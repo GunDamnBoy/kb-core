@@ -162,8 +162,12 @@ fi
 # 這裡拿到的可能是一份 `date` 不對或 `failed_essential` 非空的東西 ——
 # 而那兩種情況輪次都必須知道，不能讓它以為保底層正常。
 # 本機自取的檔走的是同一條驗證，刻意不給它另一套標準。
+# **⚠️ `2>>"$LOG"` 是 2026-09-17 補的，而少了它那一次的代價是一整天的保底檔。**
+# 同一支腳本另外兩處 python 呼叫本來就有 `>> "$LOG" 2>&1`，唯獨這一處沒有 ——
+# 於是這段驗證只要丟出例外，traceback 就直接消失，
+# 下游看到的只有一行「抓到了但不可用」而冒號後面是空的。**見下面那個 try。**
 read -r ok_flag summary < <(
-  /usr/bin/python3 - "$TMP" "$TODAY" "$SOURCE" <<'PY'
+  /usr/bin/python3 - "$TMP" "$TODAY" "$SOURCE" 2>>"$LOG" <<'PY'
 import json, sys
 path, today, source = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -182,8 +186,25 @@ elif fail:
 else:
     # 來源標記寫回檔案裡。**沒有它，「Actions 正常」與「Actions 漏跑但本機補上了」
     # 在下游眼裡一模一樣** —— 備援會把它要回報的那個故障藏起來。
-    d["produced_by"] = source
-    json.dump(d, open(path, "w"), ensure_ascii=False, indent=1)
+    #
+    # **⚠️ 這個 try 是 2026-09-17 補的，而它修的是 2026-09-16 真的發生過的一次。**
+    # 那天這兩行在 try 之外，而成功的 print 排在它們後面 —— 所以任何例外都會讓
+    # **stdout 全空**，`read -r ok_flag summary` 兩個變數雙雙為空，
+    # 外面記下一行 `抓到了但不可用（來源 actions）：` **而冒號後面什麼都沒有**，
+    # 接著 exit 10 並 `rm -f` 掉那份檔。當天 origin 上那份保底檔是**完全合格**的
+    # （date 對、failed_essential 空、14 個 ident 全 ok），輪次因此得改走 Chrome 讀 origin。
+    #
+    # **這個失效的方向是反的，這才是它真正危險的地方**：`else` 這一支只有在
+    # 「date 對 ＋ failed_essential 空」時才進得來，**所以它只在保底檔完全合格時才會發生**。
+    # 三個已知的失敗理由（讀不開／date 不符／failed_essential 非空）每一個都會印出具名原因，
+    # **唯獨「一切正常」那條路上的例外是啞的**。
+    # 2026-09-17 在 /tmp 用唯讀檔重現過，產出的日誌行與當天那一行逐字相同。
+    try:
+        d["produced_by"] = source
+        json.dump(d, open(path, "w"), ensure_ascii=False, indent=1)
+    except Exception as e:
+        print(f"0 寫回 produced_by 失敗（{type(e).__name__}）")
+        raise SystemExit
     print(f"1 date={date}·produced_by={source}·fetched_at={fetched}"
           f"·items={items}·failed_essential=空")
 PY

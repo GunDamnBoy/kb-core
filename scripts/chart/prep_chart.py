@@ -292,6 +292,80 @@ def _stale(ser, anchors, today):
     return bad, warn
 
 
+def _uncovered(pre, repo):
+    """快取裡有、而這一輪**連試都沒試**的序列。回一串要印的行。
+
+    ## 為什麼要有（2026-09-17 開）
+
+    2026-09-17 那一輪的當日主圖原訂是「把 5% 的十年期拆成實質利率＋通膨預期」，
+    選完題、寫到一半才發現 `T10YIE` 的末日是 **2026-08-12**、落後 24 個交易日。
+    **它不在 `failed`、不在 `skipped`、不在「不能用」那一段，一個字都沒有印出來**——
+    因為它根本不在這一輪的涵蓋清單裡：不在 `prefetch.CORE`，也不在近 14 天用過的序列。
+
+    **它藏住的方式**：`data/series/` 底下有 79 個 `.csv`，而涵蓋清單只有 52 條。
+    那 27 條差額**在磁碟上跟新鮮的那些長得一模一樣** —— 一樣有檔案、一樣 `tail`
+    得出數字、一樣讀得進 `build_series`。差別只在最後一次刷新是什麼時候，
+    而那件事在這張盤點表上**以前沒有任何一行在講**。
+    這與 `anchors.prefetch.failure_streak_source` 記的是同一個形狀的反面：
+    那一條問「這件事失敗多久了」，**這一條問「這件事根本沒被試過」** ——
+    而「沒被試過」比「試了失敗」更安靜，因為失敗至少會留下一筆。
+
+    ## 判準
+
+    **兩邊都用正規 id 比，不碰檔名對應。** 涵蓋側取狀態檔的 `series`／`failed`／
+    `skipped`／`canary`；快取側取每個 `.csv` 第一行 `# <id> | <route> | fetched <date>`
+    的 id。`fetch.cache_path()` 的 `^`→`_`、`=`→`-` 是**有損**的，
+    在這裡反推檔名會是那個轉換的第二份實作 —— 而第一份就明寫著
+    「這種轉換寫錯不會報錯，只會安靜地寫到另一個檔」。
+
+    排序用末日**由新到舊**：最像還能用的那幾條排最前面，因為它們最危險。
+    `8069.TWO`（末日 2026-09-01）比 `GDP`（末日 2026-04-01）更容易被誤用。
+
+    **這是量測不是閘門**：它不擋任何產出，也不要求在 `about.run` 寫什麼。
+    有圖真的要用到其中一條時，那條的新鮮度仍然由 `chart.series_freshness` 判。
+    """
+    if not pre:
+        return []
+    cov = {s.get("id") for s in (pre.get("series") or [])}
+    for k in ("failed", "skipped"):
+        v = pre.get(k) or {}
+        cov |= set(v.keys() if isinstance(v, dict) else v)
+    cov.add(((pre.get("canary") or {}).get("id")))
+    cdir = os.path.join(repo, "data", "series")
+    if not os.path.isdir(cdir):
+        return []
+    rows = []
+    for fn in sorted(os.listdir(cdir)):
+        if not fn.endswith(".csv"):
+            continue
+        p = os.path.join(cdir, fn)
+        try:
+            with open(p, encoding="utf-8") as f:
+                head = f.readline()
+                if not head.startswith("# "):
+                    continue
+                last = ""
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and not line.startswith("date"):
+                        last = line.split(",")[0]
+        except OSError:
+            continue
+        sid = head[2:].split("|")[0].strip()
+        if not sid or sid in cov:
+            continue
+        fetched = head.split("fetched")[-1].strip() if "fetched" in head else "?"
+        rows.append((last, sid, fetched))
+    if not rows:
+        return []
+    rows.sort(reverse=True)
+    out = [f"　**快取裡有、但這一輪沒抓 {len(rows)} 條**（量測，不是閘門；"
+           "**它們在磁碟上跟新鮮的序列長得一樣**，選題前先看一眼）："]
+    for last, sid, fetched in rows:
+        out.append(f"　　{sid:<16}last={last:<12}最後刷新 {fetched}")
+    return out
+
+
 def _dead(bad, anchors, ser):
     """把硬失敗那一堆拆成「已登錄的長期失效」與「新的」，並抓出復活的。
 
@@ -515,6 +589,8 @@ def main(argv):
                     print(f"　　　末日 {k}：{head}")
             if not bad and not warn:
                 print("　　（沒有任何一條落後到警示以上）")
+        for line in _uncovered(pre, sib("chart-of-the-day")):
+            print(line)
     print()
 
     # ── 三大數據：整份原樣 ────────────────────────────────
@@ -619,6 +695,36 @@ def selftest_offline() -> int:
                     ({"id": "^UNKNOWN-SERIES"}, "unknown")]:
         if _cadence(s)[1] != want:
             print(f"✗ _cadence 來源：{s} 得到 {_cadence(s)[1]}、應為 {want}")
+            ok = False
+
+    # ── `_uncovered` 的涵蓋判定（2026-09-17 加）────────────────────
+    # **四個案例各對應一種「應該被算成有涵蓋」的來源。**
+    # 漏掉任何一種，那一條就會每輪出現在「沒抓」清單裡 ——
+    # 而一份天天都有假陽性的清單，跟一份不存在的清單在輸出上長得一模一樣
+    # （同 `anchors.prefetch.failure_streak_source` 被哨兵佔滿的那一次）。
+    # 特別要盯 `canary`：`^GSPC` 依設計每天紅，它**不在 `failed` 裡**（2026-09-13 搬走的），
+    # 所以只比 `series`／`failed`／`skipped` 會把它天天列進來。
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        sd = os.path.join(td, "data", "series")
+        os.makedirs(sd)
+        for sid, fn in [("^GSPC", "_GSPC"), ("HG=F", "HG-F"), ("T10YIE", "T10YIE"),
+                        ("DGS2", "DGS2"), ("^TWOII", "_TWOII"), ("PCEPI", "PCEPI")]:
+            with open(os.path.join(sd, fn + ".csv"), "w", encoding="utf-8") as f:
+                f.write(f"# {sid} | test | fetched 2026-08-13\ndate,value\n2026-08-12,1\n")
+        pre = {"series": [{"id": "DGS2"}], "failed": {"^TWOII": "x"},
+               "skipped": {"HG=F": "x"}, "canary": {"id": "^GSPC", "red": True}}
+        lines = _uncovered(pre, td)
+        body = "\n".join(lines[1:])
+        for sid, want_in in [("T10YIE", True), ("PCEPI", True), ("DGS2", False),
+                             ("^TWOII", False), ("HG=F", False), ("^GSPC", False)]:
+            if (sid in body) != want_in:
+                print(f"✗ _uncovered：{sid} 應{'' if want_in else '不'}在清單裡")
+                ok = False
+        # **檔名帶 `^`／`=` 的那兩條是這組案例的重點**：比對走的是 header 的正規 id，
+        # 不是把 `_GSPC.csv`／`HG-F.csv` 反推回去 —— 那個轉換是有損的。
+        if lines and "2 條" not in lines[0]:
+            print(f"✗ _uncovered 標題數量不對：{lines[0]}")
             ok = False
 
     print("selftest-offline 全部通過 ✓" if ok else "★ selftest-offline 有錯")

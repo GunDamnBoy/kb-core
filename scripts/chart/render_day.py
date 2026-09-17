@@ -42,8 +42,10 @@ def to_chart(c: dict) -> ck.Chart:
     # 非時間序列圖型的欄位一律照 dataclass 的欄位名自動帶過去。
     # **不要改回逐欄手寫**——2026-08-09 加 `derived` 時就是在這裡漏接，
     # 欄位加了、schema 寫了、圖卻是空的，而且不會報錯。
+    # `pts_labels` 掛在這裡而不是上面的建構子：同一個理由，少一個手寫欄位
+    # 就少一個會漏接的地方（2026-09-17 加）。
     for f in ("cats", "vals", "groups", "band", "band_label", "matrix",
-              "rows", "gauge", "total_label"):
+              "rows", "gauge", "total_label", "pts_labels"):
         if f in c:
             setattr(ch, f, c[f])
     return ch

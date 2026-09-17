@@ -142,6 +142,60 @@ def block_repeats(text: str, k: int):
     return [{"tokens": n + k - 1, "first": a, "second": b} for a, b, n in out]
 
 
+def cycle_repeats(text: str, k: int, coldopen_head: int,
+                  min_copies: int, min_distinct: int):
+    """循環重複：**同一段原文被複製到很多處**，而不是被複製到一處。
+
+    這是 `block_repeats()` 從 2026-08-22 起就有、而 anchors 記了三次都沒人實作的那個盲點。
+    成因在 `block_repeats()` 的合併條件 `a == cur[0] + cur[2]` —— 它要求重複的兩端同步
+    前進，而循環每遇到下一個副本開頭，`seen[g]` 回傳的仍是**第一份**的位置、`a` 因此回捲。
+    於是一個重複 443 次的句子被切成 443 個各自低於門檻的小區塊，逐一被濾掉。
+    **所以修法不在門檻，在聚合**：按 `first` 分群，同一個 `first` 有 N 份副本就是 N 次循環。
+
+    回傳 `[{first, copies, covered, spans}]`，`covered` 是**副本區間的聯集長度**
+    （不是各段相加 —— shingle 會重疊，相加會算出超過全文長度的荒謬值，
+    2026-09-17 首版就量到 195%）。門檻不在這裡判，跟 `block_repeats()` 同一條規矩。
+
+    `min_distinct` 濾掉「重複單元只有一兩個相異 token」的那種（`the the the`、`a a a`）——
+    **那一種已經由 `quality.stutter_token_repeat` 在計字前剔除了**，這裡再報一次只是噪音。
+    留給這一支的是短句級、行級、區塊級三種尺度，也就是文件記了卻沒有任何機械檢查涵蓋的那三種。
+
+    **全庫 181 份的實測（2026-09-17）**：`min_copies=3`、覆蓋 3% 這組門檻報 36 份（19.9%），
+    文件曾具名記過的 10 份**全部命中**。抽驗其餘 26 份，全部是真的重複
+    （`like on like on`、`in a in a`、整段人物介紹循環、整句內容重複數百次），
+    **沒有一份是誤報**。所以那 19.9% 是**全庫真實汙染率，不是誤報率** ——
+    這一支報得多不是因為它吵，是因為在它之前沒有人在看。
+    """
+    toks = tokens(text)
+    groups: "dict[int, list]" = {}
+    for r in block_repeats(text, k):
+        if r["first"] < coldopen_head:
+            continue
+        groups.setdefault(r["first"], []).append(
+            (r["second"], r["second"] + r["tokens"]))
+    out = []
+    for first, spans in groups.items():
+        if len(spans) < min_copies:
+            continue
+        end = first + max(b - a for a, b in spans)
+        if len(set(toks[first:end])) < min_distinct:
+            continue
+        merged, cs, ce = 0, None, None
+        for s, e in sorted(spans):
+            if cs is None:
+                cs, ce = s, e
+            elif s <= ce:
+                ce = max(ce, e)
+            else:
+                merged += ce - cs
+                cs, ce = s, e
+        if cs is not None:
+            merged += ce - cs
+        out.append({"first": first, "copies": len(spans),
+                    "covered": merged, "spans": sorted(spans)})
+    return sorted(out, key=lambda r: -r["covered"])
+
+
 def significant_repeats(text: str, k: int, min_tokens: int, coldopen_head: int):
     """套上門檻之後真正該報的那些。
 

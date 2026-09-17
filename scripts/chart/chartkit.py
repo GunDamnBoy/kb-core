@@ -147,9 +147,17 @@ class Chart:
     zero_line: bool = False
     y_log: bool = False          # 利差、倍數這類「比例才有意義」的量請開啟
     # scatter 專用
-    pts: list = field(default_factory=list)      # [(x, y), ...]
+    pts: list = field(default_factory=list)      # [(x, y), ...] 或 [(x, y, label), ...]
     hi_pts: list = field(default_factory=list)   # [(x, y, label), ...]
     x_label: str = ""
+    # 每一個 `pts` 都標名字（2026-09-17 加）。**只在 `pts` 帶第三個元素時才有東西可標。**
+    # 為什麼需要它：scatter 原本只替 `hi_pts` 標籤，其餘一律是無名灰點 ——
+    # 當一張圖的點是**幾個各自有名字的標的**（不是幾百個歷史交易日）時，
+    # 讀者看得到分布卻認不出哪個是哪個，判讀只好在文字裡逐一寫出座標讓人自己對回去。
+    # 2026-09-17 的 `nine-tickers-one-red-week` 就是這樣：九個標的、八個無名。
+    # **預設 false**：點數多的時候標全部會糊成一團，那比不標更糟
+    # （同 `_fit_ticks` 的病歷：「標籤糊成一團跟沒有標籤一樣糟，而且更難發現」）。
+    pts_labels: bool = False
     # ── 非時間序列圖型共用（2026-08-09 新增，見 AGENT_BRIEF 第 4 節「圖型跟著問題走」）
     cats: list = field(default_factory=list)     # 類別軸標籤
     vals: list = field(default_factory=list)     # 單一數列（waterfall／gauge 用）
@@ -536,6 +544,14 @@ def render_static(ch: Chart, outdir: str, basename: str, brand: str = BRAND) -> 
         # 既有封存不回頭改寫；要重畫舊期走 `rebuild_option.py --png`。
         if ch.zero_line:
             ax.axhline(0, color=RULE, lw=0.9); ax.axvline(0, color=RULE, lw=0.9)
+        # 每一個 `pts` 的名字（`pts_labels` 為真、且那一筆帶第三個元素時）。
+        # **畫在 hi_pts 之前**，這樣強調點的標籤疊在上面、不會被灰字蓋掉。
+        if ch.pts_labels:
+            for x, y, *rest in ch.pts:
+                if not rest:
+                    continue
+                ax.annotate(str(rest[0]), (x, y), textcoords="offset points",
+                            xytext=(7, 5), fontsize=8, color=INK, alpha=0.85)
         offs = [(11, 9), (11, -15), (-14, 12), (-14, -18)]   # 交錯避免標籤互壓
         for k, (x, y, lab) in enumerate(ch.hi_pts):
             ax.scatter([x], [y], s=66, c=ACCENT, zorder=5, linewidths=0)
@@ -1045,8 +1061,18 @@ def echarts_option(ch: Chart) -> dict:
             "yAxis": {"type": "value", "name": ch.y_label,
                       "splitLine": {"lineStyle": {"color": GRID}}},
             "series": [
-                {"type": "scatter", "symbolSize": 6, "data": [list(p) for p in ch.pts],
-                 "itemStyle": {"color": FAINT, "opacity": 0.55}, "name": "歷史交易日"},
+                # **`pts_labels` 兩軌要一起動。** 靜態軌那一側在 `render_static` 的
+                # scatter 分支，改一邊就是 `anchors.rendering` 記的頭號缺陷：雙軌漂移。
+                # 資料形狀也跟著換：要標籤就得給每一點 `name`（ECharts 的 `{b}` 讀它），
+                # 純座標的 `[x, y]` 沒有地方放名字。
+                {"type": "scatter", "symbolSize": 6,
+                 "data": ([{"value": [p[0], p[1]], "name": str(p[2])}
+                           if len(p) > 2 else {"value": [p[0], p[1]], "name": ""}
+                           for p in ch.pts]
+                          if ch.pts_labels else [list(p) for p in ch.pts]),
+                 "itemStyle": {"color": FAINT, "opacity": 0.55}, "name": "歷史交易日",
+                 **({"label": {"show": True, "formatter": "{b}", "position": "right",
+                               "color": INK, "fontSize": 10}} if ch.pts_labels else {})},
                 {"type": "scatter", "symbolSize": 13,
                  "data": [{"value": [p[0], p[1]], "name": p[2]} for p in ch.hi_pts],
                  "itemStyle": {"color": ACCENT}, "name": "同步上漲日",
