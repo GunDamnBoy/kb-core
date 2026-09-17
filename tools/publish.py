@@ -181,7 +181,11 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
             # (二) **產生端自己先把日檔寫進 data/ 才交草稿** —— 那條路徑不該被走到，
             #      只是內容剛好一字不差所以沒撞 exit 11。
             # 分辨法是唯讀的：publish 每次都會把當日寫進 index，所以
-            # **(一) 的 index 一定已經有這一天，(二) 一定沒有**。
+            # **(一) 之中卡在 rebase/push 的那一種，index 一定已經有這一天**
+            # （worktree／commit／push 全在 index 寫入之後），而 (二) 一定沒有。
+            # **「一定」只對那一種成立**：`atomic_write(target)` 跑在 index 重建之前，
+            # 中間若異常中止（例如 `system.index_entry()` 拋錯）就會留下
+            # 有日檔、沒 index 列的狀態，那時這裡會把一次正常自癒誤標成 prewritten。
             # 這一段必須在下面重建 index 之前讀，讀完就不再有第二次機會。
             # 2026-09-17 podcast 那一輪是 (二)，回執卻報 exit 0 @ already-published、
             # commit 也對、index 也更新了 —— **在輸出上完全看不出來**。

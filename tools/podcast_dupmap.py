@@ -110,18 +110,30 @@ def analyse(path, k, min_tokens, coldopen, drop, cyc=None):
         })
     cycles, cyc_cov = [], set()
     if cyc:
-        for c in cycle_repeats(text, k, coldopen,
-                               cyc["min_copies"], cyc["min_distinct"]):
+        for c in cycle_repeats(text, k, coldopen, cyc["min_copies"],
+                               cyc["min_distinct"], cyc["min_group_covered"]):
             for a, b in c["spans"]:
                 cyc_cov.update(range(a, min(b, len(toks))))
-            lo = c["spans"][0][0]
-            hi = min(c["spans"][-1][1] - 1, len(toks) - 1)
-            unit = c["spans"][0][1] - c["spans"][0][0]
+            # **逐份印，不要印頭尾的凸包。** 初版取 `spans[0][0]`–`spans[-1][1]`，
+            # 副本分散在全集時那個區間會橫跨整集 —— 08-23 mib 實測印出 21 分鐘，
+            # 而實際重複只有 63 token。**派工單叫 subagent 把印出來的區間當缺漏，
+            # 所以印錯區間＝叫他丟掉乾淨內容。**
+            ranges = []
+            for a, b in c["spans"]:
+                hi = min(b - 1, len(toks) - 1)
+                t0, t1 = ts_at(a), ts_at(hi)
+                # 時間戳在該區段回跳時，起點會晚於終點（iltb 實測 1:18:59–1:18:55）。
+                # 照原樣印會給出一個「結束早於開始」的區間，所以排序並標記。
+                flip = (t0 is not None and t1 is not None and t1 < t0)
+                if flip:
+                    t0, t1 = t1, t0
+                ranges.append({"seg": _seg_of(starts, owners[a]),
+                               "from": t0, "to": t1, "flip": flip,
+                               "tokens": b - a})
             cycles.append({
                 "copies": c["copies"], "covered": c["covered"],
-                "unit_tokens": unit,
-                "seg": _seg_of(starts, owners[lo]),
-                "from": ts_at(lo), "to": ts_at(hi),
+                "unit_tokens": max(r["tokens"] for r in ranges),
+                "ranges": ranges,
                 "snippet": " ".join(toks[c["first"]:c["first"] + 14]),
             })
     return {
@@ -159,7 +171,8 @@ def main(argv) -> int:
     cyc = {"min_copies": q["cycle_min_copies"],
            "min_distinct": q["cycle_min_distinct_tokens"],
            "min_coverage": q["cycle_min_coverage"],
-           "min_covered_tokens": q["cycle_min_covered_tokens"]}
+           "min_covered_tokens": q["cycle_min_covered_tokens"],
+           "min_group_covered": q["cycle_min_group_covered"]}
 
     eps = json.loads(mf.read_text(encoding="utf-8"))["episodes"]
     print(f"{date}｜{len(eps)} 集｜整段複製定位"
@@ -196,8 +209,15 @@ def main(argv) -> int:
             print(f"  ◆ 循環重複　覆蓋 {r['cycle_coverage']:.0%}"
                   f"（{len(r['cycles'])} 組）——**這一種 `podcast_verify.py` 看不到**")
             for i, c in enumerate(r["cycles"], 1):
-                print(f"    ~{i:<2} 單元 {c['unit_tokens']:>4} tok × {c['copies']} 份　"
-                      f"[段{c['seg']} {_hms(c['from'])}–{_hms(c['to'])}]")
+                print(f"    ~{i:<2} 單元 {c['unit_tokens']:>4} tok × {c['copies']} 份"
+                      f"　共蓋掉 {c['covered']:,} token")
+                for rg in c["ranges"][:4]:
+                    flag = "　⚠時間戳在此回跳" if rg["flip"] else ""
+                    print(f"        [段{rg['seg']} {_hms(rg['from'])}–{_hms(rg['to'])}]"
+                          f" {rg['tokens']:>4} tok{flag}")
+                if len(c["ranges"]) > 4:
+                    print(f"        …另有 {len(c['ranges']) - 4} 份，"
+                          f"區間從略（份數已列在上面）")
                 print(f"        «{c['snippet']}…»")
             print("    → 這幾個區間照缺漏處理，不要據它生成內容；"
                   "回報要寫出時間戳區間、週期與次數")

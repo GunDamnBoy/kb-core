@@ -323,6 +323,20 @@ def _uncovered(pre, repo):
 
     **這是量測不是閘門**：它不擋任何產出，也不要求在 `about.run` 寫什麼。
     有圖真的要用到其中一條時，那條的新鮮度仍然由 `chart.series_freshness` 判。
+
+    ## 分兩段印（2026-09-17 同日加）
+
+    第一版一口氣印 27 行，而**一份太長的清單會變成沒有人看的清單** ——
+    這正是警示那一段當初只給摘要的理由。
+
+    分法用的是**既有的登錄表 `fetch.BLOCKED`**（`別名 → 取代它的序列`），
+    **沒有開新的一格**：那張表本來就在回答「這條已經被誰取代」這個問題，
+    只是在此之前它只有取數層一個讀者。現在它有第二個讀者，
+    於是**登錄一條，清單就短一行** —— 一個沒有回報的登錄動作不會有人去做。
+
+    `fetch` 在 import 時會解析資料 repo，取不到就 `sys.exit`。
+    **這支是唯讀盤點表，不可以因此掛掉**，所以包成「讀不到就當作沒有登錄表」——
+    那樣只會退回第一版的行為（全部逐條列），不會少印任何一條。
     """
     if not pre:
         return []
@@ -359,11 +373,38 @@ def _uncovered(pre, repo):
     if not rows:
         return []
     rows.sort(reverse=True)
+    blocked = _blocked_map()
+    known = [(s, blocked[s]) for _l, s, _f in rows if s in blocked]
+    rest = [r for r in rows if r[1] not in blocked]
     out = [f"　**快取裡有、但這一輪沒抓 {len(rows)} 條**（量測，不是閘門；"
            "**它們在磁碟上跟新鮮的序列長得一樣**，選題前先看一眼）："]
-    for last, sid, fetched in rows:
-        out.append(f"　　{sid:<16}last={last:<12}最後刷新 {fetched}")
+    if known:
+        pairs = "、".join(f"{s}→{t}" for s, t in known)
+        out.append(f"　　已登錄替代來源 {len(known)} 條，不逐條列：{pairs}")
+    out.append(f"　　**沒有人在管的 {len(rest)} 條**"
+               "（要嘛加進 `prefetch.CORE`，要嘛刪掉那份快取，"
+               "要嘛在 `fetch.BLOCKED` 登錄它的替代來源）：")
+    for last, sid, fetched in rest:
+        out.append(f"　　　{sid:<16}last={last:<12}最後刷新 {fetched}")
     return out
+
+
+def _blocked_map():
+    """`fetch.BLOCKED`（`別名 → 取代它的序列`）。**讀不到就回空字典。**
+
+    `fetch` 在 import 時解析資料 repo，取不到會 `sys.exit` ——
+    而這支是唯讀盤點表，**不可以因為一張分類用的表而整份掛掉**。
+    回空字典只是退回「全部逐條列」，不會少印任何一條。
+    """
+    try:
+        d = os.path.dirname(os.path.abspath(__file__))
+        if d not in sys.path:
+            sys.path.insert(0, d)
+        os.environ.setdefault("CHART_REPO", sib("chart-of-the-day"))
+        from fetch import BLOCKED
+        return dict(BLOCKED)
+    except BaseException:       # SystemExit 也要接住，它不是 Exception 的子類
+        return {}
 
 
 def _dead(bad, anchors, ser):
@@ -726,6 +767,39 @@ def selftest_offline() -> int:
         if lines and "2 條" not in lines[0]:
             print(f"✗ _uncovered 標題數量不對：{lines[0]}")
             ok = False
+
+    # ── `_uncovered` 的分段（2026-09-17 同日加）─────────────────────
+    # **兩件事各驗一次**：已登錄的要收進摘要行、沒登錄的要逐條列。
+    # 只驗「有沒有變短」是不夠的 —— 把整段刪掉也會變短。
+    with tempfile.TemporaryDirectory() as td:
+        sd = os.path.join(td, "data", "series")
+        os.makedirs(sd)
+        for sid, fn in [("^KNOWN", "_KNOWN"), ("^ORPHAN", "_ORPHAN")]:
+            with open(os.path.join(sd, fn + ".csv"), "w", encoding="utf-8") as f:
+                f.write(f"# {sid} | test | fetched 2026-08-13\ndate,value\n2026-08-12,1\n")
+        real = _blocked_map
+        globals()["_blocked_map"] = lambda: {"^KNOWN": "替代序列"}
+        try:
+            lines = _uncovered({"series": [], "failed": {}, "skipped": {}}, td)
+        finally:
+            globals()["_blocked_map"] = real
+        head, body = lines[0], "\n".join(lines[1:])
+        checks = [
+            ("標題仍然數全部（2 條）", "2 條" in head),
+            ("已登錄的收進摘要行", "已登錄替代來源 1 條" in body and "^KNOWN→替代序列" in body),
+            ("已登錄的不逐條列", "^KNOWN        " not in body),
+            ("沒登錄的仍逐條列", "沒有人在管的 1 條" in body and "^ORPHAN" in body),
+        ]
+        for label, got in checks:
+            if not got:
+                print(f"✗ _uncovered 分段：{label}")
+                ok = False
+    # **`_blocked_map` 讀不到 `fetch` 時要回空字典，不是讓整支掛掉。**
+    # 接的是 `BaseException` —— `sys.exit` 丟的 `SystemExit` 不是 `Exception` 的子類，
+    # 只接 `Exception` 會讓這支跟著死，而那正是它要避免的事。
+    if not isinstance(_blocked_map(), dict):
+        print("✗ _blocked_map 沒有回字典")
+        ok = False
 
     print("selftest-offline 全部通過 ✓" if ok else "★ selftest-offline 有錯")
     return 0 if ok else 1

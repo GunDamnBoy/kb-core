@@ -65,7 +65,9 @@
 - **日期檔的欄位形狀**：`BRIEF` 第二節的清單 ↔ `data/<date>.json` 實檔 ↔ `systems/podcast.py` 實際讀的欄位。**這一區 08-23 抓到三處**：`quotes[]` 寫成 `speaker` 而實檔是 `by`、`trackId` 與 `minutes` 兩個必要欄位不在清單裡。**`trackId` 缺席的後果是金句閘門判 SKIPPED —— 安靜地開著。**
 - **三種品質旗標**：`anchors.quality.note_dimensions` 的分工（`warnings` 決定 status／後兩者不影響）↔ `preamble` 第五、九節 ↔ **`DIGEST-PROMPT`**（組檔者要產出 `quality{}` 四個子欄位，而流程正本**到 2026-09-02 仍然全文沒提過它們** —— 該檔 `quality` 只出現 3 次、全部是 `anchors.quality.*` 的路徑引用，只靠一句「日期檔的完整形狀照 `BRIEF.md` 第二節」轉指。**本條原寫「一度」，那個字暗示已修復，實際沒有** —— 每次比對都要重驗，不要被它騙過去。**規則的執行者不是規則的讀者**）
 - **觀察點記分板四邊**：`BRIEF` 第八節 ↔ `anchors.observations` ↔ `DIGEST-PROMPT` 第 5 步 ↔ `data/observations.json` 實檔欄位。**欄位分兩側，比對時要分開看**：claim 側 `id`／`date`／`text`／`due` 開帳後不得改寫，判決側 `status`／`verdict`／`verdictDate`／`lastReviewed` 有結果就該動（`lastReviewed` 2026-09-02 新增，**加它的那一場只改了 `DIGEST-PROMPT` 一邊，四邊裡三邊漏掉** —— 這一區存在的理由就是這個）
-- **外包給子代理的指示是否自足**（判準見 `FILES.md`「子代理的視野」）。`preamble` 自稱「這裡就是全部的規則」，**核對它是不是真的**
+- **外包給子代理的指示是否自足**（判準見 `FILES.md`「子代理的視野」）。`preamble` 自稱「這裡就是全部的規則」，**核對它是不是真的**。**2026-09-17 抓到它在一個維度上不成立**：它從頭到尾沒有規定 JSON 交件的載體，而全檔唯一跟檔案有關的祈使句是第一之一節的「骨架**不要**寫成檔案」（方向相反）。那天八個 subagent 有三個只把 JSON 寫在回覆正文、整批重派。**「規則齊不齊」要連交付方式一起看，不是只看內容規則。**
+- **循環重複四鍵的四邊**（2026-09-17 新增，隨 `cycle_repeats()` 一起來）：`anchors.quality.cycle_min_*`（五個鍵）↔ `kbcore/transcript.py` 的 `cycle_repeats()` docstring ↔ `tools/podcast_dupmap.py` 實際讀哪幾個 ↔ `preamble` 第九節與 `DIGEST-PROMPT` 第 1 步的敘述。**這一區一出生就打架**：新增當天 anchors 與 docstring 寫「36 份（19.9%）／profg 15.7%／iltb 3.5%」，而 `preamble`／`DIGEST-PROMPT`／`MAINTENANCE` 三份寫的是正確的「35 份（19.3%）／4.29%／2.89%」——**五份文件兩份錯三份對，而錯的那一份是 anchors，也就是「每一個數字唯一的家」**。比對時**一定要自己重跑一次**，不要文件對文件。**還要核對「覆蓋率」有沒有標定義**（`covered` 只算副本、不含第一份原文，含不含直接決定 iltb 過不過門檻）。
+- **回執 `stage` 值的三邊**（2026-09-17 新增）：`tools/publish.py` 產出哪些 `stage` ↔ `DIGEST-PROMPT` 第 7 步教執行者怎麼判 ↔ `AGENT_BRIEF` 第 5 節。**`publish.py` 是五套共用的**，改它要先 `grep -rn "staged_paths=" systems/*.py` 數形狀，並確認全庫沒有程式在讀 `stage`（09-17 實查：`usage_gaps.py` 與 `schedule_gaps.py` 都只讀 `exit`）。
 - **`staged_paths` 三邊**（2026-09-03 新增，隨 `healthcheck.check_worktree()` 一起來）：`systems/podcast.py` 的 `staged_paths` ↔ `healthcheck.py` 的 `check_worktree()` 排除哪些路徑 ↔ `MODIFY.md` 驗證第 6 項。**這三邊只要有一邊改了，另外兩邊會安靜地失準**：排除多了，髒檔就漏報；排除少了，publish 自己會 add 的檔被報成髒檔、每天假警報。**別套系統的形狀不要抄過來**——2026-09-03 實跑 `grep -rn "staged_paths" systems/*.py` 數到六套三種形狀：常數（podcast／tracer）、常數含**檔案**（投顧 `["data", "index.html"]`）、**條件式**（chart／research 視 `charts/<date>` 存在才加，convergence 刻意寫成函式拒絕預設值）。**`MODIFY.md` 教的那行 `grep "staged_paths="` 六行全看得到**（2026-09-13 實跑訂正：本條原寫「只看得到六行裡的三行」，**那是錯的**——`staged_paths=staged_paths` 本身就含有子字串 `staged_paths=`）。真正的限制是**那一行看不出形狀**：其中三支印出來只有 `staged_paths=staged_paths`，要再跳到函式定義才知道它是條件式，而 08-24 出事的正是條件式那一類。**「看不到」與「看得到但看不出形狀」是兩件事**，寫成前者會讓人去找一個不存在的替代指令。（同一句錯誤宣稱在 `healthcheck.py` 也有一份，09-13 同批訂正——**它在兩個地方各活了一份，而修的時候差點只修被指到的那一處**。）
 
 ## 每一份的內部自我一致性
@@ -85,6 +87,10 @@
 而本檔那一區一個字都沒提（已於同日補上）。**同一個形態連續兩次，所以把它從叮嚀改成條件**：
 **本檔的 mtime 比 `MAINTENANCE.md` 第 12 節登記簿最新那一列的日期舊，
 就先讀那一列，確認那一場有沒有新增「需要比對的東西」。**
+**（2026-09-17：這個錨現在可信了。）** 在那之前第 12 節並存兩種格式而沒有人規定用哪一種，
+08-31／09-02／09-03 三場只寫了 `###` 區塊、沒有進速查表，**於是這個錨停在 08-30 整整十三天**。
+已補回三列並在 `### 逐場登記` 開頭訂死「速查表是索引，每一場都必須有一列」。
+**如果哪天這個錨又停住，先確認的不是「是不是沒人維護」，而是「有沒有人只寫了區塊」。**
 光比 mtime 只知道它舊了，不知道舊掉的是哪一塊。
 
 > **錨點 2026-09-02 訂正：原本綁在 `MAIN.md`／`MODIFY.md` 的 mtime 上，那是錯的錨。**

@@ -28,6 +28,7 @@ import re
 import struct
 import sys
 import tempfile
+import zlib
 from datetime import datetime, timedelta, timezone
 
 TAIPEI = timezone(timedelta(hours=8))
@@ -657,6 +658,29 @@ def reflog_old_values(path):
     return olds
 
 
+def commit_subject(sha):
+    """讀 commit 的標題行。讀不到就回 None —— **不要猜，也不要呼叫 git。**
+
+    只看 loose object（`.git/objects/ab/cdef…`，zlib）。**在 packfile 裡就讀不到**，
+    而那是常態而非例外（`git gc` 之後全部會進 pack），所以呼叫端一定要處理 None。
+    加這一支的理由見 `describe_divergence()` 裡 2026-09-17 那段：
+    **一個「多半是 X」的猜測，會在它猜錯的那天讓人往錯的方向找。**
+    """
+    if not REPO or not sha or len(sha) != 40:
+        return None
+    p = os.path.join(REPO, ".git", "objects", sha[:2], sha[2:])
+    if not os.path.exists(p):
+        return None
+    try:
+        raw = zlib.decompress(open(p, "rb").read())
+        body = raw.split(b"\0", 1)[1].decode("utf-8", "replace")
+        # commit 物件是 header 區塊 ＋ 空行 ＋ 訊息
+        subject = body.split("\n\n", 1)[1].splitlines()[0].strip()
+        return subject[:60] if subject else None
+    except Exception:
+        return None
+
+
 def describe_divergence(local, origin):
     """local 與 origin 不同雜湊時，說出**哪一邊領先**——判不出來就說判不出來。
 
@@ -701,9 +725,16 @@ def describe_divergence(local, origin):
                   or reflog_old_values(".git/logs/HEAD"))
     origin_olds = reflog_old_values(".git/logs/refs/remotes/origin/main")
     if local in origin_olds and origin not in local_olds:
-        return (f"origin {b} 走在 local {a} 前面（origin 的 reflog 記得它從 {a} 移動過來，"
-                f"多半是 Pages 部署那顆；正常情況下一輪 pull --rebase 會追上，"
-                f"但若那是 forced-update 就會是衝突）")
+        subj = commit_subject(origin)
+        # **「那一顆是什麼」要用讀的，不要用猜的**（2026-09-17 訂正）。
+        # 本行原本寫死「多半是 Pages 部署那顆」—— 而 09-17 實際擋住手動 push 的是
+        # `sentinel: 2026-09-17T12:43:46Z exit=0`，**sentinel 不是 deploy**。
+        # 猜對了方向、猜錯了來源，正好是本函式 docstring 記的那個形狀再犯一次。
+        what = f"那一顆是「{subj}」" if subj else \
+               "那一顆的訊息讀不到（多半在 packfile 裡），要看就 `git log --oneline main..origin/main`"
+        return (f"origin {b} 走在 local {a} 前面（origin 的 reflog 記得它從 {a} 移動過來；"
+                f"{what}）—— 正常情況下一輪 pull --rebase 會追上，"
+                f"但若那是 forced-update 就會是衝突")
     if origin in local_olds and local not in origin_olds:
         return f"local {a} 走在 origin {b} 前面"
     return (f"local {a} 與 origin {b} 不同雜湊，方向從 reflog 判不出來"
@@ -760,7 +791,7 @@ def check_worktree():
         log("WARN", "工作區", f".git/index 格式不認得（{sig!r} v{ver}），跳過")
         return
 
-    off, dirty, missing = 12, [], []
+    off, dirty, missing, data_dirty = 12, [], [], []
     for _ in range(count):
         start = off
         size = struct.unpack(">I", raw[off + 36:off + 40])[0]
@@ -790,7 +821,25 @@ def check_worktree():
         # 真正的限制是**那一行看不出形狀**：其中三支印出來只有 `staged_paths=staged_paths`，
         # 要再跳到函式定義才知道它是條件式。**「看不到」與「看得到但看不出形狀」是兩件事**，
         # 而寫成前者會讓人去找一個不存在的替代指令。
+        # **排除 `data/` 的前提是「publish 會 stage 它」，而那個前提有條件**
+        # （2026-09-17 實地踩到）：publish 只在 `~/outbox/podcast/` 有草稿時才跑。
+        # 維護場改了 `data/observations.json` 而當天的草稿早就被消化掉時，
+        # 那個檔**沒有任何排程會提交它**，於是本檢查報 PASS、而人手動
+        # `git pull --rebase` 直接被 `cannot pull with rebase: You have unstaged changes` 擋下。
+        # **「PASS」在那個情境下不代表 rebase 跑得動。**
+        # 所以 `data/` 仍然不計入 WARN（它平常確實由 publish 負責），
+        # 但要**列出來**——排除一個路徑與假裝它不存在是兩件事。
         if path == "data" or path.startswith("data/"):
+            full = os.path.join(REPO, path)
+            try:
+                st = os.stat(full)
+            except FileNotFoundError:
+                data_dirty.append(path)
+                continue
+            if st.st_size != size or int(st.st_mtime) != mtime_s:
+                blob = open(full, "rb").read()
+                if hashlib.sha1(b"blob %d\0" % len(blob) + blob).hexdigest() != sha:
+                    data_dirty.append(path)
             continue
         full = os.path.join(REPO, path)
         try:
@@ -804,8 +853,18 @@ def check_worktree():
         if hashlib.sha1(b"blob %d\0" % len(blob) + blob).hexdigest() != sha:
             dirty.append(path)                          # ①②都成立
 
+    tail = ""
+    if data_dirty:
+        tail = (f"　（另有 {len(data_dirty)} 個 data/ 底下改過未提交："
+                f"{'、'.join(data_dirty[:3])}"
+                + (" …" if len(data_dirty) > 3 else "")
+                + "。**不計入上面那條**——平常由 publish 順手 stage。"
+                "**但 publish 只在 outbox 有草稿時才跑**，"
+                "所以維護場改帳本、當天草稿又已消化掉時沒有人會提交它，"
+                "而它照樣會擋住手動 `git pull --rebase`。要手動推就先提交它。）")
     if not dirty and not missing:
-        log("PASS", "工作區", f"{count} 個追蹤檔，data/ 以外沒有未提交的變更")
+        log("PASS", "工作區",
+            f"{count} 個追蹤檔，data/ 以外沒有未提交的變更" + tail)
         return
     bits = []
     if dirty:
@@ -817,7 +876,7 @@ def check_worktree():
     log("WARN", "工作區",
         "；".join(bits) + " —— 這些不在 publish 負責的路徑（data）底下，"
         "**publish 永遠 stage 不到、也 commit 不掉**，下一輪 03:00 會回 "
-        "`exit 15 @ worktree-dirty` 擋掉整天的發布。**這一場結束前提交或 stash。**")
+        "`exit 15 @ worktree-dirty` 擋掉整天的發布。**這一場結束前提交或 stash。**" + tail)
 
 
 def check_push():

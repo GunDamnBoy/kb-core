@@ -84,7 +84,25 @@ def receipt(repo: Path, code: int, stage: str, detail: str = "", commit: str = "
 
 def newest_mtime(repo: Path) -> float:
     """工作區裡最後一次被碰過的時間。`.git` 與快取不算——
-    **git 自己寫 `.git` 底下的檔，把它算進來會讓靜置永遠不成立。**"""
+    **git 自己寫 `.git` 底下的檔，把它算進來會讓靜置永遠不成立。**
+
+    **這是純 mtime 的單訊號，而 mtime 會在內容沒變時也跳動**（2026-09-17 記）。
+    同一個 repo 裡 `scripts/podcast/healthcheck.py` 的 `check_worktree()`
+    對同一個訊號的處置正好相反：它的 docstring 寫著「①stat 不符——便宜但有雜訊，
+    `git checkout`、`touch`、跨檔案系統複製都會讓 mtime 動而內容沒變」，
+    所以它要求 **mtime ＋ blob SHA-1 兩個獨立訊號同時成立**才報。
+    **兩支程式、同一個已知會吵的訊號、相反的處置。**
+
+    實際後果（09-17 那場維護實地量到）：**`healthcheck.py` 每跑一次就重寫
+    `scripts/podcast/metrics.csv`**（內容通常一模一樣、只有 mtime 變新），
+    於是靜置計時器歸零。而 `MODIFY.md` 的驗證清單要求收工前跑 healthcheck、
+    **又要求接著看本支的日誌** —— 於是維護者必然看到「需靜置 5 分鐘」而以為卡住了。
+    那天從 22:24 之後連續數十輪跳過，日誌看起來像故障，實際只是被自己的驗證步驟推著走。
+
+    **目前刻意不改成雙訊號**：代價是每輪雜湊 244 個追蹤檔，而這個缺陷是**自癒的**
+    —— 停手 5 分鐘就會提交。真正會餓死它的是「有東西以短於 5 分鐘的週期寫 kb-core」，
+    而現況沒有（kbscan 每天 12:00、chart 11:00／11:30，healthcheck 是人工觸發）。
+    **要改的時候先確認那個前提還成立**，不要只因為它「看起來不嚴謹」就動它。"""
     newest = 0.0
     for base, dirs, files in os.walk(repo):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]

@@ -143,7 +143,7 @@ def block_repeats(text: str, k: int):
 
 
 def cycle_repeats(text: str, k: int, coldopen_head: int,
-                  min_copies: int, min_distinct: int):
+                  min_copies: int, min_distinct: int, min_group_covered: int = 0):
     """循環重複：**同一段原文被複製到很多處**，而不是被複製到一處。
 
     這是 `block_repeats()` 從 2026-08-22 起就有、而 anchors 記了三次都沒人實作的那個盲點。
@@ -160,11 +160,18 @@ def cycle_repeats(text: str, k: int, coldopen_head: int,
     **那一種已經由 `quality.stutter_token_repeat` 在計字前剔除了**，這裡再報一次只是噪音。
     留給這一支的是短句級、行級、區塊級三種尺度，也就是文件記了卻沒有任何機械檢查涵蓋的那三種。
 
-    **全庫 181 份的實測（2026-09-17）**：`min_copies=3`、覆蓋 3% 這組門檻報 36 份（19.9%），
-    文件曾具名記過的 10 份**全部命中**。抽驗其餘 26 份，全部是真的重複
-    （`like on like on`、`in a in a`、整段人物介紹循環、整句內容重複數百次），
-    **沒有一份是誤報**。所以那 19.9% 是**全庫真實汙染率，不是誤報率** ——
-    這一支報得多不是因為它吵，是因為在它之前沒有人在看。
+    **全庫 181 份的實測（2026-09-17）**：`min_copies=3`、每組覆蓋 `>=100`，
+    檔案層級取「覆蓋 `>=3%` **或** 絕對 `>=250` token」，**報 35 份（19.3%）**，
+    文件曾具名記過的案例全部命中。抽驗其中約 10 份，都是真的重複
+    （`like on like on`、`in a in a`、整段人物介紹循環、整句內容重複數百次）。
+
+    **那 19.3% 應該讀成「汙染率的下界」，不是誤報率，也不是汙染率本身**（09-17 複驗訂正）：
+    未觸發的 146 份一份都沒查過，**偽陰性完全沒有量**，兩側沒有同時封住就不能叫汙染率；
+    而「零誤報」的樣本是約 10／35，推不到全部。**初版把這三件事都寫過頭了。**
+
+    **`covered` 只算副本區間、不含第一份原文** —— 這個定義直接決定結論：
+    09-17 的 iltb 只算副本是 2.89%、含原文是 3.86%，
+    **也就是「它需不需要絕對量下限才撈得回來」完全取決於這個定義**。
     """
     toks = tokens(text)
     groups: "dict[int, list]" = {}
@@ -177,7 +184,8 @@ def cycle_repeats(text: str, k: int, coldopen_head: int,
     for first, spans in groups.items():
         if len(spans) < min_copies:
             continue
-        end = first + max(b - a for a, b in spans)
+        unit = max(b - a for a, b in spans)
+        end = first + unit
         if len(set(toks[first:end])) < min_distinct:
             continue
         merged, cs, ce = 0, None, None
@@ -191,6 +199,17 @@ def cycle_repeats(text: str, k: int, coldopen_head: int,
                 cs, ce = s, e
         if cs is not None:
             merged += ce - cs
+        # **每一組自己的覆蓋量下限。** `block_repeats()` 有 `block_repeat_min_tokens=150`，
+        # 而 `block_repeat_source` 明寫那 150 就是為了排除「廣告與台呼 40–79 token」；
+        # 按 `first` 聚合之後區塊變小，那道保護就沒了。
+        # **但下限不能訂在「單元長度」上** —— 真的循環單元往往也很短
+        # （08-30 mib 是同一句重複 443 次、09-02 oddlots 同句 232 行），
+        # 2026-09-17 實測單元下限 40 會把九個已知真陽性砍到剩四個。
+        # **分辨線是「這一組蓋掉多少內容」**：08-23 mib 那句 14 token 的台呼
+        # （`i m barry ritholtz you re listening to masters in business…`）重複四次
+        # 只蓋掉 63 token，而真循環動輒數百到數萬。
+        if merged < min_group_covered:
+            continue
         out.append({"first": first, "copies": len(spans),
                     "covered": merged, "spans": sorted(spans)})
     return sorted(out, key=lambda r: -r["covered"])

@@ -49,9 +49,8 @@ budget:
 
 - **`trackId` 與 `minutes` 都是閘門的必要輸入**，而漏掉的後果不一樣，所以分開講：
   **`minutes` 缺了 `chars_in_tier` 直接 FAIL**（看得見）；
-  **`trackId` 缺了 `quote_misses()` 找不到逐字稿、整輪回 `None`、金句閘門判成 SKIPPED**
-  —— 而 SKIPPED 的意思是「這一輪沒有比對過」，不是「比對過沒問題」，
-  檢查自己就寫著這句話。**一個會叫，一個安靜地把閘門打開。**
+  **`trackId` 缺了金句閘門判成 SKIPPED** —— 而 SKIPPED 是「這一輪沒有比對過」，
+  不是「比對過沒問題」。**一個會叫，一個安靜地把閘門打開。**
 
 - **`showKey` 一律取自 `shows.json`。** 在網站端另取一套，徽章永遠對不上。
 - **`chars` 由組檔時的 python 機械覆寫**，定義在 `anchors.json` 的 `char_definition`。
@@ -61,17 +60,10 @@ budget:
   一字不改（含原文語言），`text` 是中譯，`by` 是講者。
   **是 `by`，不是 `speaker`** —— 寫錯不會被擋下來，講者欄位安靜落空、閘門只印 `None`。
 
-  `original` 存在的唯一理由是**它讓「金句是不是編的」變成機械可判** ——
-  組檔時拿它回去對逐字稿做子字串比對，對不上就整條丟掉並具名記錄。
-
-  **比對基準是 podfetch 稿，不是官方稿。** `quote_misses()` 寫死了
-  `~/podcast-transcripts/<date>/<showKey>-<trackId>.md`。所以**A 類走第一層時，
-  正文用官方稿寫，`original` 仍要回 podfetch 稿挑** —— 官方稿是編修過的，用字對不上。
-  少了這個欄位，「金句必須是逐字稿裡實際出現的發言」就只是一條靠自覺的規則，
-  而**依賴自覺的紀律不是紀律**。
-
-  比對用**子字串包含**，不要用整行相等 —— Bloomberg 有幾行的講者標籤是
-  `Speaker 6]`（右方括號不是冒號），整行比對會把完整的發言誤判成對不上。
+  `original` 讓「金句是不是編的」變成**機械可判**：組檔時拿它回去對逐字稿做
+  **子字串包含**比對（不是整行相等），對不上就整條丟掉並具名記錄。
+  **比對基準是 podfetch 稿，不是官方稿**（`quote_misses()` 寫死了它），
+  所以**A 類走第一層時正文用官方稿寫，`original` 仍要回 podfetch 稿挑**。
 
 ### 逐字稿住在 repo 外面
 
@@ -143,8 +135,7 @@ budget:
 4. 帳本沒有新增觀察點，或**有逾期超過 `observations.overdue_grace_days` 未判的項目**
    （逾期但還在寬限期內是 WARN 不是失敗；寬限期存在的理由與已知的洞見 anchors 的 `_due_note`）
 5. `index.json` 的 `days[0]` 不是當天，或執行時間戳沒動
-   （**這一條沒有對應的檢查**，靠 `publish.py` 組檔時順手保證；
-   來歷見 `MAINTENANCE.md` 第 12 節 08-22 那一列）
+   （**這一條沒有對應的檢查**，靠 `publish.py` 順手保證）
 
 第 4 項是本站與一般摘要的分水嶺 —— **拋出去的觀察要回頭對答案**。
 
@@ -155,14 +146,14 @@ budget:
 
 免責聲明、來源標註、管線自檢、純敘述性總結都不是觀察點。
 
-**「開帳之後不得改寫」管的是 claim，不是判決**（2026-08-30 訂正）。
-分界線是欄位：**`id`／`date`／`text`／`due` 開帳後不得改寫**；
-**`status`／`verdict`／`verdictDate`／`lastReviewed` 是判決欄位，有結果就該動。**
-不改判，第七節第四條就永遠判不了 —— **那半條判準的執行者是每天那一輪，不是別人。**
+**「開帳之後不得改寫」管的是 claim，不是判決。** 分界線是欄位：
+**`id`／`date`／`text`／`due` 開帳後不得改寫**；
+**`status`／`verdict`／`verdictDate`／`lastReviewed`／`reviewNote` 是判決欄位，有結果就該動**
+（`reviewNote` 追加不覆寫；欄位全集見 `anchors.observations._fields`）。
+**不改判，第七節第四條就永遠判不了。**
 
-實際在看逾期的是發布閘門的 `podcast.ledger_no_overdue`，
-**而它對沒有到期日的舊項目是瞎的**。現況條數一律看 `healthcheck.py` 的記分板，
-**這裡不記數字**。**綠燈不等於帳本乾淨。**
+實際在看逾期的是 `podcast.ledger_no_overdue`，**而它對沒有到期日的舊項目是瞎的**。
+現況條數一律看 `healthcheck.py` 的記分板，**這裡不記數字**。**綠燈不等於帳本乾淨。**
 
 ## 九、合規
 
