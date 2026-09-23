@@ -2995,3 +2995,105 @@ E 27,573／F 32,887／G 32,407）—— **這就是 `strip_maintainer_only()` �
    沙箱與檔案工具都到不了那個目錄，**要在 Mac 終端機跑 `launchd/README.md` 的對帳指令**。
    本輪改的 `kbprefetch-advisory.sh` 是包裝腳本、不是 plist，**所以不需要重裝 plist**；
    但它是否真的被 `com.kenny.kbprefetch.advisory` 指到，這一輪沒有驗。
+
+## 2026-09-23｜八條待修落地，而其中兩條修的是同一天派工端自己寫錯的假設
+
+當天的輪次 1 小時 26 分收工（07:31:56 → 08:57:35），115 張卡、十五組全達配額、
+`advisory_verify` 19 PASS · 0 WARN · 0 FAIL、補位 0 輪。**八條待修來自那一輪的執行報告**，
+其中 #1 與 #3 是派工端在同一天真的犯的兩個錯，**兩個都是靠採集員不照做才擋下來的**。
+
+### 動到哪些檔
+
+- `launchd/kbprefetch-advisory.sh`（兩處）
+  - **補抓清單加進 `FRED:BAMLC0A0CM` 與 `FRED:BAMLH0A0HYM2`**，並在補抓段落 export `FRED_API_KEY`
+    （金鑰缺席只記一行日誌、不放棄，其餘九個 ident 照補）。
+  - **`produced_by` 的寫回改成原子寫入**（`.tmp` ＋ `os.replace`），heredoc 的 import 加 `os`。
+    這是 2026-09-17 那一筆的〈當時已知的風險〉第 2 條自己預約的：
+    「沒有改成 `.tmp` ＋ rename，是因為那超出這次確認的範圍；記在這裡，**下次碰這支腳本時一起處理**。」
+    ——09-23 因為補抓清單要加 FRED 而碰到它，一起處理掉。**預先登記的觸發條件第二次被叫出來**
+    （第一次是 `_dedup_exempt_source` 在 09-13 登記、09-15 被叫出來）。
+- `skills/advisory/SKILL.md`（三處）
+  - 步驟 3 的 CME 段加一行指路：**排 `*.settlements` 進配額前先比對「窗口終點」與「台北 12:55」**。
+  - 步驟 3 的 FRED 段加一段**有期限的護欄**：派工前比對保底檔的 OAS 資料日與前一版，相同就給 A 具名例外。
+    **拆除條件已登記在該段裡**（連續三輪 `replaced` 有它們且不在 `unchanged`）。
+  - 步驟 6 加一行：撰寫任務卡要明寫 `tone` **不要用「中性偏X」這種複合值**。
+- `scripts/advisory/preamble.md`（四處）＋ 重生成七份切片
+  - 第四節：**開頁就算一篇，不論最後採不採用**（B 超限 7 篇的成因是「成卡的才算」）。
+  - 第六節鉅亨列：**更正「單次上限硬性 30 筆」為實測 10 筆／頁**，並把判準改成不寫死每頁筆數。
+  - 第六節 STAT News 列：**Morning Rounds 彙整頁由「單次記載」升級為固定檢查項**（第三次獨立觀測）。
+  - 第六節 `[BLOCKED: …]` 子節：**單字元觸發物加 `%`**，並訂明它要換成 ` pct` 而不是空白。
+
+**沒有動**：`anchors.json`、`checks/advisory.py`、`systems/advisory.py`、`publish.py`、`index.html`、
+`skills/maintain/**`、任何 `data/*.json`。所以不必跑 chart_verify、node --check、`/tmp` 端到端、`--write-lock`。
+
+### 量測
+
+- 輪次：07:31:56 → 08:57:35 ＝ **1 小時 26 分**（量到）；草稿寫入到回執 **55 秒**（量到）。
+  子代理耗時合計 **170.5 分**對牆鐘 **86 分**，三處併行送出都當場核到正確個數的 `agentId`。
+- **保底檔的 FRED 落後 2 小時 43 分**（量到）：`fetched_at 2026-09-22T19:45:04+00:00`
+  vs FRED 頁面自報 `Updated: Sep 22, 2026 5:28 PM CDT` ＝ `2026-09-22T22:28Z`。
+  當日保底檔兩條 OAS 停在 **09-18**、與前一版用過的那一格逐字相同，而 `status` 是 `ok`、
+  `failed_essential` 是空的 —— **每一個大聲失敗的機制都沒有被觸發**。
+  A 現場複驗拿回 09-21 的 **0.77／2.66**。
+- **CME 六頁 `TRADE DATE` 全部是 `Monday, 21 Sep 2026`**（量到），頁註 `Last Updated 21 Sep 2026 11:55:00 PM CT`。
+- **`advisory.card_vocab` 對複合 tone 是 FAIL 不是 WARN**（量到）：拿 09-23 的已發布檔複製一份、
+  只把一張卡的 `tone` 改成 `中性偏多`，跑出 `18 PASS · 0 WARN · 1 FAIL`。
+  **這一條先前是推論，本輪實測過才寫進 `SKILL.md`。**
+- 鉅亨 `tw_stock` **87 筆／9 頁、每頁整 10 筆**（F 逐頁量到），與 08-29 記的 30 筆不符。
+- 切片：正本 111,394 字元、18 節；七份由 96,168–107,304 增為 98,617–109,753 位元組。
+
+### 怎麼驗的
+
+- `bash -n launchd/kbprefetch-advisory.sh` exit 0；**另把 heredoc 裡那段 python 抽出來單獨 `py_compile`**（OK）
+  —— `bash -n` 看不進 heredoc，只驗 bash 語法就會漏掉 `import os` 沒加這種錯。
+- **11 個補抓 ident 全部被 `fetch_advisory` 認得**：import 該模組取 `FRED_IDENTS | TW_IDENTS`（14 個）逐一比對，零不認得。
+  **沒有用正則去解 `TW_IDENTS`** —— 第一次那樣做直接 `AttributeError`，因為它不是單純的字面陣列。
+- **確認補抓 FRED 失敗不會把 `failed_essential` 寫髒**：讀 `top_up()` 全文，失敗走 `kept`、
+  `items[ident]` 原值不動，而 `failed_essential` 是拿合併後整份重算、判準是 `status == "failed"`。
+  **這是讀出來的，不是假設的。** 同時發現 `top_up()` 本來就是原子寫入，所以 09-17 掛著的那條只剩 heredoc 一處。
+- `slice_preamble.py` 重生成 exit 0、`--check` 七份「一致」exit 0；
+  **七份切片的反向指標洩漏數全部為 0**；**抽驗切片路由**：F 有鉅亨那條更正而 A 沒有、G 有 STAT 那條、
+  共用節（第四節與 BLOCKED 子節）B 與 C 都有。
+- `python3 -m py_compile tools/*.py checks/*.py systems/*.py kbcore/*.py` OK；檢查自檢兩側 **失敗數 0**。
+- `advisory_verify` 對 `data/2026-09-23.json` **19 PASS · 0 WARN · 0 FAIL**；
+  `anchors.json` 可 `json.load`；`data/*.json` **55 個全部可讀**；資料 repo symlink **0**。
+- 同步組（`skills/maintain/advisory/*.md` 正本 vs 技能副本）三檔大小逐字相同 ——
+  **09-17 記的「本輪唯一一個已知未收斂的狀態」在本輪查證時已經收斂**（有人重裝過 `.skill`）。
+- 排程：`advisory-daily-0730` enabled、cron `30 7 * * *`、`lastRunAt 2026-09-22T23:31:39Z` 對得上當輪、
+  prompt 仍是指標式。推送鏈兩側同為 `2f077ac`。
+
+### 怎麼倒回去
+
+- `kbprefetch-advisory.sh`：把 `TOPUP_IDENTS` 尾端兩條 FRED 刪掉、拿掉補抓段的 `FRED_API_KEY` 那個 if、
+  `os.replace` 那三行改回單行 `json.dump(d, open(path, "w"), …)`、heredoc 的 import 去掉 `os`。
+  **行為完全回到 09-22 那天。**
+- `SKILL.md` 與 `preamble.md` 都是就地新增 ＋ 留痕，倒回去＝刪掉標 `09-23` 的那幾段
+  （FRED 那一段整段刪、CME 與 tone 那兩段整段刪；`preamble` 四處把 `09-23` 那幾句刪掉並把鉅亨列的刪節線還原）。
+- **`preamble` 動過就要重跑 `slice_preamble.py`** —— 倒回去時同樣要跑一次並 `--check`。
+
+### 當時已知的風險
+
+1. **⚠️ #2 只驗到「不會變糟」，還沒驗到「有效」。** 本輪驗的是語法、ident 被認得、
+   以及失敗路徑不會污染 `failed_essential`；**端到端的證據要等明天 07:20 那一班**：
+   看 `~/outbox/floor/2026-09-24.json` 的 `top_ups` 最後一筆裡有沒有那兩條 FRED、
+   它們是落在 `replaced` 還是 `kept_original`、以及有沒有同時落在 `unchanged`。
+   **落在 `kept_original` 最可能的原因是金鑰**（`~/.config/fred/api_key`），日誌會有具名那一行。
+2. **⚠️ #3 是刻意留下的第二份指示，而本 repo 的通則是不留死規則。**
+   它的拆除條件已經寫進 `SKILL.md` 那一段裡（連續三輪資料日是當日或前一交易日）。
+   **若忘了拆，症狀是派工端每天多做一次比對而永遠比不出差異** ——
+   成本很低、但那正是 09-08 STAT+ 那次的形狀：**採集員只會多做，不會發現那是多餘的。**
+3. **鉅亨那條「30 → 10 筆／頁」是兩個都真的量到的觀測，成因未查。**
+   08-29 量到 30、09-23 量到 10，中間沒有人量過。**寫成「端點行為變了」是目前最省的解釋，不是證據。**
+   所以本輪把判準改成不依賴任何寫死的每頁筆數 —— **修的是「下次不會再被這個數字騙」，不是「知道它為什麼變」。**
+4. **`%` 那條觸發物只有一次觀測。** 09-09 的 `&` 累積了兩個採集員的獨立證實才寫成通則，
+   而 `%` 目前只有 C 在中外製藥那一篇上撞到一次。**規避法是可逆的、成本低，所以先寫進去**；
+   但若下一輪有人回報「含 `%` 卻沒被擋」，要回頭把它降成「偶發」而不是刪掉 ——
+   **兩種觀測都會是真的，同 SPDR archive 那次。**
+5. **`launchd/*.plist` 正本與 `~/Library/LaunchAgents` 的實裝仍未對帳**（沿用 09-17 那筆的第 5 條）。
+   本輪改的是包裝腳本、不是 plist，**所以不需要重裝 plist**；
+   但 `com.kenny.kbprefetch.advisory` 是否真的指到這支腳本，這一輪同樣沒有驗 ——
+   **而明天 07:20 那一班的結果會順便回答它**（若 `top_ups` 完全沒動，第一個要懷疑的就是這件事）。
+6. **The Economist 連續第三輪被 DataDome 攔截，本輪刻意不動。**
+   09-23 實測兩個版面 `bodyLen` 0、`links` 0、`htmlLen` 111,130 與 111,145、`outerHTML` 含
+   `captcha`／`cmsg`／`DataDome`。**三輪不足以分辨「長期不可用」與「這一週的風控波段」** ——
+   下一輪記第四次再由維護端判。**當期零損失**：B 的 18 則全部由 WSJ 與 Washington Post 補足。

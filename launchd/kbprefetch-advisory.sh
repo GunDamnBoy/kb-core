@@ -168,7 +168,7 @@ fi
 # 下游看到的只有一行「抓到了但不可用」而冒號後面是空的。**見下面那個 try。**
 read -r ok_flag summary < <(
   /usr/bin/python3 - "$TMP" "$TODAY" "$SOURCE" 2>>"$LOG" <<'PY'
-import json, sys
+import json, os, sys
 path, today, source = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
     d = json.load(open(path))
@@ -199,9 +199,22 @@ else:
     # 三個已知的失敗理由（讀不開／date 不符／failed_essential 非空）每一個都會印出具名原因，
     # **唯獨「一切正常」那條路上的例外是啞的**。
     # 2026-09-17 在 /tmp 用唯讀檔重現過，產出的日誌行與當天那一行逐字相同。
+    #
+    # **⚠️ 原子寫入是 2026-09-23 補的，而 2026-09-17 那一筆自己預告過這件事。**
+    # 當時的收尾寫著「`json.dump` 仍不是原子寫入。例外發生在寫到一半時，檔案會是
+    # 截斷的 —— 目前靠後面那句 `rm -f "$TMP"` 收掉，所以壞檔不會流到下游。
+    # 沒有改成 `.tmp` ＋ rename，是因為那超出這次確認的範圍；記在這裡，
+    # **下次碰這支腳本時一起處理**。」——09-23 因為補抓清單要加 FRED 而碰到它，一起處理掉。
+    # **修法的範本就在同一個 repo 裡**：`tools/fetch_advisory.py` 的 `top_up()`
+    # （同目錄 `.tmp` 再 `replace`）從一開始就是這樣寫的，這裡只是補上同一個紀律。
+    # `.partial.tmp` 不會被任何下游撿走：`publish.py` 只掃根目錄 `*.draft.json`、
+    # `kbusage.sh` 只掃 `*.usage.json`，而這裡是 `outbox/floor/`。
     try:
         d["produced_by"] = source
-        json.dump(d, open(path, "w"), ensure_ascii=False, indent=1)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(d, fh, ensure_ascii=False, indent=1)
+        os.replace(tmp, path)
     except Exception as e:
         print(f"0 寫回 produced_by 失敗（{type(e).__name__}）")
         raise SystemExit
@@ -241,8 +254,35 @@ fi
 #     不是合格的條件。失敗了就用凌晨那一份，那仍然是一份通過驗證的保底層。
 #   · **補抓在驗證之後、`mv` 之前。** 落地的一定是補過的完整檔，
 #     輪次不會讀到一個補到一半的東西。
-#   · **這幾個 ident 都不需要 FRED 金鑰**（SPDR 與 TWSE 都是公開端點），
-#     所以這一段刻意不碰 `FRED_API_KEY`，少一個會出錯的地方。
+#   · ~~**這幾個 ident 都不需要 FRED 金鑰**（SPDR 與 TWSE 都是公開端點），
+#     所以這一段刻意不碰 `FRED_API_KEY`，少一個會出錯的地方。~~
+#     **2026-09-23 撤回**：補抓清單加進兩條 FRED 之後這句不再成立，見下面那一段。
+#     留刪節線而不是刪掉，是因為「少一個會出錯的地方」那個理由本身仍然對 ——
+#     改動是判斷它換到的東西更值錢，不是判斷它當初錯。
+#
+# ## 2026-09-23 加進兩條 FRED：`BAMLC0A0CM` 與 `BAMLH0A0HYM2`
+#
+# **修的是一個安靜的落後，而它在 09-23 那一輪被實測到。**
+# 當天保底檔的 `fetched_at` 是 `2026-09-22T19:45:04+00:00`，而 FRED 頁面自報
+# `Updated: Sep 22, 2026 5:28 PM CDT`（＝ `2026-09-22T22:28Z`）——
+# **凌晨那一班的取數時刻早於 FRED 當日發布 2 小時 43 分**，
+# 於是保底檔裡兩條 OAS 的最新資料日停在 **09-18**，與前一版（09-22 那期）用過的
+# **逐字相同**。照抄就會交出兩張與前一版一模一樣的保底卡，
+# **而唯一的徵兆只有 `advisory.exempt_card_freshness` 的一個 WARN，那還不擋發布**。
+# 當天是派工端比對保底檔與前一版才發現、臨時給採集員 A 一個具名例外去現場複驗，
+# 才拿回 09-21 的 0.77／2.66。**那是一個每天都要有人記得做的臨時處置，不是修好**
+# —— 與 09-03 SPDR 那次的形狀逐字相同，而那次的解法就是這張補抓清單。
+#
+# **07:20 這一班晚於 FRED 的發布時刻**（前一日 23:20Z 對當日 22:28Z），所以補得到。
+#
+# **⚠️ 這兩條與上面那幾個不同：它們要金鑰，而且它們在 `ESSENTIAL` 裡。**
+# 兩件事讓它仍然是安全的，都是讀 `tools/fetch_advisory.py` 的 `top_up()` 確認過的，
+# 不是假設：
+#   · **補抓失敗走 `kept`，`items[ident]` 原值不動**（該函式的 else 分支）。
+#     所以沒有金鑰時，Actions 抓到的那一份 `status: ok` 原封不動留著。
+#   · **`failed_essential` 是拿合併後的整份 `items` 重算的**，判準是 `status == "failed"`。
+#     既然原值還是 `ok`，它就不會被寫髒 —— **補抓失敗不會把整份保底檔變成不可用**。
+# 換句話說：金鑰缺席時，行為退回到 09-23 之前的樣子，而不是更糟。
 # 2026-09-06 加進 `SPDR:GLD_NOW` 與 `SPDR:GLDM_NOW`：`historical-archive`
 # 落後一個交易日（連續三輪落在 `unchanged`，09-06 由同一天兩個端點的直接對照定案），
 # 而 `/api/v1/data` 是產品頁在叫的那一個、當日就有。**兩條都補，不是二選一** ——
@@ -255,15 +295,26 @@ fi
 # **放進補抓是第二道保險**：Actions 的實際開跑時刻會浮動好幾小時，
 # 而 07:20 這一班（＝前一日 23:20Z）無論如何都晚於當日定盤。成本是兩個請求。
 # 兩條都宣告了 `empty_ok`、都不在 `ESSENTIAL` 裡，所以倫敦休市那天不會擋掉整份保底檔。
-TOPUP_IDENTS="SPDR:GLD,SPDR:GLDM,SPDR:GLD_NOW,SPDR:GLDM_NOW,TWSE:REV_L,TWSE:REV_O,TWSE:CONF,LBMA:GOLD_PM,LBMA:GOLD_AM"
+TOPUP_IDENTS="SPDR:GLD,SPDR:GLDM,SPDR:GLD_NOW,SPDR:GLDM_NOW,TWSE:REV_L,TWSE:REV_O,TWSE:CONF,LBMA:GOLD_PM,LBMA:GOLD_AM,FRED:BAMLC0A0CM,FRED:BAMLH0A0HYM2"
 if [ ! -x "$VENV_PY" ]; then
   log "略過補抓：找不到可執行的 ${VENV_PY}（凌晨那一份仍然可用）"
 elif [ ! -f "$FETCHER" ]; then
   log "略過補抓：找不到 ${FETCHER}（凌晨那一份仍然可用）"
 else
+  # 金鑰只為 FRED 那兩條而設。**缺席不是放棄的理由** —— 其餘九個 ident 都是公開端點，
+  # 照補；FRED 那兩條會 AuthFailed、走 `kept_original`，保留 Actions 抓到的原值。
+  # **要把缺席這件事說出來**：沒有這一行，「今天沒補到 FRED」與「今天 FRED 沒前進」
+  # 在日誌裡長得一模一樣 —— 同這支腳本上面那個 `FRED_KEYFILE` 檢查的理由。
+  if [ -s "$FRED_KEYFILE" ]; then
+    FRED_API_KEY="$(tr -d '[:space:]' < "$FRED_KEYFILE")"
+    export FRED_API_KEY
+  else
+    log "補抓：找不到 FRED 金鑰（${FRED_KEYFILE}）—— 兩條 OAS 會保留原值，其餘照補"
+  fi
   log "補抓開始：${TOPUP_IDENTS}"
   "$VENV_PY" "$FETCHER" --top-up "$TMP" --only "$TOPUP_IDENTS" >> "$LOG" 2>&1
   log "補抓結束（退出碼 $?）—— 逐項結果見上，補抓失敗一律保留原值"
+  unset FRED_API_KEY
 fi
 
 # 原子寫入：輪次可能正好在讀這個目錄。
