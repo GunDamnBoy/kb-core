@@ -3,10 +3,6 @@
 > **這是正本。** `maintain` 技能裡的 `chart/MAIN.md` 是它的副本，
 > 改動一律先改這一份再整份貼過去 —— 跟 `kb-core/skills/chart/SKILL.md`
 > 與排程那份的關係相同。
->
-> 上一版停在 2026-08-20 重建之前：路徑寫 `/Users/kenny`、叫人跑已退休的
-> `tools/check_day.py`、還把 `com.kenny.dashpush` 當成活的。
-> **一份把退休機制當成活的維護文件，會讓下一個人去修一個不存在的東西。**
 
 ## 這套系統住在兩個 repo
 
@@ -15,23 +11,15 @@
 | 程式與規格 | `/Users/macmini/kb-core` | 門檻、檢查、取數與出圖程式、流程正本 | `com.kenny.kbcorepush`（每 300 秒，帶閘門） |
 | 已發布的資料 | `/Users/macmini/chart-of-the-day` | `data/`、`charts/`、`index.html` | `com.kenny.kbpublish.chart`（每 60 秒） |
 
-**守望鏈（2026-08-21 才補齊）**：哨兵 `sentinel.yml` 每天台北 15:20 跑在 GitHub 上，
+**守望鏈**：哨兵 `sentinel.yml` 每天台北 15:20 跑在 GitHub 上，
 看門狗 `com.kenny.kbwatch.chart` 每四小時（00/04/08/12/16/20）在 Mac 上問哨兵還活著沒。
-在那之前**兩者都不存在**：兩支既有的 kbwatch 一支看 advisory、一支看 podcast，
-而 chart 的哨兵 caller 漏了 `permissions:`，從建立到補上一次都沒成功跑過
-（唯一那次是 `startup_failure`）。**沒有心跳跟「哨兵判綠」在遠端看起來都是「沒有紅字」。**
+**沒有心跳跟「哨兵判綠」在遠端看起來都是「沒有紅字」。**
 
 **資料 repo 只放已發布的東西**；門檻是程式的一部分，放進資料 repo 會讓
 「改門檻」跟「改資料」混在同一個歷史裡。
 
 上游是投顧知識庫，實際路徑是 **`/Users/macmini/advisory-rewrite`**。
-`advisory-knowledge-hub` 是**系統 id 不是路徑**；同名的舊 checkout 停在 2026-08-18，
-**讀它不會報錯，只會安靜拿到三天前的題材** —— 2026-08-21 首輪就這樣走錯過一次，
-當天已搬到 `~/_to_delete/advisory-knowledge-hub-stale-20260818`。
-
-**真正的根因不是那份舊 checkout，是 `skills/chart/SKILL.md` 第 1 步從來沒有寫路徑。**
-唯一寫了路徑的地方是已掛失效橫幅的舊 brief，指的正是那份舊 checkout。
-路徑當天補進 SKILL —— **「錯得看得見」跟「知道該去哪」是兩件事，兩件都要做。**
+`advisory-knowledge-hub` 是**系統 id 不是路徑**。
 
 全程繁體中文（台灣用語），所有路徑寫絕對路徑（多 repo 有同名檔案）。
 這套系統改動頻繁，檔案可能在對話進行中被排程或其他對話改掉：
@@ -168,8 +156,7 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
   因為那是寫錨點措辭的人唯一會來找的地方。
   順帶要問第二句：**改那個數字補得回歷史嗎？** 台股那次答案是不行
   （增量只從末日往前數），所以另有 `backfill_tw_history.py`。
-- QA 旗標分類法與處置：`anchors.quality` vs 近幾期的 `about.qa_dispositions`
-  （2026-08-30 更正欄位名，這裡原本寫單數 `qa_disposition`，照它 grep 一筆都找不到）。
+- QA 旗標分類法與處置：`anchors.quality` vs 近幾期的 `about.qa_dispositions`（複數）。
 - 三大月度數據發布日規則：`anchors.structure.release_day`。
 - 圖型選用與多樣性、歷史錨點措辭（`anchors.history_limits`：
   BAML 只有近三年、SOXQ 只回到 2021）。

@@ -2,12 +2,6 @@
 
 > **這是正本。** `maintain` 技能裡的 `advisory/MAIN.md` 是它的副本，
 > 改動一律先改這一份再整份貼過去。
->
-> 上一版停在 2026-08-19／20 重建之前，**而它錯的地方會安靜地成功**：
-> repo 根目錄寫 `/Users/kenny/advisory-knowledge-hub`，那份 checkout 還在硬碟上、
-> 停在 2026-08-18，讀它不會報錯、只會拿到三天前的東西。
-> 2026-08-21 有人照它連過去，拿到舊檔而毫無徵兆。
-> 它叫人跑的 `scripts/check.py` 與 `scripts/metrics.py` 也已經不存在。
 
 ## 這套系統住在兩個 repo
 
@@ -57,15 +51,11 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    **最下面那筆的日期就是你的認知有多舊** —— 這個檔是**舊在上、新在下**：
    `維護判斷` 那一節在最上面，逐版明細由舊到新往下排（與 `MODIFY.md`
    〈收尾〉第 1 條的「最下方加一筆」是同一個慣例）。
-   ~~最上面那筆~~ **2026-09-03 更正**：原本寫反了。照字面讀會拿到**最舊**的那一筆
-   （2026-08-19），而且會把它當成最新狀態 —— **這個錯不會報錯，只會讓你以為自己是最新的**。
    讀不到就用 `mcp__cowork__request_cowork_directory` 連 `~/kb-core`、
    `~/advisory-rewrite`、`~/outbox`。
 2. Read `/Users/macmini/kb-core/skills/advisory/SKILL.md` —— 每天實際跑的流程正本，
-   **而且從 2026-08-31 起是唯一的一份**。排程裡那份已改成指標式：只有幾行，
+   **而且是唯一的一份**。排程裡那份是指標式：只有幾行，
    內容是「讀這個檔並完全照它執行」。**所以改 `SKILL.md` 就等於改了排程，不必再貼任何東西。**
-   ~~排程裡那份是副本，兩邊要一致。~~（2026-09-01 更正：那是 08-31 之前的狀態。
-   照舊寫法做會把剛拆掉的逐字副本重新造回來，而那正是 08-31 拆掉它要防的兩次事故。）
    採集眉角在 `kb-core/scripts/advisory/preamble.md`，
    **七份 `preamble/<代號>.md` 是 `slice_preamble.py` 的生成物、不可手改**。
 3. `mcp__scheduled-tasks__list_scheduled_tasks` 找 **`advisory-daily-0730`**
@@ -82,9 +72,6 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    `advisory` suite 的檢查**完全無副作用**。**條數不寫在這裡** ——
    它是數得出來的（`grep -c 'id="advisory\.' checks/advisory.py`，或直接看
    `advisory_verify` 最後那行的 `N PASS · …`），手寫一個數字就是第二份副本。
-   ~~十八條~~ **2026-09-03 更正**：當時寫 18，而 2026-09-01 加了
-   `advisory.same_version_dedup` 之後實際是 **19** 條 —— 同一次修改動了本檔的
-   指標式段落，卻沒回頭改這個數字。
    輸出與 `about.run` 對照著看：run 說正常但檢查有紅字＝執行者沒發現。
 5. Read `/Users/macmini/advisory-rewrite/data/index.json` 看近幾期的
    跨日記憶欄位（`thermo`／`threads`／`watch`／`pulse`／`snap`）。
@@ -149,23 +136,6 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
 - `preamble.md` 的黑名單與發稿日曆有沒有跟上來源異動。
 - 保底數據卡（`anchors.base_card_groups`）、窗口定義、則數目標、完成時間。
 - 跨版去重與 `dedup_exempt`。
-- ~~`index.html` 的徽章表 vs `BRIEF.md`；已停用的來源代碼應留在 CSS／BADGE 對照裡。~~
-  **2026-08-29 查證後刪除這一項：現行 `index.html`（2026-08-22 版）裡根本沒有徽章對照表。**
-  `cardHtml()` 直接把 `c.src`／`c.tag`／`deep`／`base`／`thread` 渲染成統一樣式的 chip
-  （`.chip.src` 只有一組配色），全檔搜不到任何以來源名為 key 的對照
-  （`Bloomberg`／`CNBC`／`鉅亨`／`Nikkei`／`WSJ` 全部零命中），`.t-*` 也沒有任何 CSS。
-  **結論：來源異動不需要動 `index.html`。** 照舊版去找那張表會找不到，
-  而「找不到」很容易被當成「表壞了」——所以刪掉比留著更安全。
-  （順帶記一筆，不必動：`tagcls` 寫進了資料、檢查也驗它的值域，但外殼從頭到尾沒有讀它。）
-- ~~瀏覽器 HOME deviceId 是否仍在 `list_connected_browsers` 回傳中；
-  fallback 必須是排除 WORK，不可用 connectedAt。~~
-  **2026-09-17 查證後刪除這一項：`deviceId` 與 `list_connected_browsers` 在整個 `kb-core` 裡
-  只出現在這一行自己。** `skills/advisory/SKILL.md` 與 `scripts/advisory/preamble.md`
-  **都沒有任何瀏覽器 profile 選擇的步驟**（實測前者命中 1 次、正是引用本行的那一句，後者 0 次），
-  也沒有任何腳本在讀 deviceId。現行做法是每個採集員用 `tabs_create_mcp` 自建分頁、
-  明確帶 `tabId`、**且不准叫 `tabs_context_mcp`**（規則在 `SKILL.md` 步驟 3 與 `preamble` 第二節）。
-  **處置與 2026-08-29 刪掉徽章表那一項相同**：照這一行去找會找不到，
-  而「找不到」很容易被當成「壞了」——**刪掉比留著更安全**。
 - 排程與實裝：`kb-core/launchd/*.plist` vs `~/Library/LaunchAgents/` 裡的副本
   （對帳指令在 `launchd/README.md`）。
 

@@ -1,14 +1,6 @@
 # 檔案地圖與權威範圍
 
 > **這是正本**，`maintain` 技能裡那份是副本。
->
-> 上一版停在 2026-08-19 重寫之前，**而它列的 12 個檔案有 11 個不存在**
-> （`AGENT_BRIEF.md`、`scripts/check.py`、`scripts/metrics.py`、`read_article.js`、
-> `list_timestamps.js`、`subagent_preamble.md`、`prompts/`、`search.html`…）。
-> 同一次重寫修好了 `MAIN.md` 與 `MODIFY.md`、**漏掉這一份**，
-> 而 `MAIN.md` 第 2 步明寫「各檔的權威範圍見 FILES.md」——
-> 指過去會拿到一份完全錯的地圖，且不會有任何徵兆。
-> 2026-08-22 重寫。
 
 第 1／2 步查漂移時對照用。**「唯一的家」欄位標了的意義沒有第二份副本 ——
 任何看起來像副本的東西就是漂移。**
@@ -28,8 +20,8 @@
 | `advisory/BRIEF.md` | **什麼算對的產出**（十節散文）＋日期檔的形狀 | 排程第 0 步、撰寫端 |
 | `advisory/CHANGELOG.md` | **事故經過與被否決的選項**。每日排程不讀，維護時讀 | 維護者 |
 | `scripts/advisory/preamble.md` | **採集眉角**：讀法、選擇器與路徑表、擋源三分、來源清單與**黑名單**、台股官方端點、保底數據、回報格式 | 採集 subagent（**只拿得到這一份**） |
-| `skills/advisory/SKILL.md` | **每天怎麼跑**（九步）。**2026-08-31 起是唯一的一份** —— 排程 prompt 已改成指標式，只有幾行、內容是「讀這個檔並照它執行」。~~排程裡那份是副本~~ | 排程（**指向它，不是貼它**） |
-| `checks/advisory.py` | **檢查邏輯**（suite=`advisory`）。**數字不寫在這裡**，一律從 anchors 讀；**條數也不寫在這裡**，數得出來（`grep -c 'id="advisory\.'`）。~~18 條~~ | `tools/advisory_verify.py`、`publish.py` |
+| `skills/advisory/SKILL.md` | **每天怎麼跑**（九步）。**唯一的一份** —— 排程 prompt 是指標式，只有幾行、內容是「讀這個檔並照它執行」 | 排程（**指向它，不是貼它**） |
+| `checks/advisory.py` | **檢查邏輯**（suite=`advisory`）。**數字不寫在這裡**，一律從 anchors 讀；**條數也不寫在這裡**，數得出來（`grep -c 'id="advisory\.'`） | `tools/advisory_verify.py`、`publish.py` |
 | `systems/advisory.py` | payload 怎麼組、index entry 寫哪些欄、要推哪些路徑 | `publish.py` |
 | `tools/advisory_verify.py` | 檢查的進入點（組 payload、取前一版、無副作用） | 人工、排程步驟 7 |
 | `tools/fetch_advisory.py` | Actions 保底層取數（兩條 OAS、GLD／GLDM、台股端點）。路由表在 `kbcore/fetch_tw.py` 的 `ROUTES` | GitHub Actions（**不在本機跑，本機沒有 `FRED_API_KEY`**） |
@@ -84,19 +76,13 @@
 - **`about.run` 是自述，不是證據**（2026-08-06 自稱有 7 則 Reuters、實際 0 則）。
 - **時區換算錯了不會報錯**：`ts_in_window` 只驗落不落在窗口裡，驗不出換算對不對。
   症狀是「那家今天沒新聞」（見 `preamble` 第六節華爾街見聞那一列）。
-- **豁免網址的保底卡數字沒更新**：~~`dedup_exempt` 有五條~~ **2026-09-06 更正：18 條**
-  （08-28 加第六條、08-29 加到八條、09-04 一次加十條 CME 頁到 18，
-  而這一行三次都沒跟上 —— **條數本來就不該寫在這裡**，它數得出來：
-  `python3 -c "import json;print(len(json.load(open('advisory/anchors.json'))['dedup_exempt']))"`。
-  留這個數字是因為下一句要講的是它的**面積**，而面積會隨條數變大），
-  **而「有沒有機器在看」這件事也要一起更正**：~~沒有任何機器在比對~~
-  **`advisory.exempt_card_freshness` 自 2026-08-23 起在比**（比豁免網址卡片的
-  **數字集合**與前一版，相同就 WARN）。**它是 WARN 不是 FAIL，因為機器分不出
-  「真的沒更新」與「忘了更新」** —— FRED 落後兩個交易日、SPDR 歸檔落後一天、
-  週末休市都會讓數字合法重複。**還是沒有機器在看的有三種**：豁免網址今天整個沒出卡
-  （那歸 `base_cards`）、只改一個無關緊要的數字繞過它、
-  以及 09-04 加十條 CME 頁之後新出現的那一種 —— **那十條在平日近乎恆綠、
-  在週末近乎恆黃，兩種狀態都不帶資訊**（`anchors._dedup_exempt_cost`）。
+- **豁免網址（`anchors.dedup_exempt`）的保底卡數字沒更新**：條數不寫在這裡，用
+  `python3 -c "import json;print(len(json.load(open('advisory/anchors.json'))['dedup_exempt']))"` 數。
+  `advisory.exempt_card_freshness` 會比對這些卡片的**數字集合**與前一版、相同就 WARN。
+  **它是 WARN 不是 FAIL，因為機器分不出「真的沒更新」與「忘了更新」** —— FRED 落後兩個交易日、
+  SPDR 歸檔落後一天、週末休市都會讓數字合法重複。**沒有機器在看的有三種**：豁免網址今天整個沒出卡
+  （那歸 `base_cards`）、只改一個無關緊要的數字繞過它、以及 CME 那批頁面平日近乎恆綠、
+  週末近乎恆黃，兩種狀態都不帶資訊（`anchors._dedup_exempt_cost`）。
 - **本機重跑 `tools/fetch_advisory.py` 判斷保底層** —— 本機沒有金鑰、對外走被擋的代理，
   它會十個端點全滅，而那個結果跟 Actions 跑得如何完全無關。
 

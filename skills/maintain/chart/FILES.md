@@ -1,9 +1,6 @@
 # 檔案地圖、同步組與系統形狀
 
 > **這是正本**，`maintain` 技能裡那份是副本。
-> 上一版的檔案地圖整張停在 2026-08-20 重建之前：`AGENT_BRIEF.md` 與
-> `tools/check_day.py` 都已不是權威（前者掛著失效橫幅、後者退休到
-> `chart-of-the-day/tools/_to_delete/`）。
 
 第 2 步查漂移時對照用。標**唯一權威版本**的檔案沒有副本 ——
 任何看起來像副本的東西就是漂移。
@@ -45,7 +42,7 @@
 | `chart/CHANGELOG.md` | 歷版變更紀錄，五欄結構，最新一筆在最上面 |
 | `skills/chart/SKILL.md` | 每天怎麼跑的**流程正本** |
 | `scripts/chart/RUN-PROMPT.md` | 排程 prompt 的正本 |
-| `checks/chart.py` | **二十條**檢查（`grep -c 'register(Check('` 數的，不要靠記憶——這一格 2026-09-04 之前寫「十八條」而實際是十九條）。**數字一律從 anchors 讀**，這裡是它的讀者不是第二份副本 |
+| `checks/chart.py` | 檢查規則（條數用 `grep -c 'register(Check(' checks/chart.py` 數，不寫在這裡）。**數字一律從 anchors 讀**，這裡是它的讀者不是第二份副本 |
 | `systems/chart.py` | payload 怎麼組、index entry、`staged_paths`（要推哪些路徑） |
 | `kbcore/system.py` | `System` 登記的形狀 —— 新增維度先加在這裡 |
 | `tools/chart_verify.py` | 驗一天，**不發布、無副作用**。回測舊期用它 |

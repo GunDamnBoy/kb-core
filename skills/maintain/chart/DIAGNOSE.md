@@ -1,8 +1,6 @@
 # 排查與稽核
 
 > **這是正本**，`maintain` 技能裡那份是副本。
-> 上一版把 `~/.dashpush/repos.txt` 當成推送清單、把 `check_day.py` 當成活的 ——
-> 兩者都已退休，殘骸在 `chart-of-the-day/tools/_to_delete/`。
 
 帶著症狀來的分支。第 1 步載入現況之後接這裡，追出結論再回第 3 步報告；
 要改東西一律走第 4 步。
@@ -76,7 +74,7 @@
 在數量級上就不成立。低水準序列（BAML 利差約 2%）的百分比變動會被基期放大，
 換算成基點再判。
 
-`chart_verify` 的紅字與該日 `about.qa_disposition` 對照著看。
+`chart_verify` 的紅字與該日 `about.qa_dispositions` 對照著看。
 
 ## token 稽核
 

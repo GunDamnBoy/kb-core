@@ -35,4 +35,4 @@
 2. **再叫一次子代理**獨立複查：這次改動有沒有製造新的漂移、瘦身時有沒有弄丟關鍵規則。
 3. 動到 schema 或腳本時，對 `work/` 裡的草稿實跑 verify 確認預期行為。verify 是發布前檢查，對象是 `work/` 的草稿——`data/` 裡的歷史檔不歸它管。
 4. 線上帶 cache-buster 驗證，看期別按鈕數、跨期趨勢點數、記分板，而不只是最新日期。
-5. 本檔或 `MAIN.md`、`FILES.md` 若因這次維護而過期，用 save_skill（overwrite: true）更新——改快取檔不會生效。
+5. 本檔或 `MAIN.md`、`FILES.md` 若因這次維護而過期：改 `~/kb-core/skills/maintain/convergence/` 正本，再把整個 `maintain` 目錄打包成 `.skill` 請使用者安裝（`save_skill` 只取代 `SKILL.md`，快取唯讀）。

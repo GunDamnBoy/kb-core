@@ -21,7 +21,7 @@
 5. 只在**流程或人機分工改變**時才動排程 prompt，用 `mcp__claude-code-remote__update_trigger` 同步。**`prompt` 是整份取代，不是局部編輯**：先讀現有全文，送出前確認所有段落都帶上了，漏掉的段落等於刪除。
 6. 在 brief 第 10 節加變更紀錄，**寫清楚為什麼改**，不只是改了什麼；事故經過與被否決的選項寫進 `MAINTENANCE.md` 第 6 節；已知的坑或待辦有變化就同步 `MAINTENANCE.md` 第 4、5 節。
 7. 交付照 [`PUBLISH.md`](PUBLISH.md)。
-8. 本 skill 若因這次維護而過期：用 save_skill（overwrite: true）更新整支 `maintain` skill，**並把 `bubble/` 這幾份放進交付檔，同步 repo 內 `skills/bubble-maintain/` 的複本**——直接改快取檔不會生效，兩份不同步就是漂移。
+8. 本 skill 若因這次維護而過期：改 `~/kb-core/skills/maintain/bubble/` 正本，再把整個 `maintain` 目錄打包成 `.skill` 請使用者安裝覆蓋（`save_skill` 只取代 `SKILL.md`、快取唯讀，見技能 `SKILL.md`〈這份文件的正本〉），**並同步 repo 內 `skills/bubble-maintain/` 的複本**——兩份不同步就是漂移。
 
 ## 驗證
 

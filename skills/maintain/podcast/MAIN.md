@@ -4,25 +4,14 @@
 > **這句話在副本裡也逐字存在，所以它認不出自己是誰** —— 要分辨就看路徑：
 > 路徑含 `claude-hostloop-plugins` 或 `.claude/skills` 的是副本，**改它不會保存**
 > （技能快取唯讀，且 `save_skill` 只取代 `SKILL.md`）。`healthcheck.py` 的
-> `check_skill_copy()` 會比對兩邊並報 WARN。（2026-09-02 補上這段辨識法。）
+> `check_skill_copy()` 會比對兩邊並報 WARN。
 >
-> **2026-08-22 已查證，上一版留的那個問題有答案了。**
-> 上一版寫「下次維護第一件事就是查 `AGENT_BRIEF.md` 開頭有沒有失效橫幅」——
-> **有。** 2026-08-21 標註的橫幅寫著「這份文件只剩一半是權威的」，
-> 每一個數字的家已經搬到 `kb-core/podcast/`。本文件與 `FILES.md` 的
-> 「規格在 brief」整段已於同日改成指向 kb-core。
->
-> **`AGENT_BRIEF.md` 現在仍然權威的只有四塊**（橫幅明文保留）：
+> **`AGENT_BRIEF.md` 仍然權威的只有四塊**（橫幅明文保留）：
 > 第 1 節節目清單與全文來源（**A／B 分類與每一檔的官方稿入口只有這裡有**）、
 > 第 2 節 podfetch 管線的讀法與排查、第 6 節基礎設施備忘、第 8 節變更紀錄。
 > 其餘一律以 `kb-core/podcast/` 為準。
->
-> 已確認並改掉的（2026-08-21）：推送者不是 `com.kenny.dashpush`（已退場）、
-> 排程 taskId 是 `podcast-daily-300`。
 
 **排程 `SKILL.md` 可能在對話進行中被別場維護整份覆寫。動手前重讀當下的檔案，只信這一秒讀到的內容**——即使你認為自己就是上一個改它的人。
-
-> **2026-09-02 訂正**：本段原本寫「`podfetch.py`／`config.json`／`shows.json`／排程 `SKILL.md` 沒有 git，快照是唯一還原點」——**四個前提現在全部不成立**，而它就掛在下方硬規矩「不再需要快照」的正上方。前三個 08-22 起住在 kb-core、有 git 也有自動推送；排程 `SKILL.md` 是 `DIGEST-PROMPT.md` 的副本、正本在 kb-core。**這是「判斷兌現了、沒有人回頭刪那一段」的第三次**（前兩次記在 `SYNC-CHECKLIST.md`）。留下的只有那句仍然成立的重讀紀律。
 
 全程繁體中文（台灣用語）。repo 根目錄 `~/podcast-knowledge-digest`。
 
@@ -37,9 +26,6 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
 ## 硬規矩
 
 - **看檔案狀態用 `cat`／`ls`／`grep`**：`com.kenny.kbpublish.podcast` 每 60 秒跑一次（`~/outbox/podcast/` → `~/podcast-knowledge-digest`），任何 git 指令（含 `git status`）留下的 `.git/index.lock` 都會擋住它。要看推送鏈就 `cat .git/refs/heads/main` 與 `.git/refs/remotes/origin/main` 比對（healthcheck 已經幫你看過）。要實測 git 行為就在 `/tmp` 另建 bare origin ＋ 工作 repo，**不要拿真 repo 試**。
-  （**2026-08-21 更正**：上一版寫的是 `com.kenny.dashpush` 每 180 秒 ——
-  那支在 2026-08-20 重建時退場，殘骸在 `chart-of-the-day/tools/_to_delete/dashpush-auto-push.sh`。
-  九個 launchd 工作裡沒有它。）
   （**2026-08-24 新增：真的非跑不可時，先確認你刪得掉檔案。** 這條規矩原本只講「會留下
   `.git/index.lock`」，聽起來像「小心一點就好」——不是。**Cowork 掛載點的寫入權限是不對稱的：
   可以建檔，不能刪檔。** 08-24 實測，`git reset --soft` 建了 `.git/HEAD.lock`、
@@ -60,7 +46,7 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
 
 ## 第 1 步：載入現況
 
-1. ~~存開工快照~~（2026-08-22 起不必做，理由見上方硬規矩）。改成確認 kb-core 推送鏈是活的：`tail -5 ~/outbox/kbcorepush.log`，看到最近的 `chore(auto)` 或「空輪次」都算正常。
+1. 確認 kb-core 推送鏈是活的：`tail -5 ~/outbox/kbcorepush.log`，看到最近的 `chore(auto)` 或「空輪次」都算正常。
 2. 跑健康檢查——機械式檢查一次做完，並自動把當日指標寫進 `metrics.csv`：
 
    ```
@@ -70,34 +56,19 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
    沙箱路徑是 `/sessions/<name>/mnt/kb-core/scripts/podcast/healthcheck.py`，腳本會自動偵測掛載點。連不到資料夾就用 `mcp__cowork__request_cowork_directory` 連四個資料夾再重跑。FAIL 與 WARN 全部帶進第 3 步的報告。
 
    > **沙箱裡固定會有三則 WARN**（`shows.json 兩份`／`節目在文件裡`／`podfetch`），成因都是 `~/.podfetch` 沒被掛載，不是故障。**但也因此，那三條在沙箱裡等於沒跑**——要真的驗它們得在 Mac 上跑一次。
-3. **成本基線那四欄要由「在 Mac 上跑的維護者」補，不是由排程自述**（2026-08-23 訂正）。
-   `eff_tokens_k`／`subagents`／`agent_turns`／`subagent_tokens_k` 原本寫「使用者若附了
-   當日 token 分析報告就抄進去」，08-22 改成由 `tools/usage_report.py` 讀逐字稿量。
-   **方向對，但那支在 Cowork 排程那一側跑不動**：沙箱沒有 `~/.claude/projects`（`exit 14`）、
-   `request_cowork_directory` **明文拒絕掛載工作階段儲存區**、
-   `session_info__read_transcript` 不回 usage 欄位。三條路 08-23 全部實測過。
-   > **但不要把它寫成「排程不留 transcript」** —— 那個結論 08-14 寫過一次、08-16 就被推翻
-   > （原因是「五次都是從外面找」），本檔第 6 節與 `healthcheck.py` 的 `measure_session_tokens()` 都記著這件事。
-   > **08-23 用 `Glob` 實地確認逐字稿存在**：
-   > `~/Library/Application Support/Claude/local-agent-mode-sessions/<帳號>/<工作區>/local_<階段>/.claude/projects/<專案>/<uuid>.jsonl`，
-   > 子代理在同層 `<uuid>/subagents/agent-*.jsonl`。
-   > **而 `measure_session_tokens()` 裡那段被 early-return 擋掉的程式，glob 樣式正好對得上**
-   > （`local-agent-mode-sessions/*/*/*/.claude/projects`，08-23 驗過 `fnmatch` 為 True）。
-   > **所以在 Mac 上跑 healthcheck，那四欄是量得到的** —— **但復活它不是拿掉那個 `return` 就好**——它整份掃完會把日報與事後維護算在一起（08-23 實測高估 4.6 倍），要先讓它會切界線。見 `MAINTENANCE.md` 第 6 節。
-   > **所以不要「看到空欄就抄回報裡的數字」。** 那是自述不是量測，而
-   > `scripts/podcast/metrics-columns.md` 開頭就寫著**用另一套定義填進同一欄比留白更糟**。
-   > 實害已經發生：`eff_tokens_k` 08-21＝4913、08-22＝235（自述），而 08-23 實測是 **6,611** —— 當天的自述值是 276，**低估 24 倍**。
-   > 08-23 那一列的自述值已在同日抽掉，08-21／08-22 兩列保留不改寫歷史。
-   > **量測本身 08-23 已經成功**（在 Mac 上跑 `usage_report.py`，日報那一輪 6,611K），結果寫進 `kb-core/metrics/usage.csv`；`metrics.csv` 那四欄維持留空。
-   > **`healthcheck.py` 的那則「每日指標」WARN 已於 08-23 改寫**，不再催人去填、改成說明為什麼留空。
-   > **注意它在沙箱裡整條不會出現**（`metrics()` 寫 `~/.podfetch/`，沒掛載就整個 except 掉，
-   > 輸出裡連「每日指標」四個字都沒有）—— 08-23 就是這樣才發現本節上一版寫的
-   > 「缺欄會出聲」在沙箱裡沒被驗證過。**要驗這一則得在 Mac 上跑。**
-   > **真要比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`** ——
-   > 後者混了固定開銷與一次性維護動作，除以集數不可比（08-15、08-17 都踩過）。
+3. **成本基線四欄（`eff_tokens_k`／`subagents`／`agent_turns`／`subagent_tokens_k`）在 `metrics.csv` 維持留空，
+   不要抄排程或回報裡的自述值**——用另一套定義填進同一欄比留白更糟（`scripts/podcast/metrics-columns.md` 開頭）。
+   Cowork 排程那一側量不到：沙箱沒有 `~/.claude/projects`、`request_cowork_directory` 不掛載工作階段儲存區、
+   `session_info__read_transcript` 不回 usage 欄位。要量就在 Mac 上跑 `tools/usage_report.py`，結果寫進
+   `kb-core/metrics/usage.csv`。逐字稿在 Mac 上是存在的
+   （`~/Library/Application Support/Claude/local-agent-mode-sessions/<帳號>/<工作區>/local_<階段>/.claude/projects/<專案>/<uuid>.jsonl`，
+   子代理在同層 `<uuid>/subagents/agent-*.jsonl`）。
+   `healthcheck.py` 的 `measure_session_tokens()` 目前被 early-return 擋掉；直接拿掉 `return` 會把日報與事後維護算在一起而高估，
+   要先讓它會切界線，見 `MAINTENANCE.md` 第 6 節。「每日指標」那則 WARN 在沙箱裡整條不會出現（`~/.podfetch/` 沒掛載），要驗得在 Mac 上跑。
+   比效率看 `subagent_tokens_k ÷ transcript_kb`，不要用 `eff_tokens_k ÷ 集數`——後者混了固定開銷與一次性維護動作。
 4. 讀 `~/podcast-knowledge-digest/MAINTENANCE.md`，尤其第 5 節（新增節目步驟表）、第 7 節（事故檔案）、第 12 節（登記簿）。第 4C 節（podfetch 的四個不要改的設計）只有要動 `podfetch.py` 時才需要讀。第 11 節（變更紀錄歸檔）是純歷史，要查「當初為什麼這樣改」時才回來讀。
 5. 讀規格。**現在是四份小的，不是一份大的**：`kb-core/podcast/BRIEF.md`、`kb-core/podcast/anchors.json`、`kb-core/scripts/podcast/DIGEST-PROMPT.md`、`kb-core/scripts/podcast/preamble.md`。要動節目清單、官方稿入口或 podfetch 內部時，另外讀 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 的第 1／2／6 節。
-   > **那條「brief 約 24,990 token、餘裕不到 1%」的警告已經不再是每日的硬限制**（2026-08-22）——每日排程不再完整讀 `AGENT_BRIEF.md`，它只在需要 A 類清單時讀第 1 節。**但拆檔之後多了一個新的失效形態**：四份小的各自都很好讀，於是很容易只改其中一份。查漂移時四份要一起看。
+   四份各自都很好讀，所以最常見的失效是只改其中一份——查漂移時四份一起看。
 6. `mcp__scheduled-tasks__list_scheduled_tasks` 記下 `cronExpression`／`enabled`／`nextRunAt`／`lastRunAt`，並 Read 它回傳的 `path` 全文。
 7. 讀 `~/podcast-knowledge-digest/data/index.json`。
 
