@@ -1,0 +1,40 @@
+name: notion-sync
+
+# Copies every published issue of the five kb systems into the Notion
+# 「產出庫 Outputs」 database. No model involved; see tools/notion_sync/README.md.
+on:
+  schedule:
+    - cron: "45 4 * * *"    # 12:45 Taipei — after podcast 03:00, advisory 07:30, chart 11:30
+    - cron: "45 15 * * *"   # 23:45 Taipei — catches broker (Sun 23:00) and late publishes
+  workflow_dispatch:
+    inputs:
+      systems:
+        description: "comma list: advisory,chart,podcast,convergence,broker"
+        default: "advisory,chart,podcast,convergence,broker"
+      limit:
+        description: "max issues per system, newest first (0 = all history)"
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notion-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Sync to Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          python tools/notion_sync/sync.py \
+            --systems "${{ github.event.inputs.systems || 'advisory,chart,podcast,convergence,broker' }}" \
+            --limit "${{ github.event.inputs.limit || '0' }}"
