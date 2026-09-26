@@ -15,6 +15,10 @@ from blocks import (bullet, callout, divider, heading, image, link_para, md_bloc
 
 RAW = "https://raw.githubusercontent.com/GunDamnBoy/{repo}/main/{path}"
 
+# Bump when the layout changes: it is mixed into each page's hash, so the newest
+# issues (sync.py --recheck window) get re-rendered with the new layout.
+RENDER_VERSION = "2026-09-25c"
+
 # ------------------------------------------------------------------ tags ----
 
 REGIONS = {
@@ -266,7 +270,10 @@ def advisory(d: dict, repo: str, site: str):
 
 CHART_SKIP = {"slug", "kind", "y_label", "y2_label", "y_fmt", "y2_fmt", "y_log", "zero_line",
               "series_spec", "series", "pts", "hi_pts", "files", "footer_lines", "option",
-              "markers"}
+              "markers", "series_align",
+              # plotted data of bar / band / matrix / gauge kinds — it is in the image
+              "cats", "groups", "vals", "rows", "matrix", "band", "band_label", "x_label",
+              "total_label", "pts_labels", "gauge"}
 
 
 def chart(d: dict, repo: str, site: str):
@@ -314,12 +321,16 @@ def chart(d: dict, repo: str, site: str):
         ib = pv.get("inspired_by") or {}
         if ib.get("cards"):
             b += meta("靈感來源（" + str(ib.get("source", "")) + "）：" + "；".join(ib["cards"]))
-        if ib.get("title") or (ib.get("source") and not ib.get("cards")):
-            b += meta("靈感來源：" + "｜".join(str(ib[k]) for k in ("source", "title") if ib.get(k)))
+        IBK = ("source", "outlet", "publication", "who", "via", "title", "published")
+        fields = [str(ib[k]) for k in IBK if ib.get(k) and not (k == "source" and ib.get("cards"))]
+        if fields:
+            b += meta("靈感來源：" + "｜".join(fields))
         if ib.get("url"):
             b += link_para(ib["url"], ib["url"])
-        b += _leftover(ib, {"cards", "source", "title", "url"}, set(), 3)
-        b += _leftover(pv, {"computed", "inspired_by"}, set(), 3)
+        b += _leftover(ib, {"cards", "url", *IBK}, set(), 3)
+        if pv.get("our_question"):
+            b += meta(f"我們的問題：{pv['our_question']}")
+        b += _leftover(pv, {"computed", "inspired_by", "our_question"}, set(), 3)
         b += _leftover(c, {"slot", "theme", "title", "subtitle", "takeaway", "reading", "so_what",
                            "watch", "tags", "source", "note", "provenance"}, CHART_SKIP, 3)
     ab = d.get("about") or {}
@@ -607,8 +618,7 @@ def broker(d: dict, repo: str, site: str):
             if names:
                 b += meta("圖中序列：" + "、".join(names))
             b += _leftover(c, {"png", "title", "subtitle", "source"},
-                           {"kind", "cats", "groups", "y_label", "grounding", "svg", "bytes", "series",
-                            "values", "x", "y"}, 3)
+                           CHART_SKIP | {"grounding", "svg", "bytes", "values", "x", "y"}, 3)
         b += _leftover(r, {"broker", "title", "date", "pages", "issue", "tags", "summary", "stances",
                            "charts"}, {"slug", "product", "title_source", "title_confident",
                                        "tier_target", "tier_band", "summary_chars"}, 3)

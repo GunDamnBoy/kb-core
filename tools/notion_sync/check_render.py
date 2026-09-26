@@ -28,7 +28,7 @@ SKIP = {  # machine data / ids / file paths / styling — intentionally not rend
     "convergence-weekly": {"schemaVer", "cls", "id"},
     "broker-research-digest": {"tags", "slug", "product", "title_source", "title_confident",
                                "tier_target", "tier_band", "summary_chars", "png", "svg", "bytes",
-                               "cats", "groups", "grounding", "kind", "y_label", "assembled_at"},
+                               "grounding", "assembled_at"} | CHART_SKIP,
 }
 HTML_REPOS = {"advisory-rewrite", "convergence-weekly"}
 

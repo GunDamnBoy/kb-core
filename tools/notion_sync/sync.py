@@ -16,6 +16,8 @@ Env
 Idempotency
   Each page carries 同步鍵 = "<repo>/<file>@<sha1-8>". A page is written as
   "PENDING:<key>" first and only renamed to "<key>" after every block landed,
+  (the hash covers the JSON plus render.RENDER_VERSION, so a layout change
+  re-renders the recheck window without touching older pages)
   so an interrupted run leaves a PENDING page that the next run trashes and
   redoes. Issues whose content hash changed inside the recheck window
   (default 10 newest per system) are replaced.
@@ -38,7 +40,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from blocks import validate  # noqa: E402
-from render import RENDERERS  # noqa: E402
+from render import RENDER_VERSION, RENDERERS  # noqa: E402
 
 DEFAULT_DB = "e60b58131b614d449a5fec9599646009"
 NOTION = os.environ.get("NOTION_API_BASE", "https://api.notion.com/v1")  # override only for tests
@@ -249,7 +251,7 @@ def main(argv=None) -> int:
                 continue
             try:
                 raw = _get(RAW.format(repo=repo, path=f), a.cache)
-                h = hashlib.sha1(raw).hexdigest()[:8]
+                h = hashlib.sha1(raw + RENDER_VERSION.encode()).hexdigest()[:8]
                 if known and known["hash"] == h:
                     stats["same"] += 1
                     continue
