@@ -15,9 +15,9 @@ from blocks import (bullet, callout, divider, heading, image, link_para, md_bloc
 
 RAW = "https://raw.githubusercontent.com/GunDamnBoy/{repo}/main/{path}"
 
-# Bump when the layout changes: it is mixed into each page's hash, so the newest
-# issues (sync.py --recheck window) get re-rendered with the new layout.
-RENDER_VERSION = "2026-09-25c"
+# Bump when the layout changes. sync.py stores it in every page's 同步鍵 and
+# re-renders any page written by a different version — the whole history, once.
+RENDER_VERSION = "2026-09-26"
 
 # ------------------------------------------------------------------ tags ----
 

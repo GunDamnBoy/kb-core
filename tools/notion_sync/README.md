@@ -10,7 +10,8 @@
 - 資料庫 id 寫在 `sync.py` 的 `DEFAULT_DB`；換資料庫就設環境變數 `NOTION_DB_ID`。
 
 ## 冪等與修復
-- 每頁的「同步鍵」＝`<repo>/<檔名>@<sha1 前 8 碼>`。已存在就跳過；**最新 10 期**會重算雜湊，內容變了就整頁換新。
+- 每頁的「同步鍵」＝`<repo>/<檔名>@<sha1 前 8 碼>|v<排版版本>`。已存在且版本相同就跳過；**最新 10 期**會重算雜湊，內容變了就整頁換新。
+- **改排版時把 `render.py` 的 `RENDER_VERSION` 改掉**：下一輪會把版本不同的頁（整段歷史）各重寫一次，之後回到只查最新 10 期。約 180 期、十分鐘左右。
 - 寫入時先標 `PENDING:`，全部區塊寫完才改成正式鍵。中途失敗留下的 PENDING 頁，下一輪開頭自動丟垃圾桶重寫。
 - 沒有同步鍵的頁（手動建的）永遠不碰。
 
@@ -28,7 +29,7 @@
 ```
 python sync.py --dry-run --cache <抓好的 JSON 目錄> --out /tmp/out
 python check_render.py --out /tmp/out --cache <同一個目錄>   # 全文覆蓋率、API 限制、標籤
-python test_sync_mock.py <同一個目錄>                        # 假 Notion API 端對端（冪等、中斷修復、改版替換、429）
+python test_sync_mock.py <同一個目錄>                        # 假 Notion API 端對端（冪等、中斷修復、改版替換、排版版本、429）
 ```
 `--cache` 目錄的檔名格式是 `<repo>__data__<檔名>.json`（含 `index.json`）。
 

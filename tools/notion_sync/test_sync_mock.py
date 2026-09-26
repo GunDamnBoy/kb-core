@@ -9,6 +9,7 @@ per text item, ≤100 rich_text items) and can inject failures. Scenarios:
   D  an issue whose content changed (inside the recheck window) is replaced
   E  429 responses are retried
   F  a page Kenny created by hand (no 同步鍵) is never touched
+  G  a layout-version bump re-renders the whole history once, then settles
 """
 import json
 import os
@@ -174,6 +175,21 @@ def main():
     n_before = len(FAKE.pages)
     rc = sync.main(args)
     check("B second run is a no-op", rc == 0 and len(FAKE.pages) == n_before, f"rc={rc}")
+
+    # G: pages written by an older layout (no |v in the key) are all re-rendered,
+    #    even outside the recheck window; the run after that is a no-op again
+    for p in FAKE.pages.values():
+        rt = p["props"].get("同步鍵", {}).get("rich_text", [])
+        if rt and not p["archived"]:
+            rt[0]["text"]["content"] = rt[0]["text"]["content"].split("|v")[0]
+    live_before = len([k for k in live_keys() if k])
+    rc = sync.main(args + ["--recheck", "1"])
+    keys = [k for k in live_keys() if k]
+    check("G old-layout pages all re-rendered", rc == 0 and len(keys) == live_before
+          and all("|v" in k for k in keys), f"rc={rc} {len(keys)}/{live_before}")
+    n_before = len(FAKE.pages)
+    rc = sync.main(args + ["--recheck", "1"])
+    check("G next run is a no-op", rc == 0 and len(FAKE.pages) == n_before, f"rc={rc}")
 
     # C: interrupted write
     victim_key = next(k for k in live_keys() if k.startswith("advisory-rewrite/"))

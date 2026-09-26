@@ -16,8 +16,9 @@ Env
 Idempotency
   Each page carries 同步鍵 = "<repo>/<file>@<sha1-8>". A page is written as
   "PENDING:<key>" first and only renamed to "<key>" after every block landed,
-  (the hash covers the JSON plus render.RENDER_VERSION, so a layout change
-  re-renders the recheck window without touching older pages)
+  The key also records which layout wrote the page ("…@<hash>|v<RENDER_VERSION>");
+  a page written by any other layout version is re-rendered on the next run,
+  whatever its age, so a layout fix reaches the whole history exactly once.
   so an interrupted run leaves a PENDING page that the next run trashes and
   redoes. Issues whose content hash changed inside the recheck window
   (default 10 newest per system) are replaced.
@@ -144,8 +145,10 @@ def existing_pages(nt: Notion, db: str) -> tuple[dict[str, dict], list[str]]:
             if not raw:
                 continue  # a page Kenny made by hand: never touch it
             pending = raw.startswith("PENDING:")
-            key, _, h = raw.removeprefix("PENDING:").partition("@")
-            by_key.setdefault(key, []).append({"id": pg["id"], "hash": h, "pending": pending})
+            key, _, rest = raw.removeprefix("PENDING:").partition("@")
+            h, _, ver = rest.partition("|v")
+            by_key.setdefault(key, []).append({"id": pg["id"], "hash": h, "ver": ver,
+                                               "pending": pending})
         if not r.get("has_more"):
             break
         body["start_cursor"] = r["next_cursor"]
@@ -246,13 +249,14 @@ def main(argv=None) -> int:
         for n, f in enumerate(files):
             key = f"{repo}/{f.split('/')[-1]}"
             known = have.get(key)
-            if known and n >= a.recheck:
+            current = bool(known) and known.get("ver") == RENDER_VERSION
+            if current and n >= a.recheck:
                 stats["same"] += 1
                 continue
             try:
                 raw = _get(RAW.format(repo=repo, path=f), a.cache)
-                h = hashlib.sha1(raw + RENDER_VERSION.encode()).hexdigest()[:8]
-                if known and known["hash"] == h:
+                h = hashlib.sha1(raw).hexdigest()[:8]
+                if current and known["hash"] == h:
                     stats["same"] += 1
                     continue
                 props, blocks = RENDERERS[rname](json.loads(raw), repo, site)
@@ -266,7 +270,7 @@ def main(argv=None) -> int:
                             json.dump({"props": props, "blocks": blocks}, fh, ensure_ascii=False)
                     stats["new"] += 1
                     continue
-                write_page(nt, db, props, blocks, f"{key}@{h}")
+                write_page(nt, db, props, blocks, f"{key}@{h}|v{RENDER_VERSION}")
                 if known:
                     trash(nt, known["id"])
                     stats["replaced"] += 1
