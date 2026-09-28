@@ -1,6 +1,6 @@
 ---
 name: bubble-weekly
-description: AI 泡沫監控儀表板的每週質化覆核。每週一台北 09:03 在 Mac mini 上執行；也可在互動對話說「跑這週的泡沫覆核」手動觸發。
+description: AI 泡沫監控儀表板的每週質化覆核。每週一台北 09:00 由雲端排程執行（夾帶 ~/outbox，草稿經桌面橋接送進 outbox）；也可在互動對話說「跑這週的泡沫覆核」手動觸發。
 ---
 
 # AI 泡沫監控｜這一週的質化覆核
@@ -15,26 +15,30 @@ description: AI 泡沫監控儀表板的每週質化覆核。每週一台北 09:
 
 - 網站 repo：https://github.com/GunDamnBoy/ai-bubble-monitor
   （網址 https://gundamnboy.github.io/ai-bubble-monitor/）
-- 本機 repo：`/Users/macmini/Projects/ai-bubble-monitor`
+- 發布器的工作區：Mac 的 `/Users/macmini/Projects/ai-bubble-monitor`（**這一輪碰不到、也不該碰**，一律用 `/tmp` 的 clone）
 - 發布器：`com.kenny.kbpublish.bubble` → `scripts/auto_publish.py`
   （**這一套是唯一不跑 kb-core `publish.py` 的**，plist 的版控正本在那個 repo 的 `launchd/`）
 
-## 這一輪在哪裡跑（2026-08-23 改）
+## 這一輪在哪裡跑（2026-09-28 查證）
 
 | 段 | 在哪 | 有什麼 | 沒有什麼 |
 |---|---|---|---|
-| 自動指標 | GitHub Actions（每交易日） | 網路、重試、三層備援 | LLM |
-| 質化覆核 | **這一輪（Mac 桌面版）** | LLM、檔案系統、完整網路 | git push 的權限與必要 |
+| 自動指標 | GitHub Actions（每交易日＋每次 push） | 網路、重試、三層備援 | LLM |
+| 質化覆核 | **這一輪：雲端容器**（排程「Bubble weekly 0900」，夾帶 `/Users/macmini/outbox`） | LLM、網路、`Bash`、`mcp__remote-devices__*`（只通到夾帶的 outbox） | git push 的權限與必要、Mac 上的 `~/Projects` |
 | 發布 | Mac launchd（`auto_publish.py`） | `gate.py`＋`healthcheck.py` 兩道閘門、SSH 金鑰 | LLM |
 
-**這一輪跑在 Mac 上，不是雲端。** 建立排程時要**夾帶資料夾**，
-否則它會被當成雲端任務丟到容器裡跑 —— 而**雲端排程 session 拿不到本機檔案**：
-`mcp__remote-devices__*` 整個命名空間不存在（2026-08-23 三次獨立測量）。
-**2026-08-17 那次覆核沒發布出去就是這個形狀**：沒有草稿、沒有回執、網站不更新，
-而摘要看起來一切正常。
+**這一輪跑在雲端容器裡，交件要過橋。** 研究、改 `data.json`、跑 `healthcheck.py`
+都在容器的 `Bash` 做；**只有「把草稿放進 Mac 的 outbox」與「讀回執」走橋**：
+`mcp__remote-devices__device_commit_files`（寫）與 `mcp__remote-devices__device_bash`（讀，
+路徑是 `$HOME/mnt/outbox/bubble/`）。這些工具可能是 deferred，先用 ToolSearch 載入。
 
-**不要用 `SendUserFile`、不要找 `mcp__remote-devices__` 工具、
-不要嘗試更新 Cowork artifact** —— 本機執行沒有這些工具，也不需要。
+**容器自己的 `~/outbox` 不是 Mac 的 `~/outbox`。** 寫進前者 `wc -c` 照樣通過，
+但發布器永遠看不到 —— 沒有回執、網站不更新，而摘要看起來一切正常
+（**2026-08-17 那次覆核沒發布出去就是這個形狀**）。
+
+**如果這一輪找不到 `mcp__remote-devices__*`**（排程沒夾帶資料夾，或 Mac 的 Claude 桌面 app 沒開、
+裝置離線），草稿就交不出去：照樣做完第 1–4 步，用 `SendUserFile` 把兩個檔送進對話當退路，
+並在推播開頭標「⚠ 警示：草稿未能送進 outbox，網站未更新」。**不要寫進容器的 `~/outbox` 了事。**
 
 ---
 
@@ -96,7 +100,8 @@ healthcheck 因此出現過期 WARN 時，在交付訊息註明「本週已查�
 
 **改 `params` 不會立刻反映在頁面上**（§8.2）：`nvda_eps` 要等下一次引擎跑 `nvdape`、
 `ngdp_nominal` 要等下一次引擎重評 `triggers` —— **不要自己去改 `triggers` 的 `state`
-來「讓它一致」**，註明「已更新 `params.X`，將於下一個交易日生效」即可。
+來「讓它一致」**，註明「已更新 `params.X`，發布後觸發的自動更新會套用」即可（覆核上線約 1 分鐘後
+push 觸發的 Actions 就會重評，不必等下一個交易日）。
 **`megaipo_done` 是這條的例外**：它不經引擎重算，改了下一次 `set_trig` 就生效。
 `params` 目前三個鍵：`nvda_eps`、`ngdp_nominal`、`megaipo_done`。
 
@@ -117,14 +122,14 @@ healthcheck 因此出現過期 WARN 時，在交付訊息註明「本週已查�
 ## 3. 你這一輪要碰的欄位就是白名單那兩份（§8.3）
 
 **可以動的**：§8.2 那張清單（六項質化分數、`params`、`tsmc_weight`、`stage` 整塊），
-加上第 4 步收尾七步會寫到的欄位（`zone`、`dims`、`composite`、`quadrant`、
-`tw.subs`／`tw.heat`、`history` 附加一筆、`meta.built`／`meta.builtTime`）。
+加上第 4 步收尾八步會寫到的欄位（`zone`、`dims`、`composite`、`quadrant`、
+`tw.subs`／`tw.heat`、`history` 附加一筆、`fresh`、`meta.built`／`meta.builtTime`）。
 
 **這兩份以外一律沿用引擎寫入的值**：`events`、`triggers`，
 以及所有自動指標的 `value`／`score`／`asof`。
 
-**理由不是「連不到網路」。** 這一輪跑在 Mac 上，FRED／Stooq／SEC／TAIFEX
-你**確實連得到** —— 2026-08-23 之前這一段寫的是雲端容器的網路限制，那條理由在這裡是假的。
+**理由不是「連不到網路」。** 這一輪的雲端容器連得到外網（2026-09-28 實測），
+執行環境換過兩次（三個環境）、網路能力每次都不同，而這條禁令一次都沒變過。
 **真正的理由是：一次即興抓取不是引擎那條管線。** 引擎帶重試、帶三層備援、
 帶 `attempt()` 降級；你手上的是一次性的 `curl` 或 `WebFetch`。
 兩者拿到的東西在 JSON 裡長得一模一樣，而**硬抓的結果是空值或殘值蓋掉好的舊值**，
@@ -175,14 +180,14 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 ### `fresh` 是導出欄位，不是例外
 
 改了任何指標的 `asof`，`fresh` 就必須跟著重算 —— 用**引擎自己的**
-`set_fresh()`（`scripts/update_data.py:109`），不要手改 `data.json` 的 `fresh`、
+`set_fresh()`（`scripts/update_data.py` 的 `def set_fresh`，目前在第 111 行），不要手改 `data.json` 的 `fresh`、
 也不要動 `asof` 去消音。這與「依 `score` 重算 `zone`」是同一件事，不是手動修補。
 
 > **2026-08-23 之前這裡寫的是「`fresh` FAIL 可以照常交付」，那是個陷阱。**
 > `auto_publish.py` 把 `healthcheck.py` 當閘門，**任何 FAIL 都會擋住發布**
-> （`scripts/auto_publish.py` 第 121 行起，不過就 `return 5`、草稿改名成 `.parked`）。
-> 那條例外是雲端時代留下的 —— 當時沒有閘門，交付訊息照樣送到人手上，
-> 所以「可以照常交付」是真的。**搬到本機之後閘門變成真的，例外就變成一個
+> （`scripts/auto_publish.py` 的 gate／healthcheck 迴圈，目前在第 145–155 行，不過就 `return 5`、草稿改名成 `.parked`）。
+> 那條例外是人工發布年代留下的 —— 當時沒有自動閘門，交付訊息照樣送到人手上，
+> 所以「可以照常交付」是真的。**改成自動發布之後閘門變成真的（閘門在 Mac 上，這一輪跑在哪都一樣），例外就變成一個
 > 讀起來合理、做下去必定被 park 的指令。** 2026-08-23 那輪的第一次投遞
 > 就是這樣在 15:01 被 park（回執 exit 5），是那一輪自己認出來並改用 `set_fresh()` 的。
 
@@ -190,36 +195,47 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 
 ## 5. 交出草稿
 
-產出兩個檔案，**直接寫進 outbox**（本機執行，不過橋、不 `SendUserFile`）：
+先在容器裡產出兩個檔，放到 `/mnt/user-data/outputs/`（`device_commit_files` 的 `stagedPath` 只收這個目錄）：
 
 ```
-~/outbox/bubble/data-<今天>.json      ← cp 自 /tmp/bubble-<今天>/data.json
-~/outbox/bubble/index-<今天>.html
+/mnt/user-data/outputs/data-<今天>.json     ← cp 自 /tmp/bubble-<今天>/data.json
+/mnt/user-data/outputs/index-<今天>.html
 ```
-
-**檔名一定要是這兩個格式** —— `auto_publish.py` 的 glob 認的就是
-`data-YYYY-MM-DD.json`，並會把同日期的 `index-YYYY-MM-DD.html` 一併套用成 `index.html`。
 
 `index-<今天>.html` 的做法：以 repo 最新 `index.html` 為基底，把
 `<script type="application/json" id="dashboard-data">` 的內容整段替換為新 `data.json`
 （注意屬性順序是 `type` 在前、`id` 在後），**並把內嵌那份的 `history` 裁到最後 60 筆**
 （healthcheck 超過 60 筆會 WARN）。這是 fetch 失敗時的離線退路，版本必須與 `data.json` 一致。
+換完先 `json.loads` 驗一次那段內嵌 JSON。
 
-寫完用 `wc -c` 確認兩個檔都落地。
+然後**一次** `device_commit_files` 寫進 Mac（`index` 放在 `data` 前面）：
 
-**不要自己 `git push`。** 在 Mac 上你**推得動** —— 但發布的閘門
-（`gate.py` 與 `healthcheck.py`）在 `auto_publish.py` 裡，繞過它就是繞過閘門。
+```
+/Users/macmini/outbox/bubble/index-<今天>.html   ← stagedPath /mnt/user-data/outputs/index-<今天>.html
+/Users/macmini/outbox/bubble/data-<今天>.json    ← stagedPath /mnt/user-data/outputs/data-<今天>.json
+```
+
+**檔名一定要是這兩個格式** —— `auto_publish.py` 的 glob 認的就是
+`data-YYYY-MM-DD.json`，並會把同日期的 `index-YYYY-MM-DD.html` 一併套用成 `index.html`。
+
+寫完用 `device_bash` 在 `$HOME/mnt/outbox/bubble/` 跑 `wc -c` 與 `md5sum`，
+**跟容器裡那兩份比對**——比的是 Mac 上那份，不是容器裡那份。
+
+**不要自己 `git push`**（雲端本來就推不動，也不要找繞路）。發布的閘門
+（`gate.py` 與 `healthcheck.py`）在 `auto_publish.py` 裡。
 **你的工作是把檔案放到那個目錄，不是把它送上線。**
 
-**完成條件**：兩個檔都在 `~/outbox/bubble/`，`wc -c` 的位元組數與預期相符。
+**完成條件**：`device_bash` 看得到 Mac 的 outbox 裡兩個檔，位元組數與 md5 跟容器那份相符。
 
 ## 6. 等回執
 
-`auto_publish.py` 每 60 秒掃一次，回執在 `~/outbox/bubble/<今天>.receipt.json`，
-**`exit` 0 才算上線**。
+`auto_publish.py` 每 60 秒掃一次，回執在 Mac 的 `~/outbox/bubble/<今天>.receipt.json`，
+**`exit` 0 才算上線**。用 `device_bash` 輪詢（例如每 10 秒看一次、最多約 3 分鐘，
+單次呼叫上限 180 秒），讀到就 `cat` 出來，再 `tail` 一下 `publish.log`。
 
-**沒有回執**與**回執說失敗**是兩件不同的事：前者代表發布器根本沒跑
-—— 這時去看 `~/outbox/bubble/publish.log`，**空的 log 與沒跑過長得一模一樣**。
+**沒有回執**與**回執說失敗**是兩件不同的事：前者先看 `.heartbeat`
+（被覆寫成剛剛的時間＝發布器活著，只是還沒輪到；很舊＝launchd 沒在跑），
+後者看 `publish.log`。**空的 log 與沒跑過長得一模一樣**，所以先看心跳再下結論。
 
 **完成條件**：手上有一份回執，且它的 `exit` 有被讀過。
 
@@ -228,27 +244,39 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 綜合溫度與上週比較、象限 `regime` 變化、觸發器點亮數變化、跨區指標、
 `stage` 檢查清單變化、本週焦點 2–3 條、網站連結。
 
+**讀數要標明是「覆核當下、自動更新前」的。** 發布器推的 commit 含 `index.html`，
+會觸發 Actions 的 `push` 事件，**約 1 分鐘後**引擎就重算一輪（自動指標換新值、
+觸發器重評、`meta.builtTime` 改回自動更新）。所以摘要的 `composite`／觸發器數字
+幾分鐘內就可能差一兩分；寫一句「發布後的自動更新可能再動一兩分」即可。
+
 **末行寫發布狀態**：回執 exit 0 就寫「已上線」並附 commit。
 
 **開頭標「⚠ 警示」的條件只看資料**：溫度週變動 ≥5、任一指標轉紅、或觸發器新點亮。
-流程異常要警示的還有 healthcheck FAIL 不是 0（第 4 步卡住）、以及沒有回執。
+流程異常要警示的還有 healthcheck FAIL 不是 0（第 4 步卡住）、沒有回執、
+以及這一輪沒有 `mcp__remote-devices__*`（草稿交不出去）。
 
-上週基準：`composite` 看 `history` 倒數第二筆；`regime` 用倒數第二筆的 `quad` 套 §3.3 反推；
-觸發器點亮數在 2026-08-10 之後的 `history` 筆直接讀 `trig` 欄，更早的筆沒有
-—— 跟你在第 1 步記下的基準比。
+**上週基準是「日期 ≤ 今天−7 的最後一筆」`history`，不是倒數第二筆**（§8.2）——
+`history` 每個交易日一筆，倒數第二筆只是前一個交易日。`composite` 讀它；
+`regime` 用它的 `quad` 套 §3.3 反推；觸發器點亮數讀它的 `trig`。
+**「觸發器新點亮」＝基準那一筆時未亮、現在亮**；週間亮滅閃爍（例如 `gsy150` 在 150% 門檻附近）
+不算新點亮，摘要裡寫一句即可。
 
 ---
 
 ## 這一套的既有跳點與特例
 
-台股籌碼子群自 2026-08-17 起有兩項（融資餘額 ＋ **當沖占市場比重**），
+台股 2026-09-24 起是 15 項、**五個子群**：籌碼（融資 20 日變動、當沖占比、券資比，三項）
+與新增的**槓桿**（融資占市值、維持率、信用交易占比）分開。接入那天 `tw.heat`
+分兩段跳（49.4→47.3→約 43，實際落在 42.7），**兩跳都是系統改動造成的**（MAINTENANCE §4）。
+
+更早的：台股籌碼子群自 2026-08-17 起補上**當沖占市場比重**，
 且 `margin_hist` 改為自動回補 —— **補齊當天 `tw.heat` 會不連續跳一次，
 那一跳是系統改動造成的，不是市場動的**（MAINTENANCE §4 有記基準值）。
 同理，2026-08-23 起 `idx_hist` 修好了（此前 `elec_rel` 一直在量「未含電子指數」
 而不是電子工業類指數），`elec_rel` 第一次有值加入動能子群，
 **`tw.heat` 於 2026-08-23 由 46.8 跳到 44.4，那一跳也是系統改動造成的**（§6.20）。
 
-觸發器自 2026-08-22 起有 **8 項**（新增 `sahm05`：Sahm Rule ≥0.50pp，FRED SAHMREALTIME，
+觸發器自 2026-08-22 起有 **8 項**（`gsy150` 近期在 150% 門檻上下閃爍，見第 7 步）（新增 `sahm05`：Sahm Rule ≥0.50pp，FRED SAHMREALTIME，
 唯一量實體經濟的一項）。第 7 項是 `megaipo`（OpenAI／SpaceX 巨型 IPO 完成），
 **八項裡唯一沒有進度條的一項**（`prog: null`）—— 它是人工旗標，沒有可連續量測的外部數列。
 其餘七項都有 `prog`。
@@ -270,12 +298,3 @@ AAII 持續在 Actions 端被擋、台積電權重要人工更新。**已退場�
 `senti` 卡片的來源時多時少是正常的（卡片 `sub` 會誠實顯示當次合成了哪幾個），
 在交付訊息回報即可，**不要自行改引擎或前端**。
 要改指標、權重、資料源或網站，請 Kenny 在 Cowork 用 `/bubble-maintain` 處理。
-
-## 用量：量它，不要估它
-
-**收尾必做。** 規則在 `metrics/MEASURE.md`，**那是正本，這裡不抄**。
-
-這一套的系統 id 是 `bubble`。
-
-（2026-08-23 之前這一套完全沒有這一步，`usage_report.py` 的值域也擋著它 ——
-所以 `metrics/usage.csv` 上一列都沒有。**沒有量測的系統，成本永遠是猜的。**）
