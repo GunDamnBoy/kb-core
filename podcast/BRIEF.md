@@ -38,7 +38,7 @@ budget:
 頂層：`date`／`label`／`generatedAt`／`crossCut`／`postscript`／`episodes`。
 
 每集：`id`／**`trackId`**／`showKey`／`show`／`title`（`節目名｜標題`）／`meta`／`published`／
-**`minutes`**／`hosts`／`guest`／`source`／`url`／`chars`／`summary`／`guests`／`topics`／
+**`minutes`**／`sourceLayer`／`hosts`／`guest`／`source`／`url`／`chars`／`summary`／`guests`／`topics`／
 `quality{completeness,status,speakerNote,timestampNote}`／`takeaways`／`sections`／`quotes`，
 以及只在觸發下界例外時出現的 **`lowerBoundException`**。
 

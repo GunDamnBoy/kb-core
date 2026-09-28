@@ -138,17 +138,35 @@ def main(argv=None):
         # 這跟 `assemble.py` 依報告日期分期是同一條規則。
         ym = (date or "0000-00")[:7]
         dstdir = os.path.join(filed, ym)
-        dst = os.path.join(dstdir, name)
-        if os.path.exists(dst):
-            # 不覆蓋。同名不同內容的話，覆蓋掉的是那份唯一沒有第二份的東西。
-            if sha256(dst) == h:
-                print(f"  已在封存　{name[:54]:<54} {ym}／同一份，inbox 這份可以清掉")
-            else:
-                print(f"  **衝突**　{name[:54]:<54} {ym} 已有同名但內容不同的檔，沒有動")
-                fail.append(name)
+        # **同名不同內容時改用帶 slug 的檔名，不是停下來。**（2026-09-28）
+        #
+        # 週報系列的檔名每週都一樣（`US Economics Weekly.pdf`）。2026-08-21 那份先封存，
+        # 08-28 那份撞名後在這裡**每天印一行「衝突」、一共二十天**，沒有人看到；
+        # 直到 09-25 那份以同一個檔名丟進 Drive 把它蓋掉 —— **08-28 的原文就此不在了**，
+        # 只剩 `extracted/` 那份衍生文字，而它又被 `extract.py` 判成孤兒
+        # （一個 `--prune` 就會刪掉唯一剩下的東西）。
+        #
+        # 停下來等人處理，在這裡等於等 Drive 覆蓋它。所以第二候選用
+        # `<slug> <原檔名>`：slug 唯一，所以撞不了；`archived_to` 記的是實際檔名，
+        # `extract.py` 的孤兒判準照樣認得。第二候選也被不同內容占了才算衝突。
+        dst = None
+        for cand in (name, f"{slug} {name}"):
+            c = os.path.join(dstdir, cand)
+            if not os.path.exists(c):
+                dst = c
+                break
+            if sha256(c) == h:
+                dst = "same"
+                break
+        if dst == "same":
+            print(f"  已在封存　{name[:54]:<54} {ym}／同一份，inbox 這份可以清掉")
+            continue
+        if dst is None:
+            print(f"  **衝突**　{name[:54]:<54} {ym} 兩個候選檔名都被不同內容占了，沒有動")
+            fail.append(name)
             continue
 
-        print(f"  搬　　{name[:58]:<58} → {ym}/  （{slug}）")
+        print(f"  搬　　{name[:58]:<58} → {ym}/{'' if os.path.basename(dst) == name else '（改名）'}  （{slug}）")
         if not a.move:
             continue
         os.makedirs(dstdir, exist_ok=True)
@@ -176,7 +194,7 @@ def main(argv=None):
         # 抽取結果記下它搬去哪了。**`extract.py` 的孤兒判準靠這一欄**，
         # 不然封存過的那幾份下一輪會全部被判成孤兒。
         d = json.load(open(jpath, encoding="utf-8"))
-        d["archived_to"] = os.path.join(ym, name)
+        d["archived_to"] = os.path.join(ym, os.path.basename(dst))
         d["archived_at"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
         with open(jpath, "w", encoding="utf-8") as fh:
             json.dump(d, fh, ensure_ascii=False, indent=1)

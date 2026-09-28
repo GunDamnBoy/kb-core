@@ -627,8 +627,15 @@ def _chars_in_tier(p):
         lo, hi, plo, phi = _tier(p, m)
         n = e.get("chars") or 0
         paras = sum(len(s.get("paragraphs") or []) for s in e.get("sections") or [])
-        if n > hi:
-            bad.append(f"{e.get('id')} {n} 字超過上界 {hi}（{m} 分）")
+        cap = hi
+        # 官方稿容許超出上界一定比例（2026-09-28 實作）。只認 `sourceLayer == 1`，
+        # 不從 `source` 自由文字猜 —— 猜錯的方向是放行，而放行不會有人看見。
+        pct = ((p["anchors"].get("_length_tiers_rules") or {})
+               .get("official_transcript_overrun_pct"))
+        if pct and e.get("sourceLayer") == 1:
+            cap = int(hi * (100 + pct) / 100)
+        if n > cap:
+            bad.append(f"{e.get('id')} {n} 字超過上界 {cap}（{m} 分）")
         elif n < lo and not e.get("lowerBoundException"):
             bad.append(f"{e.get('id')} {n} 字低於下界 {lo} 且沒有具名的下界例外")
         elif not (plo <= paras <= phi):
@@ -645,8 +652,8 @@ register(Check(
         "字數對但內容是注水的——**短節目硬拉長比長節目超規格更難發現**",
         "`also_top_tier_if_topics`（主題數達門檻時升到最高層）這條沒有實作，"
         "因為 doc 只帶 1–3 個受控 topics，數不到十個",
-        "官方逐字稿的 10% 超規容許（`official_transcript_overrun_pct`）沒有套用，"
-        "因為 doc 沒有欄位說這一集用的是哪一層退援",
+        "官方逐字稿的超規容許只認 `sourceLayer == 1`：組檔者忘了填這個欄位時，"
+        "官方稿集數會照一般上界判（偏嚴、會 FAIL、看得見）；填錯成 1 則會多放行一成（看不見）",
         "`minutes` 本身是從 manifest 抄來的，抄錯這條看不出來",
     ],
     run=_chars_in_tier,
@@ -843,6 +850,11 @@ def _ledger(p):
     這是本站跟一般摘要的分水嶺，所以它是當期失敗判準而不是加分項。
     """
     lo, hi = _A(p, "per_episode", "observations_per_day")
+    # 集數少的日子下限放寬（2026-09-28，理由見 anchors 該鍵的 `_`）。
+    # 用 .get 是刻意的：鍵不在時行為與改動前完全相同，而不是 KeyError。
+    low = (p["anchors"].get("per_episode") or {}).get("observations_low_episode_day")
+    if low and len(p["doc"].get("episodes") or []) <= low["max_episodes"]:
+        lo = low["min"]
     date = p["doc"].get("date")
     led = p.get("ledger")
     if led is None:
@@ -863,6 +875,8 @@ register(Check(
         "**新項目強制帶 `due` 欄位，歷史則從 text 裡的「（到期 YYYY-MM-DD）」回退解析**。"
         "那個字串本來就已經寫在多數條目裡，於是不必改寫任何一條歷史就有了即時涵蓋",
         "觀察點收得對不對（「三個月後有可能被證明是錯的嗎」是語意判準）",
+        "集數 ≤ `observations_low_episode_day.max_episodes` 的日子下限放寬到 `min`，"
+        "這條只數集數，分不出「素材真的只撐得起一條」與「懶得找第二條」",
         "同一個觀察點被重複收錄",
         "doc 的 postscript 與帳本檔案有沒有對上（這條只看帳本）",
     ],

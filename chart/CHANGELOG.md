@@ -1,5 +1,60 @@
 # 每日五圖｜重建紀錄
 
+## 2026-09-28（一）｜四個「每天都有人繞過去、所以沒有人修」的地方
+
+維護對話，接在當天 11:30 那一輪（exit 0，commit `053336b`）之後。四項都不是當天才壞的，
+共同點是**每一輪都靠執行者當場繞過，繞得過就不算問題**。
+
+### 1. 日檔只由 publish 寫：`render_day`／`build_series`／`chart_verify` 加 `--doc`
+
+- **動到哪些檔**：`scripts/chart/render_day.py`（`main(day, doc_path)` 與 CLI 的 `--doc`）、
+  `scripts/chart/build_series.py`（`run(..., doc_path)`、`--doc`）、`tools/chart_verify.py`（`--doc`）、
+  `skills/chart/SKILL.md` 第 6、7 步、`scripts/chart/RUN-PROMPT.md` 的 exit 11 段。
+- **量測**：回執 `already-published-prewritten` 09-23 起**連六期**（09-23 至 09-28），
+  成因是 `render_day` 只認 `data/<日>.json`，每一輪都得先寫日檔；08-29 的 exit 11 假警報同一個根因。
+- **怎麼驗的**：在 `$HOME` 的暫存 repo（複製 `data/`，拿掉 09-28 日檔）以 09-28 的內容重建工作檔
+  （拿掉 option／files／qa_flags／實體化序列），跑 `build_series --doc` → `render_day --doc` → `chart_verify --doc`：
+  兩支 exit 0、暫存 repo **沒有長出** `data/2026-09-28.json`、`chart_verify` 19 PASS · 1 WARN · 0 FAIL（與已發布那期相同）、
+  產出的工作檔除 `rendered_at` 外**與已發布的日檔完全相等**。
+- **怎麼倒回去**：不帶 `--doc` 行為與舊版逐字相同；SKILL 第 6 步那段拿掉即可。
+- **已知的風險**：工作檔放 `~/outbox/chart/_work/`，靠的是 publish **非遞迴**掃 `*.draft.json`
+  （`tools/publish.py` 的 `outbox.glob`）。哪天改成遞迴，寫到一半的工作檔會被撿走。
+  **下一輪要驗**：回執的 `stage` 應回到 `pushed`。
+
+### 2. 握手路線丟掉「今天」那一列（盤中價）
+
+- **動到哪些檔**：`scripts/chart/fetch.py`（新 `drop_unclosed()`，`yahoo_handshake()` 呼叫；`--selftest-cache` 多一條回歸）、
+  `chart/SOURCES.md`（新一節）。
+- **量測**：09-28 11:03 預抓後 `^KS11`、`005930.KS`、`8035.T`、`6857.T` 都帶一筆 09-28 的盤中列
+  （`^KS11` 6,908.5、韓國 9/24–26 休市後開盤中）。那一輪刻意避開韓國題材才沒有畫進去。
+- **怎麼驗的**：`fetch.py --selftest-cache` 全過（含新的 drop_unclosed 那條）。
+  **沒有實跑握手路線**：維護端的 VM 沒有 yfinance，實測要等 09-29 11:00 的預抓 ——
+  看 `_prefetch_status.json` 那四條是否仍 `ok`、末日是否為 09-28（不是 09-29）。
+- **怎麼倒回去**：`yahoo_handshake()` 裡拿掉 `keep = drop_unclosed(keep)` 一行。
+- **已知的風險**：09-28 當天若手動重跑預抓，四條會因來源末日早於快取末日撞 `SeriesRegressed`（快取不縮短，只是那一輪判不可信）；
+  09-29 起自然消失。台北傍晚重抓會把已收盤的日韓當天也丟掉 —— 刻意取保守側。
+
+### 3. 雲端容器執行時的用量量測
+
+- **動到哪些檔**：`metrics/MEASURE.md`（新一節〈輪次跑在雲端容器時〉）、`skills/chart/SKILL.md` 第 9 步、`RUN-PROMPT.md` 用量段。
+- **量測**：09-26 的 sidecar 把 `transcript` 寫成容器路徑，四欄齊全所以沒被搬成 `.bad`，**只是永遠撿不走**，
+  `usage.csv` 缺 09-26 那一列、檔案仍躺在 `outbox/chart/`。09-27、09-28 靠臨時做法（快照 commit 到 `_transcripts/`）
+  都長出 `bounded=sidecar` 的列 —— 做法有效，只是不在任何文件裡。
+- **怎麼驗的**：09-28 那一列實際進帳（5.7 分、`sidecar`、`8a8435d8-….jsonl`）。
+- **怎麼倒回去**：刪那一節。**已知的風險**：09-26 那一列補不回來（容器已回收）。
+
+### 4. 路徑、`CHART_REPO` 與副本漂移
+
+- **動到哪些檔**：`skills/chart/SKILL.md`（新〈路徑與環境〉、第 2 步指令帶 `CHART_REPO`、「砍什麼」定義補齊）、
+  `scripts/chart/RUN-PROMPT.md`（第 0 步工具名、「砍什麼」對齊正本）、`skills/maintain/chart/MAIN.md`（連線工具名）。
+- **量測**：`scan_moves` 不帶 `CHART_REPO` 直接 exit —— 09-20、09-21 兩份報告列為待修、09-28 又撞一次；
+  雲端容器裡 `~/kb-core` 不存在（在 `~/mnt/`）；第 0 步寫的 `mcp__cowork__request_cowork_directory` 在雲端容器不存在；
+  RUN-PROMPT 的砍序（reading 在前、「重製圖改為並列摘要」）與 SKILL 正本（slot 3 換輕圖型在前）不同，定義清單兩邊各少一項。
+- **怎麼驗的**：逐字對過兩份；以 SKILL 為準（MODIFY.md：正本先改、副本整份貼過去），定義取聯集。
+- **排程 prompt 已整份取代**（排程「Chart daily 1130」，2026-09-28 16:04 UTC 更新，Mac 桌面版已重新簽署），
+  內容與新的 `RUN-PROMPT.md` 逐字相同。
+- **已知的風險**：`maintain` 技能裡的 `chart/MAIN.md` 是副本，要重新打包安裝才會跟上正本。
+
 ## 2026-09-17（四）｜五個修正，其中一個是把當天自己寫錯的診斷收回來
 
 當天 11:30 的執行輪次收工後接維護。**五項改動，動機全部來自當期執行報告** ——

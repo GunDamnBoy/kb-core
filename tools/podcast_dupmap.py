@@ -148,6 +148,45 @@ def analyse(path, k, min_tokens, coldopen, drop, cyc=None):
     }
 
 
+def chunk_truncations(path, seg_seconds, min_gap, max_ratio, drop):
+    """找「某一轉錄段提早結束、下一行從段界整點接起」而且那段詞數偏少的位置。
+
+    兩個訊號都要成立（理由與實測見 anchors 的 `quality._chunk_truncation_note`）。
+    時間戳有**重置**（回跳超過 `drop`，即 anchors 的 `segment_reset_drop_seconds`）的逐字稿不判：
+    段界不再是整點，這個判法不成立——回傳 None 以示「沒判」。
+    **小回跳不算重置**：初版連幾秒的良性回跳也放棄，全庫 266 份有 139 份因此不判，
+    漏掉 09-20／09-27 兩集 twentyvc（09-28 驗證子代理抓到）。
+    """
+    import re as _re
+    import statistics as _st
+    rx = _re.compile(r"^\[(\d+(?::\d+){1,2})\]\s*(.*)")
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = rx.match(line)
+        if not m:
+            continue
+        parts = [int(x) for x in m.group(1).split(":")]
+        sec = parts[0] * 3600 + parts[1] * 60 + parts[2] if len(parts) == 3 \
+            else parts[0] * 60 + parts[1]
+        rows.append((sec, len(m.group(2).split())))
+    if not rows or any(a[0] - b[0] > drop for a, b in zip(rows, rows[1:])):
+        return None
+    words = {}
+    for sec, w in rows:
+        words[sec // seg_seconds] = words.get(sec // seg_seconds, 0) + w
+    full = [v for _, v in sorted(words.items())][:-1]
+    if not full:
+        return []
+    med = _st.median(full)
+    out = []
+    for (p, _), (t, _) in zip(rows, rows[1:]):
+        if t - p >= min_gap and t % seg_seconds == 0:
+            ratio = words.get(p // seg_seconds, 0) / med if med else 0
+            if ratio <= max_ratio:
+                out.append({"from": p, "to": t, "ratio": ratio})
+    return out
+
+
 def main(argv) -> int:
     if len(argv) not in (2, 3):
         print(__doc__)
@@ -174,6 +213,11 @@ def main(argv) -> int:
            "min_covered_tokens": q["cycle_min_covered_tokens"],
            "min_group_covered": q["cycle_min_group_covered"]}
 
+    cfg = json.loads((ROOT / "scripts" / "podcast" / "config.json").read_text(encoding="utf-8"))
+    seg_seconds = cfg["segment_seconds"]
+    tr_gap = q["chunk_truncation_min_gap_seconds"]
+    tr_ratio = q["chunk_truncation_max_word_ratio"]
+
     eps = json.loads(mf.read_text(encoding="utf-8"))["episodes"]
     print(f"{date}｜{len(eps)} 集｜整段複製定位"
           f"（{k}-gram、下限 {min_tokens} token、cold-open 豁免前 {coldopen}）")
@@ -188,6 +232,15 @@ def main(argv) -> int:
             continue
         r = analyse(path, k, min_tokens, coldopen, drop, cyc)
         head = f"\n{e['showKey']}｜{e['title'][:46]}"
+        # **疑似段尾截斷**（2026-09-28）。刻意不算進 dirty、不改「乾淨」那一行的判定：
+        # 它是另一種缺漏（掉字），跟複製無關；印在集數標題下，照樣原樣貼進派工單。
+        trunc = chunk_truncations(path, seg_seconds, tr_gap, tr_ratio, drop)
+        if trunc:
+            head += "".join(
+                f"\n  ◆ 疑似段尾截斷　[{_hms(t['from'])}] 之後直接跳到 [{_hms(t['to'])}]"
+                f"（段界），該段詞數只有同集中位數的 {t['ratio']:.0%}"
+                f" —— 這段時間的內容可能不在稿中，照缺漏處理、不要補寫"
+                for t in trunc)
         # **兩個觸發條件是 OR，不是 AND，而那是量出來的。** 比例對長集數不利：
         # 09-17 的 iltb 有一組 134 token 的內容塊循環三輪、369 token 被蓋掉，
         # 但全集 12,753 token，算出來只有 2.89% —— **卡在 3% 門檻下 0.11 個百分點**，

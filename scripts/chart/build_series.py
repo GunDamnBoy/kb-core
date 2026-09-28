@@ -10,6 +10,7 @@ build_series.py — 把當日 JSON 裡的 `series_spec` 實體化成 `series`。
     在 chart 裡寫 `series_spec`（見下），然後：
         python3 ~/kb-core/scripts/chart/build_series.py <day>            # 實體化所有含 spec 的圖
         python3 ~/kb-core/scripts/chart/build_series.py <day> --dry-run  # 只印會產生什麼，不寫檔
+        python3 ~/kb-core/scripts/chart/build_series.py <day> --doc <工作檔>  # 每日輪次用這個
         python3 ~/kb-core/scripts/chart/build_series.py --selftest       # 離線驗證轉換邏輯
 
 spec 格式（每條序列一個物件）：
@@ -191,8 +192,10 @@ def materialize(c: dict) -> list:
     return out
 
 
-def run(day: str, dry: bool = False) -> bool:
-    path = os.path.join(REPO, "data", f"{day}.json")
+def run(day: str, dry: bool = False, doc_path: str = "") -> bool:
+    # `doc_path`（`--doc`）：實體化**工作檔**而不是 `data/<day>.json`（2026-09-28，
+    # 理由同 render_day.main：日檔只由 publish 寫）。
+    path = doc_path or os.path.join(REPO, "data", f"{day}.json")
     doc = json.load(open(path, encoding="utf-8"))
     changed = []
     for c in doc.get("charts", []):
@@ -257,7 +260,12 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if "--selftest" in a:
         sys.exit(selftest())
+    doc = ""
+    if "--doc" in a:
+        i = a.index("--doc")
+        doc = os.path.expanduser(a[i + 1])
+        del a[i:i + 2]
     days = [x for x in a if not x.startswith("--")]
-    if not days:
+    if not days or (doc and len(days) != 1):
         print(__doc__); sys.exit(1)
-    sys.exit(0 if all(run(x, "--dry-run" in a) for x in days) else 1)
+    sys.exit(0 if all(run(x, "--dry-run" in a, doc) for x in days) else 1)

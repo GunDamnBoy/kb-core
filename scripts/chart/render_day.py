@@ -4,6 +4,8 @@ render_day.py — 讀 data/YYYY-MM-DD.json，畫出當天五張圖的 PNG / SVG�
 並把 ECharts option 回寫進同一個 JSON。
 
 用法：  python3 ~/kb-core/scripts/chart/render_day.py 2026-08-05
+        python3 ~/kb-core/scripts/chart/render_day.py 2026-08-05 --doc ~/outbox/chart/_work/2026-08-05.json
+        （每日輪次一律帶 --doc：日檔只由 publish 寫，見 main() 的註解）
 設計原則：JSON 是唯一事實來源；圖是 JSON 的函數。
 只要 JSON 還在，任何一天的圖都能被重畫——這是「歷史可查閱」的實作方式。
 """
@@ -51,8 +53,13 @@ def to_chart(c: dict) -> ck.Chart:
     return ch
 
 
-def main(day: str):
-    path = os.path.join(REPO, "data", f"{day}.json")
+def main(day: str, doc_path: str = ""):
+    # `doc_path`（`--doc`）：讀寫**工作檔**而不是 `data/<day>.json`。（2026-09-28 加）
+    # 日檔只該由 publish 寫；產生端先寫日檔會讓回執每天響
+    # `already-published-prewritten`（09-23 起連六期），而 08-29 那次 exit 11
+    # 假警報也是同一個根因。圖檔仍寫進 `charts/<day>/` —— 那是 `staged_paths`
+    # 宣告要由產生端先畫好的，不是日檔。不給 `--doc` 行為與舊版逐字相同（回補舊期用）。
+    path = doc_path or os.path.join(REPO, "data", f"{day}.json")
     with open(path, encoding="utf-8") as f:
         doc = json.load(f)
 
@@ -98,4 +105,10 @@ def main(day: str):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else None)
+    _a = sys.argv[1:]
+    _doc = ""
+    if "--doc" in _a:
+        _i = _a.index("--doc")
+        _doc = os.path.expanduser(_a[_i + 1])
+        del _a[_i:_i + 2]
+    main(_a[0] if _a else None, _doc)

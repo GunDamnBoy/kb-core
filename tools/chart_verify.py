@@ -5,6 +5,7 @@
 
     chart_verify.py ~/chart-of-the-day            # 驗 data/<今天>.json
     chart_verify.py ~/chart-of-the-day 2026-08-17 # 驗某一天（回測用）
+    chart_verify.py ~/chart-of-the-day 2026-09-28 --doc ~/outbox/chart/_work/2026-09-28.json  # 驗工作檔（每日輪次）
 
 ## 為什麼要有這一支
 
@@ -37,6 +38,15 @@ REQUIRED = ["structure", "tracks", "lengths", "series", "diversity",
 
 
 def main(argv) -> int:
+    # `--doc <工作檔>`：驗**還沒發布的工作檔**（2026-09-28 加）。每日輪次不再先寫
+    # `data/<日>.json`（日檔只由 publish 寫），所以預檢要能指向工作檔。
+    # 圖檔仍從 `<repo>/charts/<日>/` 量，prev／prefetch 仍從 repo 讀 —— 跟 publish 看到的一樣。
+    argv = list(argv)
+    doc_path = None
+    if "--doc" in argv:
+        i = argv.index("--doc")
+        doc_path = Path(argv[i + 1]).expanduser()
+        del argv[i:i + 2]
     if len(argv) not in (2, 3):
         print(__doc__)
         return Exit.BAD_INPUT
@@ -47,7 +57,7 @@ def main(argv) -> int:
         import datetime as dt
         date = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).strftime("%Y-%m-%d")
 
-    src = repo / "data" / f"{date}.json"
+    src = doc_path or (repo / "data" / f"{date}.json")
     if not src.exists():
         print(f"找不到 {src} —— 那一天還沒有產出", file=sys.stderr)
         return Exit.EMPTY_ROUND

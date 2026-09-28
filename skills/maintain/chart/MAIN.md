@@ -55,7 +55,8 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    `chart/anchors.json`（每一個數字）。沿革在 `chart/CHANGELOG.md`，
    **最上面那一筆的日期就是你的認知有多舊**。
    取數眉角在 `chart/SOURCES.md`，第 3 步才需要。
-   讀不到就用 `mcp__cowork__request_cowork_directory` 連 `~/kb-core`、
+   讀不到就連（雲端容器用 `mcp__remote-devices__device_request_folder_access`、資料夾掛在 `~/mnt/<資料夾>`；
+   Mac 桌面版用 `mcp__cowork__request_cowork_directory`）`~/kb-core`、
    `~/chart-of-the-day`、`~/outbox`，需要看上游再加 `~/advisory-rewrite`。
 2. Read `/Users/macmini/kb-core/skills/chart/SKILL.md` —— 每天實際跑的流程正本。
    排程裡那份是副本，兩邊要一致。

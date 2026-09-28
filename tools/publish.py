@@ -3,8 +3,9 @@
 
 用法：publish.py <outbox> <資料 repo> <系統 id>
 
-流程：目的地守門 → 掃 outbox → verify（閘門）→ 不可改寫守衛 → 原子寫入
-      data/ → 更新 index → add（依系統宣告）→ 對帳 → pull --rebase → commit
+流程：目的地守門 → 掃 outbox → verify（閘門）→ 不可改寫守衛 → 算衍生檔
+      （系統有宣告時）→ 原子寫入 data/ → 更新 index 與衍生檔
+      → add（依系統宣告）→ 對帳 → pull --rebase → commit
       → push → 寫回執
 
 七條刻意的設計：
@@ -196,6 +197,29 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
             except Exception:
                 prewritten = False
 
+    # 2b. 衍生狀態檔（帳本、指紋基準……）**先算完、再寫任何東西**。
+    #
+    # 2026-09-29 加（見 `kbcore/system.py` 的 `side_files`）。算在寫入之前，
+    # 是為了讓「草稿與帳本對不上」跟檢查 FAIL 同一個待遇：exit 10、
+    # `data/` 一個位元組都沒動、改草稿重交即可。算在寫入之後，
+    # 單期檔已經落地，擋下來就只剩 errata 一條路。
+    side = {}
+    if system.side_files is not None:
+        try:
+            side = system.side_files(draft, repo, payload) or {}
+        except ValueError as e:
+            write_receipt(outbox, name, Exit.CONTENT, "side-files", str(e))
+            return Exit.CONTENT
+        own = [s.rstrip("/") for s in system.staged_paths(draft, repo)]
+        stray = [p for p in side
+                 if not any(p == o or p.startswith(o + "/") for o in own)]
+        if stray:
+            # 寫到 staged_paths 以外 → 下一輪 4a 會把它當外人擋下，
+            # 而且是每 60 秒一次。現在就停，比那樣好。
+            write_receipt(outbox, name, Exit.BAD_INPUT, "side-files",
+                          f"衍生檔路徑不在 staged_paths 底下：{stray[:3]}")
+            return Exit.BAD_INPUT
+
     # 3. 原子寫入 ＋ index
     if not already:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -218,6 +242,11 @@ def publish_one(draft_path: Path, repo: Path, outbox: Path, system) -> int:
     idx.update(system.index_meta(draft))
     idx["count"] = len(idx["days"])
     atomic_write(idx_path, json.dumps(idx, ensure_ascii=False, indent=1))
+    # 衍生狀態檔跟 index 同一個待遇：每一輪都重寫（冪等），即使日期檔沒動。
+    for rel, text in side.items():
+        p = repo / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(p, text)
 
     # 4. commit → rebase → push
     #

@@ -90,6 +90,11 @@ DATE_RX = [
     (re.compile(r"\b(\d{1,2}\s+[A-Z][a-z]{2,8}\s+20\d\d)\b"), "%d %B %Y"),
     (re.compile(r"\b(\d{1,2}\s+[A-Z][a-z]{2}\s+20\d\d)\b"),   "%d %b %Y"),
     (re.compile(r"\b([A-Z][a-z]{2,8}\s+\d{1,2},\s*20\d\d)\b"), "%B %d, %Y"),
+    # 高盛部分產品線的頁首是 `EQUITY RESEARCH | 24 September, 2026 | 12:00AM EDT` ——
+    # 逗號在月份**後面**，上面三條都不吃，於是整份判成 undated（2026-09-27，
+    # 《Americas Technology: Entering the Agentic AI Era…》）。放在最後：
+    # 前三條命中時行為完全不變。
+    (re.compile(r"\b(\d{1,2}\s+[A-Z][a-z]{2,8},\s*20\d\d)\b"), "%d %B, %Y"),
 ]
 
 ENGINE = None
@@ -457,6 +462,15 @@ def extract(path, engine=None):
     # 而且 `build_index.merge` 對新 slug 的反應是「新增」而不是「更新」——
     # 重跑一次抽取就會多出五筆孤兒。標題可以改，身分不行。
     product = base.split("_")[0].strip() if "_" in base else base
+    if re.match(r"^\d{8}_", base):
+        # **檔名以 `YYYYMMDD_` 開頭時，「第一個底線之前」取到的是日期不是產品。**
+        # 花旗 2026-09 起的匯出檔名是 `20260915_<標題以底線連接>.pdf`，
+        # 於是同一天的每一份都塌成 `<日期>-citi-20260915`：W38 擋下 11 份、
+        # W39 又擋下 10 份（同一批，一直留在 inbox）。改取日期之後那一段。
+        #
+        # **已經封存的四份（`citi-20260914`～`citi-20260917`）不受影響**——
+        # 它們不在 inbox，不會被重抽，身分凍結（見下方孤兒那一段）。
+        product = base[9:].strip() or base
     if broker == "JPM":
         # **「第一個底線之前」對 JPM 整條失效。** 那條規則量的是「macOS 把 `:` 存成 `_`」，
         # 而 JPM 的匯出檔名是 `JPM_<系列被截斷>_<日期>_<流水號>.pdf` ——
@@ -663,8 +677,23 @@ def main(argv=None):
                 return False
             return bool(rel) and os.path.exists(os.path.join(filed_dir, rel))
 
-        orphans = [f for f in sorted(glob.glob(os.path.join(out, "*.json")))
-                   if os.path.abspath(f) not in fresh_files and not _archived(f)]
+        cands = [f for f in sorted(glob.glob(os.path.join(out, "*.json")))
+                 if os.path.abspath(f) not in fresh_files and not _archived(f)]
+        # **已經發布過的不是孤兒，而且絕對不能被 `--prune` 帶走。**（2026-09-28）
+        # `2026-08-28-citi-us-economics-weekly` 的原文被 Drive 同名覆蓋而消失
+        # （見 `file_reports.py` 那一段），於是它既不在 inbox 也沒封存 ——
+        # 照上面的判準是孤兒，而它的精華早在 W35 發布了。**那份抽取文字是
+        # 這份報告唯一剩下的東西**，刪掉它就再也無法重做任何一步。
+        # 認的是 `digest/_parts/<slug>.json`：有交件就代表它進過某一期。
+        parts_dir = _paths.under("digest", "_parts")
+        lost = [f for f in cands
+                if os.path.exists(os.path.join(parts_dir, os.path.basename(f)))]
+        orphans = [f for f in cands if f not in lost]
+        if lost:
+            print(f"\n**{len(lost)} 份已發布、但原文既不在 inbox 也沒有封存**："
+                  f"{[os.path.basename(x) for x in lost]}")
+            print("  **不是孤兒，`--prune` 不會動它。** 原文多半是被同名檔覆蓋了 ——"
+                  "去 Drive 的垃圾桶或版本記錄找回來，放進 `filed/<YYYY-MM>/` 並補上 `archived_to`。")
         if orphans:
             print(f"\n**{len(orphans)} 份孤兒**（不是這一輪寫的）："
                   f"{[os.path.basename(x) for x in orphans]}")
@@ -673,8 +702,10 @@ def main(argv=None):
                     os.remove(f)
                 print("  已刪除（--prune）")
             else:
+                # 2026-09-28 之前這裡寫「留著的話 research_verify 會判 FAIL」——
+                # 它不會，`checks/research.py` 沒有孤兒這一條。會出聲的是這支自己的 exit code。
                 print("  留著。確認過就加 --prune 重跑，或自己刪。"
-                      "**留著的話 research_verify 會判 FAIL**，那是對的。")
+                      "**留著的話這支以 exit 10 結束**，那是對的。")
                 bad += 1
     # **換過軌的要具名列出來，不能只留在 JSON 裡。**
     # 這一批因此變成混軌，`research.one_engine` 會出 WARN —— 那個 WARN 是對的，

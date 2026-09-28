@@ -206,6 +206,25 @@ def tw_route_months() -> int:
         return 24
 
 
+def drop_unclosed(rows, today: str = "") -> list:
+    """丟掉日期 ≥ 今天（台北）的列 —— **那是盤中價，不是收盤。**（2026-09-28 加）
+
+    預抓 11:00（台北）跑，那時日韓股市都在盤中，而 yfinance 的日線對「今天」
+    回的是**當下的成交價**，日期欄照樣寫今天。2026-09-28 實測四條握手序列
+    （`^KS11`、`005930.KS`、`8035.T`、`6857.T`）都帶著一筆 09-28 的列，
+    `^KS11` 那筆 6,908.5 是台北 11:03 的盤中值（韓國 9/24–26 休市、9/28 開盤中）。
+    **它藏住的方式**：快取裡盤中列與收盤列長得一模一樣，新鮮度檢查還會因為它
+    判「末日是今天」而更綠；隔天全量重抓（`period="10y"`）會把它覆寫成收盤，
+    所以**事後回頭看快取永遠是對的** —— 只有當天那一輪的圖會把盤中當收盤畫。
+    **取保守的一側**：台北傍晚手動重抓時，今天的日韓收盤其實已經定了，也一樣丟掉；
+    代價是晚一天才進快取，換來的是這條規則不必知道每個交易所的收盤時刻。
+    美股的日線在台北 11:00 時日期還是昨天，不受影響。
+    """
+    import datetime as _dt
+    today = today or _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).strftime("%Y-%m-%d")
+    return [(a, b) for a, b in rows if a < today]
+
+
 def yahoo_handshake(symbol: str) -> dict:
     """做完 cookie／crumb 握手再取 Yahoo 日線。**只走允許清單上的代號。**
 
@@ -236,6 +255,7 @@ def yahoo_handshake(symbol: str) -> dict:
     d = [x.strftime("%Y-%m-%d") for x in df.index]
     v = [round(float(x), 4) for x in df["Close"].tolist()]
     keep = [(a, b) for a, b in zip(d, v) if b == b]          # 濾掉 NaN
+    keep = drop_unclosed(keep)
     return {"id": symbol, "source": "Yahoo Finance（握手客戶端 yfinance）",
             "d": [a for a, _ in keep], "v": [b for _, b in keep]}
 
@@ -697,7 +717,12 @@ if __name__ == "__main__":
     if "--check-key" in sys.argv:
         sys.exit(check_key())
     if "--selftest-cache" in sys.argv:
-        sys.exit(selftest_cache())
+        _rc = selftest_cache()
+        # drop_unclosed 的回歸（不連外）：今天那一列是盤中價，必須被丟掉；昨天以前原樣保留。
+        _r = drop_unclosed([("2026-09-25", 1.0), ("2026-09-28", 2.0)], today="2026-09-28")
+        _ok = _r == [("2026-09-25", 1.0)]
+        print(("  ✓ " if _ok else "  ✗ ") + "drop_unclosed 丟掉今天（盤中）那一列、保留昨天以前")
+        sys.exit(_rc if _ok else 1)
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     since = "2015-01-01"
     if "--since" in sys.argv:

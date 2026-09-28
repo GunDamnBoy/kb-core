@@ -521,8 +521,28 @@ def check_pending():
 OBS_STATUS = {"觀察中", "應驗", "部分應驗", "落空", "無法驗證"}
 
 
+def _updated_taipei_date(updated):
+    """把帳本 `updated` 換成台北日期字串（YYYY-MM-DD），好跟日檔名比。
+
+    `updated` 歷來有兩種寫法：純日期（`2026-08-16`，視為已是台北日期）與
+    UTC ISO（`2026-09-27T19:17:42Z`）。**解析不了一律回空字串**，讓呼叫端的
+    `latest > ""` 必定成立、報 WARN —— 寧可誤報，也不要安靜吞掉。
+    （回原字串不行：`"2026-…" > "n/a"` 為假，非數字開頭的垃圾值會被字串比較放行。）
+    """
+    u = str(updated or "")
+    if len(u) <= 10:
+        return u if re.fullmatch(r"\d{4}-\d{2}-\d{2}", u) else ""
+    try:
+        dt = datetime.fromisoformat(u.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(TAIPEI).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
 def check_observations():
-    """brief 第 4 節說「每天要動三個檔」，observations.json 是第三個，先前沒有任何把關。
+    """BRIEF 第二節說當日要回訪並寫回帳本，observations.json 是那個檔，先前沒有任何把關。
 
     **這裡只擋住其中一種失效態：「有產出卻沒回訪」（`updated` 落後於最新日檔）。**
     另一種——**回訪了但只附加不改判**——本檔量得到卻刻意不報警（見下），
@@ -542,7 +562,7 @@ def check_observations():
     path = os.path.join(REPO, "data", "observations.json")
     if not os.path.exists(path):
         log("WARN", "觀察點記分板",
-            "找不到 data/observations.json——brief 第 4 節列為每天要動的三個檔之一")
+            "找不到 data/observations.json——BRIEF 第二節要求每天回訪並寫回它")
         return
     try:
         d = json.load(open(path, encoding="utf-8"))
@@ -590,9 +610,14 @@ def check_observations():
         problems.append("data/ 底下沒有任何日檔，這次等於什麼都沒驗到")
     elif not updated:
         problems.append("缺 updated 欄位，無法判斷有沒有回訪")
-    elif latest > updated:
+    elif latest > _updated_taipei_date(updated):
+        # **比的是台北日期，不是字串**（2026-09-28 訂正）。舊版直接比 `latest > updated`：
+        # 日檔名是台北日期，`updated` 卻是 UTC ISO 字串，而日報在台北 03:00 前後寫帳本、
+        # 當時 UTC 還是前一天 —— 於是 `"2026-09-28" > "2026-09-27T19:17:42Z"` **天天成立**，
+        # 這則 WARN 每天都響、而帳本其實每天都有動。一條永遠會響的檢查等於沒有檢查。
         problems.append(f"最新日檔是 {latest}，記分板的 updated 停在 {updated}"
-                        f"——**那天有產出卻沒回訪**（brief 第 4 節：每天要動三個檔）")
+                        f"（台北 {_updated_taipei_date(updated) or '日期無法解析'}）"
+                        f"——**那天有產出卻沒回訪**（BRIEF 第七節第 4 條、第八節）")
     if bad:
         problems.append(f"status 出現合法值域外的值 {bad}"
                         f"（只能是 觀察中／應驗／部分應驗／落空／無法驗證）")

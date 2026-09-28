@@ -12,6 +12,19 @@
 
 產出是 JSON 片段，**五個鍵**：`slug`／`summary`／`tags`／`stances`／`charts`。
 
+## 零、你跑在哪裡（2026-09-28 加）
+
+你用的是 `device bash`：一台 Linux 沙箱，使用者的資料夾掛在 `$HOME/mnt/` 底下。
+**這份文件與卷宗裡寫的 `~/kb-core`、`~/broker-research`，在那裡是
+`$HOME/mnt/kb-core`、`$HOME/mnt/broker-research`**，而且每一次呼叫都是新的 shell ——
+`export BROKER_RESEARCH_ROOT="$HOME/mnt/broker-research"` 要跟指令寫在**同一次呼叫**裡，
+不然會安靜地讀到錯的地方。
+
+- **暫存檔名一律帶你的 slug**（`$HOME/tmp_<slug>.py`）。同一台沙箱上有其他子代理
+  同時在跑、共用 `$HOME`：2026-09-27 兩個人都用了 `$HOME/gs_part.py`，互相蓋掉了一次。
+- **取頁一次取幾頁就好。** 一次輸出太長會被工具自動存成檔 —— 那等於把抽取文字
+  複製到了這一套管不到的地方（2026-09-27 發生過一次）。
+
 ## 回合預算：**十二次工具呼叫以內交件**
 
 2026-08-22 量出來的：一次工具往返約 1.5 萬到 2 萬有效 token，
@@ -157,7 +170,8 @@
 ## 五之二、交件前自己驗一次
 
 ```
-python3 ~/kb-core/tools/check_part.py <你的交件路徑>
+export BROKER_RESEARCH_ROOT="$HOME/mnt/broker-research"
+python3 $HOME/mnt/kb-core/tools/check_part.py <你的交件路徑>
 ```
 
 它跑的是**跟發布閘門同一套比對規則**，一輪驗完篇幅、原句、theme、標籤、

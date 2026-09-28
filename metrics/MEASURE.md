@@ -132,6 +132,28 @@ Mac 端的絕對路徑是 **`<outputs 的 Mac 父目錄>/.claude/projects/sessio
 > （實測 09-06 與 09-07 兩輪共用同一份逐字稿 `50818ed6-…`，而它們是兩場不同的排程）。
 > **用上面那個 `find`，不要用拼的。**
 
+### 輪次跑在雲端容器時：逐字稿要先搬回 Mac（2026-09-28 加）
+
+**上面那個 `find` 只對「沙箱掛在 Mac 上」的 Cowork 成立。** 2026-09-23 起 chart 輪次
+跑在雲端容器（`Bash` 在容器、`device_bash` 在 Mac 的 VM），**主逐字稿在容器裡**
+（`/root/.claude/projects/<專案>/<sessionId>.jsonl`，不在 `subagents/` 底下的那一份），
+Mac 上的 `kbusage` 讀不到它，照 `find` 找會找不到，而**找不到跟「這台機器沒有逐字稿」長得一樣**。
+
+做法（09-27、09-28 兩輪實測，`usage.csv` 都長出 `bounded=sidecar` 的列）：
+
+1. 交出草稿之後，在容器裡把主逐字稿複製到 `/mnt/user-data/outputs/<sessionId>.jsonl`，
+   讀第一行的 `"sessionId"` 核對檔名。
+2. `device_commit_files` 以 `stagedPath` 寫到 Mac 的
+   `~/outbox/<系統 outbox 目錄>/_transcripts/<sessionId>.jsonl`（子目錄，publish 與 kbusage 都不遞迴掃）。
+3. sidecar 的 `transcript` 寫 **Mac 端的絕對路徑**（`/Users/macmini/outbox/…/_transcripts/<sessionId>.jsonl`），
+   **不是容器路徑**。
+
+**代價已經發生過一次**：2026-09-26 那一輪把 `transcript` 寫成容器路徑
+（`/root/.claude/projects/-home-claude/<uuid>.jsonl`），`kbusage` 沒把它搬成 `.bad`
+（四個必填欄位都在），只是**永遠撿不走** —— 那份 sidecar 一直躺在 `outbox/chart/`，
+`usage.csv` 就少了 09-26 那一列，而沒有任何東西響。
+快照是交草稿後幾十秒的版本，之後的回報輪次不在裡面 —— **不影響計量**，因為上界是 `until`。
+
 ### 上界用 `window.to`，不要用回執 —— **回執檔會被覆寫**
 
 **這一段在 2026-08-24 上午寫的是相反的**（「用 `--until-receipt`，回執的時刻是量測過的，

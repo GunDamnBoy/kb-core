@@ -55,6 +55,9 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
 
    沙箱路徑是 `/sessions/<name>/mnt/kb-core/scripts/podcast/healthcheck.py`，腳本會自動偵測掛載點。連不到資料夾就用 `mcp__cowork__request_cowork_directory` 連四個資料夾再重跑。FAIL 與 WARN 全部帶進第 3 步的報告。
 
+   > **雲端工作階段連到 Mac 時（2026-09-28 補）**：雲端 `Bash` 沒有掛載點，改用 `mcp__remote-devices__device_bash`，
+   > 跑 `python3 $HOME/mnt/kb-core/scripts/podcast/healthcheck.py`（**不是 `~/kb-core`，那個路徑在 device_bash 裡不存在**；腳本的自動偵測認得 `/sessions/<name>/mnt`）。連資料夾的工具也不同，見 `DIGEST-PROMPT.md` 第 0 步的表。
+
    > **沙箱裡固定會有三則 WARN**（`shows.json 兩份`／`節目在文件裡`／`podfetch`），成因都是 `~/.podfetch` 沒被掛載，不是故障。**但也因此，那三條在沙箱裡等於沒跑**——要真的驗它們得在 Mac 上跑一次。
 3. **成本基線四欄（`eff_tokens_k`／`subagents`／`agent_turns`／`subagent_tokens_k`）在 `metrics.csv` 維持留空，
    不要抄排程或回報裡的自述值**——用另一套定義填進同一欄比留白更糟（`scripts/podcast/metrics-columns.md` 開頭）。

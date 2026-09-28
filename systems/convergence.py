@@ -171,6 +171,122 @@ def errata_only(old: dict, new: dict) -> "str | None":
     return None
 
 
+# ── 衍生狀態檔：訊號帳本與上游指紋基準（2026-09-29 補回）──────────────────
+#
+# 兩支都是從舊 repo 的 `publish.py`／`cwlib.py` 搬過來的，**改了兩處**：
+# 同結果重判改為 no-op（見 fold_calls 的 docstring），以及 open 先於 close 處理。08-23 搬家時它們沒有跟過來，
+# 帳本與指紋從那天起停住，而回執一直是 exit 0。見 `kbcore/system.py` 的 `side_files`。
+
+CALL_RESULTS = ("hit", "miss", "expired", "void")
+
+
+def fold_calls(ledger: dict, issue: dict):
+    """把單期 JSON 的 calls.open/close 機械折入帳本。回傳（新帳本, 錯誤清單）。純函式。
+
+    ## 同結果重判是 no-op（與舊版唯一的差別）
+
+    舊版只容許「同一期、同一個 result」的冪等重跑，別期再結一次同一筆就是錯。
+    **帳本停住的那五週把這條規則逼出了第二種合法情形**：PREP 拿不到新帳本，
+    於是把已結案的帳目再撈出來，排程照規矩「重新裁決一次」—— 第 009 期重判
+    c003-1／c003-5，結果跟第 008 期相同。那不是矛盾的判決，是同一個判決被問了兩次。
+
+    所以：**已結案、且 result 相同 → 保留原結案（日期與理由不動），不是錯**；
+    result 不同才是真的衝突，照舊擋下。「不能重複結案」要防的是改判，不是重述。
+    """
+    calls = {c["id"]: c for c in ledger.get("calls", [])}
+    errs = []
+    cc = issue.get("calls") or {}
+    # 型別不對要回成錯誤清單（→ ValueError → exit 10），不能讓 TypeError 一路拋出去：
+    # publish 只接 ValueError，其他例外會讓那一輪**沒有回執**。
+    if not isinstance(cc, dict) or not all(isinstance(cc.get(k, []), list) for k in ("open", "close")) \
+            or not all(isinstance(x, dict) for k in ("open", "close") for x in cc.get(k, [])):
+        return ledger, ["calls 的形狀不對：要是 {open: [...], close: [...]}，每筆是物件"]
+    for op in cc.get("open", []):
+        cid = op.get("id")
+        if not cid or not str(cid).strip():
+            errs.append("calls.open 有帳目缺 id")
+        elif cid in calls:
+            ex = calls[cid]
+            if ex.get("issue") == issue.get("issue") and ex.get("opened") == issue["date"] \
+                    and ex.get("claim") == op.get("claim"):
+                continue
+            errs.append(f"calls.open 的 id 重複：{cid}（帳目 id 必須全域唯一，建議格式 c{int(issue.get('issue') or 0):03d}-N）")
+        elif not op.get("claim") or not op.get("judge"):
+            errs.append(f"calls.open 的 {cid} 缺 claim 或 judge —— 沒有裁判方法的判斷不能登帳")
+        else:
+            calls[cid] = {"id": cid, "opened": issue["date"], "issue": issue.get("issue"),
+                          "kind": op.get("kind", "watch"), "claim": op["claim"],
+                          "judge": op["judge"], "deadline": op.get("deadline"),
+                          "status": "open"}
+    # open 先於 close：同一期開、同一期結（罕見但合法）不該被判成「結不存在的帳」。
+    for cl in cc.get("close", []):
+        cid, res = cl.get("id"), cl.get("result")
+        if res not in CALL_RESULTS:
+            errs.append(f"calls.close 的 {cid} result={res!r} 不合法（{'/'.join(CALL_RESULTS)}）")
+        elif cid not in calls:
+            errs.append(f"calls.close 引用不存在的帳目 id：{cid}")
+        elif calls[cid].get("status") != "open":
+            if calls[cid].get("status") == res:
+                continue                      # 同結果重判：保留原結案
+            errs.append(f"calls.close 的 {cid} 已是 {calls[cid].get('status')}，"
+                        f"不能改判為 {res} —— 發布後才發現判錯，掛 errata")
+        else:
+            calls[cid] = {**calls[cid], "status": res, "closed": issue["date"],
+                          "closedIssue": issue.get("issue"), "closeNote": cl.get("note", "")}
+    return {"calls": sorted(calls.values(), key=lambda c: (c.get("opened", ""), c["id"]))}, errs
+
+
+def _dim_ids(bub: dict) -> list:
+    d = bub.get("dims")
+    if isinstance(d, dict):
+        return sorted(d.keys())
+    if isinstance(d, list):
+        return [x.get("id") for x in d]
+    return []
+
+
+def upstream_fingerprint(bub: dict) -> dict:
+    """監控庫的指紋。**與 `convergence-weekly/cwlib.py` 同名函式逐欄相同** ——
+    `prepare.py` 用那一份讀基準、這裡寫基準，兩邊鍵不一致的話 PREP 每期都會亮 🛑。
+    改其中一份就要改另一份。"""
+    dm = bub.get("dimMeta", {}) or {}
+    return {
+        "dims": _dim_ids(bub),
+        "weights": {k: (dm.get(k) or {}).get("w") for k in _dim_ids(bub)},
+        "triggers": [{"id": t.get("id"), "name": t.get("name")}
+                     for t in bub.get("triggers", []) or []],
+        "indicators": sorted(i.get("id") for i in bub.get("indicators", []) or []),
+        "tw_items": sorted(i.get("id") for i in (bub.get("tw") or {}).get("items", []) or []),
+        "checklist": [c.get("item") for c in (bub.get("stage") or {}).get("checklist", []) or []],
+        "zones": [{"max": z.get("max"), "label": z.get("label")}
+                  for z in bub.get("zones", []) or []],
+        "meta_version": (bub.get("meta") or {}).get("version"),
+    }
+
+
+def side_files(doc: dict, repo: Path, payload) -> dict:
+    """帳本折入 ＋ 指紋基準。折帳有錯就 raise ValueError（publish 回 exit 10、什麼都不寫）。"""
+    p = repo / "data" / "calls.json"
+    ledger = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"calls": []}
+    new_ledger, errs = fold_calls(ledger, doc)
+    if errs:
+        raise ValueError("calls 折帳擋下：" + "；".join(errs))
+    out = {"data/calls.json": json.dumps(new_ledger, ensure_ascii=False, indent=1)}
+    bub = (payload or {}).get("bub") if isinstance(payload, dict) else None
+    if bub:
+        # **只在重發最新一期時更新基準。** 補掛舊期的 errata 也會走 publish，
+        # 那時寫今天的指紋不會錯，但「基準＝最近一期發布時」這句話就不成立了。
+        idx = repo / "data" / "index.json"
+        latest = ""
+        if idx.exists():
+            ds = json.loads(idx.read_text(encoding="utf-8")).get("days", [])
+            latest = max((d.get("date", "") for d in ds), default="")
+        if doc["date"] >= latest:
+            out["data/upstream.json"] = json.dumps(upstream_fingerprint(bub),
+                                                   ensure_ascii=False, indent=1)
+    return out
+
+
 register(System(
     id="convergence-weekly",
     suite="convergence",
@@ -180,4 +296,5 @@ register(System(
     staged_paths=staged_paths,
     index_entry=index_entry,
     index_meta=index_meta,
+    side_files=side_files,
 ))

@@ -11,7 +11,19 @@
 需要四個 —— `podcast-transcripts`（讀逐字稿）、`kb-core`（讀規格與程式）、
 `outbox`（寫草稿到 `outbox/podcast/`）、`podcast-knowledge-digest`（寫帳本）。
 
-讀不到就自己連：`mcp__cowork__request_cowork_directory`（無人值守下不會跳核准對話框）。
+**先認出你在哪一種環境，兩種的工具與路徑不一樣**（2026-09-28 補；在此之前本檔只寫了第一種）：
+
+| 環境 | 怎麼認 | 資料夾在哪 | 跑指令用 | 連不上時 |
+|---|---|---|---|---|
+| **本機 Cowork** | 沙箱 `Bash` 裡 `ls -d /sessions/*/mnt` 有結果 | `/sessions/<name>/mnt/<資料夾>` | `Bash` | `mcp__cowork__request_cowork_directory`（無人值守下不會跳核准對話框） |
+| **雲端工作階段連到 Mac** | 上面那行回 No such file，而工具清單有 `mcp__remote-devices__device_bash` | `device_bash` 裡的 `$HOME/mnt/<資料夾>`（同一處也叫 `/sessions/<name>/mnt`） | **`mcp__remote-devices__device_bash`**，不是 `Bash` | 資料夾由排程設定帶進來；**不要呼叫 `device_request_folder_access`** —— 它要人按核准，無人值守下會掛住（同 09-12 那筆） |
+
+**雲端那一種的三個操作差異**（2026-09-28 首輪實跑）：
+（一）撰寫 subagent 讀不到 Mac 的檔，所以派工前用 `device_stage_files` 把逐字稿與 `preamble.md`
+送進雲端（落在 `/mnt/user-data/uploads/<資料夾>/…`），派工單給它**那個**路徑；
+（二）fragment 交件路徑給雲端路徑（例如 `/home/claude/outputs/…`）；
+（三）草稿先寫到雲端 `/mnt/user-data/outputs/<今天>.draft.json`，再用 `device_commit_files`
+（`stagedPath` → `/Users/…/outbox/podcast/<今天>.draft.json`）送回 Mac，回執、帳本、`publish.log` 一律用 `device_bash` 讀寫。
 
 **四個都連不上就停下來，在回報裡具名寫出是哪一個、你試了什麼、看到什麼錯誤。**
 不要用「找不到檔案」草草結束 —— 那跟「今天沒有節目」在輸出上長得一樣，
@@ -34,7 +46,9 @@
 cd "$(ls -d /sessions/*/mnt | head -1)" && python3 kb-core/tools/podcast_verify.py podcast-transcripts
 ```
 
-**這兩支要用 `Bash`（沙箱）跑，路徑就是上面那一行。** 舊版寫的是
+**這兩支要在「看得到掛載點」的那個 shell 跑**——本機 Cowork 是 `Bash`，雲端工作階段是
+`device_bash`（見第 0 步的表；**雲端的 `Bash` 沒有這個掛載點，上面那一行會回 No such file**，
+跟「今天沒有逐字稿」長得一樣）。舊版寫的是
 `~/.venvs/kb/bin/python`，那個 venv 只存在於 Mac，**沙箱裡不存在**，
 而錯誤訊息是「No such file or directory」—— 跟「這台機器沒裝」長得一樣。
 2026-08-23 實測，這一輪就是自己改成 `python3` 才跑得動的。
@@ -60,6 +74,10 @@ subagent 在逐字稿裡定位不了，2026-08-22 那一輪主代理是臨時寫
 2026-08-22 的 macrovoices 就是這樣被誤判的：主代理看到「29:13 之後全是重貼」，
 推論實質內容只到 28:44，**還把這個結論寫進了派工單**——而該檔第 2 段是全新內容，
 是 subagent 逐行核對後推翻主代理的。工具現在會直接印「第 N 段沒有複製」。
+
+**它也會印 `◆ 疑似段尾截斷`**（2026-09-28 新增）：某一轉錄段提早結束、下一行從段界整點接起、
+而且那段詞數偏少——09-28 tip 的 `[14:29]`→`[20:00]` 就是，manifest 判 OK、其餘檢查全綠。
+**那一行一樣原樣貼進派工單**；它出現在「乾淨」那一行上面時兩者不矛盾，「乾淨」只講複製與循環。
 
 **但它印「乾淨」不等於那一集沒有重複**，而且有兩個不同的理由。
 
@@ -170,7 +188,7 @@ Acquired 動輒四個半小時，踩得到這一條。（08-23 的 latentspace �
 （AppleID 在 anchors 的 `quality.external_check_apple_id`）**帶 cache-buster** 外部對照一次
 —— iTunes 快取過期時，日誌與真正的 0 集日一模一樣。確認之後直接回報結束。
 
-**2. 兩種去重**　跨日（比對 `podcast-knowledge-digest/data/index.json` 最近幾天）
+**2. 兩種去重**　跨日（讀 `podcast-knowledge-digest/data/` 最近幾份日檔、比對 `url` 裡的 `?i=<trackId>`；`index.json` 只有節目名、比不出集數）
 與同日同源（規則在 anchors 的 `dedup`）。
 
 **兩個欄位必須同時相同才算同源**，不要只比標題、也不要做模糊比對 ——
@@ -188,7 +206,7 @@ Acquired 動輒四個半小時，踩得到這一條。（08-23 的 latentspace �
 subagent 的回覆正文你看不到，你只收得到它最後那一則交件訊息，而上萬字元的 JSON
 很容易在「我上一則已經輸出了」這個念頭下被留在原地。
 **2026-09-17 八個 subagent 有三個就是這樣掉件、整批重派，多花約 27 萬 token**——
-而 `SendMessage` 在排程輪次不可用（同日實測），**掉件的唯一補救就是重派**。
+而**不要把補救寄望在 `SendMessage`**（同日實測在排程輪次不可用；09-28 雲端環境的工具提示有出現它但未實測），**掉件的預設補救就是重派**。
 規則那一半已經寫進 `preamble.md` 第十節，**但派工單仍要自己給出路徑**，
 因為 preamble 只說「路徑由派工單給」。
 **收件時逐一確認檔案存在再往下走**，不要等組檔才發現少一份。
@@ -227,7 +245,7 @@ podfetch 稿是**一行一個時間戳**（`[MM:SS] Speaker N: 內容`），所�
 **組檔完、交草稿前自己跑一次比對**（就是 `quote_misses()` 那幾行的邏輯：
 逐條 `original.strip() in text`）。**閘門會擋，但擋下來是整輪重來，自己先驗只花幾秒。**
 
-**subagent 交件之後不要期待能追問。** `SendMessage` 在排程工作階段不可用，
+**subagent 交件之後不要期待能追問。** `SendMessage` 在排程工作階段不可靠（08-23 實測不可用；09-28 雲端環境工具提示有它、未實測），
 所以派工單要一次給足；真的要改就重派一個新的，並在用量回顧裡記下這筆額外成本
 （2026-08-23 為了重挑金句多開一個 subagent，77K token）。
 
@@ -238,6 +256,10 @@ podfetch 稿是**一行一個時間戳**（`[MM:SS] Speaker N: 內容`），所�
 —— `quote_misses()` 用 `<showKey>-<trackId>.md` 去找逐字稿，找不到就整輪回 `None`、
 判成 SKIPPED，而 SKIPPED 的意思是「這一輪沒有比對過」，不是「比對過沒問題」。
 
+**每集也要帶 `sourceLayer`**（整數 1–4，實際用的退援層級；2026-09-28 新增）。
+篇幅閘門只對 `sourceLayer: 1`（官方稿）套用 `anchors._length_tiers_rules.official_transcript_overrun_pct`
+的超上界容許；**漏填不會放行、只會照一般上界判**，填錯成 1 才會多放行一成。`source` 那句話照舊寫給人看。
+
 當日集數達 `per_episode.crosscut_min_episodes` 時要寫 `crossCut`。
 **它要呈現的是「他們一致同意什麼」與「他們在哪裡正面對撞」**——同一議題在不同節目之間的
 收斂與分歧，**那是這個工具最大的價值來源**，有講者姓名時要具體到人。
@@ -246,7 +268,9 @@ podfetch 稿是**一行一個時間戳**（`[MM:SS] Speaker N: 內容`），所�
 複驗發現它全庫沒有第二個家 —— 而「進度落後時砍什麼」那一節還寫著
 「`crossCut` 從交叉分析降為並列摘要」，**沒有這條規則就分不出降級前後的差別**。）
 
-`postscript` 帶 2–3 條觀察點，收錄標準只有一條：**這句話三個月後有可能被證明是錯的嗎？**
+`postscript` 帶 2–3 條觀察點（**集數 ≤ `anchors.per_episode.observations_low_episode_day.max_episodes` 的日子下限降為該鍵的 `min`**——
+寧可少一條，也不要為了湊數收一條勉強過線的；09-28 單集日就收進了「下一季還會再錄一集」這種），
+收錄標準只有一條：**這句話三個月後有可能被證明是錯的嗎？**
 
 日期檔的完整形狀照 `BRIEF.md` 第二節，以及 `podcast-knowledge-digest/data/` 裡任何一天的舊檔。
 **`quotes[]` 的三個欄位是 `text`／`by`／`original`**（不是 `speaker`）。
@@ -347,12 +371,12 @@ podfetch 稿是**一行一個時間戳**（`[MM:SS] Speaker N: 內容`），所�
 > 這就是帳本積壓的機械成因：08-16 到 08-30 觀察中佔比從 84% 一路到 **89.5%**，
 > 分子動都沒動，文件反覆記著「沒有人在回訪」而沒有人問為什麼。**因為流程叫他不要動。**
 > 分界線是欄位：**`id`／`date`／`text`／`due` 開帳後不得改寫**（那是 claim），
-> **`status`／`verdict`／`verdictDate` 是判決欄位，有明確結果就該動**。
+> **`status`／`verdict`／`verdictDate`／`lastReviewed`／`reviewNote` 是判決欄位，有明確結果就該動**（欄位全集見 `anchors.observations._fields`）。
 > 回訪的完整說明原本只在 `AGENT_BRIEF.md` 第 4 節，該節 08-30 刪除時複驗才發現
 > 它全庫沒有第二個家 —— **整套系統要求「不能有逾期未判」，卻沒有任何一份文件寫「怎麼判」。**
 
 然後把當日觀察點附加上去，`status` 填「觀察中」。
-**新項目一律要帶 `due` 欄位**（ISO 日期，通常是三個月後），
+**新項目一律要帶 `due` 欄位**（ISO 日期，通常是三個月後）**與 `source` 欄位**（出自哪一集，`節目名｜原文標題`，多集用「；」分隔），
 text 裡照樣寫「檢驗方式：…（到期 YYYY-MM-DD）」——欄位給機器讀，句子給人讀。
 
 **6. 交草稿**　寫到 **`outbox/podcast/<今天>.draft.json`**（子目錄，不是 `outbox/` 本身），

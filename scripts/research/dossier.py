@@ -63,6 +63,32 @@ DISC = re.compile(r"Disclosure Appendix|Reg AC|analyst certification|"
                   r"Global Investment Research had investment ratings|"
                   r"views attributed to third party presenters", re.I)
 
+# **揭露頁是一整段尾巴，不是散落的幾頁。**（2026-09-28）
+#
+# 上面那張表逐頁比對開頭語，只抓得到**每一段法遵文字的第一頁**：後面接著的
+# 「Regulatory disclosures」「not registered as a dealer in … Canada」等頁
+# 開頭語不在表裡，於是留在目錄。W39 兩位撰稿子代理各自回報（航太 body[12–13]、
+# 非住宅營建 body[8–9]）。所以改成：**第一個命中頁之後全部視為揭露頁。**
+#
+# 這條規則只有一個陷阱，而且是實測出來的：高盛長報告的**目錄頁**把
+# 「Disclosure Appendix」列成一個章節（`Table of Contents … Disclosure Appendix`），
+# 逐頁比對時它就已經被誤剃（4 份，body[0]），改成「之後全剃」會變成**整份剃光**。
+# 所以目錄頁不算命中。
+#
+# 量測（2026-09-28，extracted/ 全部 165 份）：155 份有命中；尾巴規則多剃 574 頁；
+# 多剃的頁裡含 `Exhibit／Figure N` 而又不是評等或目標價歷史表的：**0 頁**。
+# 看不到的：揭露段之後還接著真內文的報告（量測樣本裡沒有，但券商改版會有）。
+TOC = re.compile(r"Table of Contents", re.I)
+
+
+def disclosure_start(body):
+    """第一個揭露頁的索引；沒有就回 len(body)。目錄頁不算命中。"""
+    for i, pg in enumerate(body):
+        if DISC.search(pg[:1200]) and not TOC.search(pg[:300]):
+            return i
+    return len(body)
+
+
 CH = json.load(open(os.path.join(_KB, "chart", "anchors.json"), encoding="utf-8"))["kinds"]
 
 # **圖型的值域與選型判準都住在每日五圖的 anchors 裡**，這裡讀它、不抄它。
@@ -93,7 +119,7 @@ def build(d):
     lo, hi = t["chars"]
     themes = "\n".join(f"  - {g['name']}" for g in ADV["groups"])
     body = d.get("body") or []
-    keep = [(i, pg) for i, pg in enumerate(body) if not DISC.search(pg[:1200])]
+    keep = [(i, pg) for i, pg in enumerate(body[:disclosure_start(body)])]
 
     L = [f"# 卷宗｜{d.get('broker','?')}　{d.get('title','?')}", "",
          f"- slug：`{d['slug']}`",
@@ -137,7 +163,7 @@ def build(d):
     L += [f"## 內文目錄（內文 {len(body)} 頁，**剃除揭露頁 {cut} 頁**，"
          f"列出 {len(keep)} 頁；合計 {sum(len(p) for _, p in keep):,} 字元）", "",
          "**要哪一頁就取哪一頁，不要整份載入。** 下面每一行是那一頁的第一句可讀的話。", "",
-         "剃除的判準是法遵頁的開頭語。**如果你取頁時發現目錄少了你需要的那一頁，"
+         "剃除的判準是：**第一個法遵頁（看開頭語，目錄頁不算）之後整段都剃**。**如果你取頁時發現目錄少了你需要的那一頁，"
          "那就是這條規則又誤判了 —— 直接取那個 `body[i]`，並在回報裡具名說出來。**", ""]
     for i, pg in keep:
         L.append(f"- **第 {i + 2} 頁**（`body[{i}]`，{len(pg):,} 字元）　{head(pg)}")

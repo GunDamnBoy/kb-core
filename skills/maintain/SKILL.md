@@ -28,8 +28,13 @@ description: 七套自動化系統的維護入口——投顧知識庫儀表板�
 `convergence-weekly-1500`（enabled，每週一，lastRun 2026-08-31，草稿寫進
 `~/outbox/convergence/` 由 `com.kenny.kbpublish.convergence` 發布）、
 `houseview-weekly-1630`（enabled，每週五，lastRun 2026-08-28）。
-**但這三套的文件仍停在 2026-08-20 重建之前，所以「排程在跑」不等於「文件可信」。**
-碰它們之前先跟使用者確認現況，**不要照那三份文件的路徑直接動手**。
+**但泡沫與 Houseview 的文件仍停在 2026-08-20 重建之前，所以「排程在跑」不等於「文件可信」。**
+碰它們之前先跟使用者確認現況，**不要照那兩份文件的路徑直接動手**。
+**匯流的 `convergence/` 已於 2026-09-29 對齊 v2**（kb-core 發布軌、帳本折入、`advisory-rewrite`），可以照著走。
+
+**2026-09-29 查證**：桌面排程器上除 `convergence-weekly-1500` 外，其餘七支都是 **disabled**
+（lastRun 停在 9/18–9/24），而各庫仍有 9/28 的產出——看起來已改由別處觸發，待使用者確認。
+若確認，`tools/schedule_gaps.py` 的 `SCHEDULE` 要跟著改（見下節）。
 
 
 **`advisory-knowledge-hub`／`chart-of-the-day`／`podcast-knowledge-digest`

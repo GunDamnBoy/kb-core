@@ -3097,3 +3097,58 @@ E 27,573／F 32,887／G 32,407）—— **這就是 `strip_maintainer_only()` �
    09-23 實測兩個版面 `bodyLen` 0、`links` 0、`htmlLen` 111,130 與 111,145、`outerHTML` 含
    `captcha`／`cmsg`／`DataDome`。**三輪不足以分辨「長期不可用」與「這一週的風控波段」** ——
    下一輪記第四次再由維護端判。**當期零損失**：B 的 18 則全部由 WSJ 與 Washington Post 補足。
+
+## 2026-09-28｜排程搬到雲端之後，有兩件事一直在安靜地壞：usage 記錄與分頁規則
+
+當天的輪次 47 分鐘收工（07:38:20 → 08:24:22 交草稿，08:24:55 回執 `exit 0`、commit `a2273c7`），
+88 張卡、十五組全達下限、`advisory_verify` 18 PASS · 1 WARN（字數）· 0 FAIL、補位 0 輪。
+維護端（同一場、同日稍晚）針對執行報告的待修事項動了四處，第五項只立計畫。
+
+### 動到哪些檔
+
+- `skills/advisory/SKILL.md`
+  - 開頭與〈這一輪的地形〉：排程已是 Claude 帳號的雲端排程 `Advisory daily 0730`（`trig_01RsArwcwzB1YzEgpWTvMFQo`），
+    輪次跑在雲端沙箱＋remote-devices 橋，不是 Mac 桌面排程器；驗排程改用 `list_triggers`。
+  - 步驟 3 分頁段：任務卡的分頁寫法改成一段固定文字（照常 `tabs_create_mcp` → 群組不存在才照前言兩步 →
+    **重建後立刻再 `tabs_create_mcp` 自建**），取代只寫「不要叫 `tabs_context_mcp`」。
+  - 步驟 3 FRED 護欄：週日、週一輪改比「期望資料日」（最近一個已收盤美國交易日的前一個交易日）；
+    拆除條件劃掉，改為常設（理由見量測）。
+  - 文末〈用量〉：新增雲端輪次分支 —— 在容器裡跑 `usage_report.py`、把那一行 append 進 `usage.csv`，不寫 sidecar。
+- `scripts/advisory/preamble.md` 第二節分頁段：補 (c)「群組重建之後立刻 `tabs_create_mcp` 自建」；重跑 `slice_preamble.py`。
+- `skills/maintain/advisory/MAIN.md` 第 1 步第 3 項：改查雲端排程、雲端輪次的用量走法。
+- `metrics/usage.csv`：補 `2026-09-28,advisory` 一列（`bounded=window`）。
+
+### 量測
+
+- `usage.csv` 的 advisory 列：最後一列是 09-24，**09-25、09-26、09-27 三天零列**；09-28 由本次補上
+  （主線 37 輪、子代理 11 個 468 輪、有效 12,815k、45.4 分鐘）。09-25～27 的逐字稿在其他雲端工作階段，**補不回來**。
+- 保底檔 FRED 兩條：09-24～09-28 五份的 `top_ups` 全部是 `replaced` 且 `unchanged`；資料日依序 09-22、09-23、09-24、09-24、09-24，
+  **五份全部等於期望資料日**。FRED 頁面自報 `Updated: Sep 25, 2026 9:01 AM CDT`（BAMLC0A0CM）、9:04 AM（BAMLH0A0HYM2）。
+- 分頁：09-28 七個採集員裡 A、B、C、E 開工就撞到群組不存在；C 回報分頁被別人不帶 tabId 的 `navigate` 導走、群組共消失三次。
+- 文件體積（字元）：`SKILL.md` 46,743、`preamble.md` 111,876、切片 35,661（C）～56,784（D）。
+  對照 SKILL 自己記的 2026-08-25：完整版 19,193、C 切片 8,358 —— **一個月內 C 切片長成 4.3 倍**。
+  含日期的段落占 SKILL 69%、preamble 83%、C 切片 69%（以「段落內出現 20XX-XX-XX」近似）。
+
+### 怎麼驗的
+
+- `slice_preamble.py --check` 七份一致、exit 0；七份切片都含新增的 (c) 段。
+- SKILL 與 MAIN 的替換都用唯一錨點（`count == 1` 斷言），前後字元數：SKILL 43,412 → 46,743、preamble 111,394 → 111,876、MAIN 6,310 → 6,740。
+- `usage.csv` 追加前確認無同日 advisory 列；追加後 `tail` 核對。
+- 沒有動任何檢查程式、anchors、publish 或資料 repo。
+
+### 怎麼倒回去
+
+- 三個文件的新增段落都以「2026-09-28」標記，刪掉即回原狀；preamble 刪完要重跑 `slice_preamble.py`。
+- `usage.csv` 刪掉 `2026-09-28,advisory,` 那一列。
+
+### 當時已知的風險
+
+1. **分頁那一條的根因是 2026-09-28 派工端自己寫錯的任務卡**（第一批四張把「不帶 tabId 的 `navigate`」寫成第 1 步），
+   不是前言缺規則 —— 前言 09-02、09-09 就寫好了兩步。本次把固定文字寫進 SKILL，但**仍然沒有機器在看任務卡內容**。
+2. **雲端用量的分支靠執行者記得走**，而判別條件（容器裡有 `~/.claude/projects/*/*.jsonl`）是新寫的、只驗過今天一次。
+3. **The Economist 已連續第五輪被 DataDome 攔截**（09-23 那筆寫「下一輪記第四次再由維護端判」），本次**仍未判**，
+   留給使用者決定要不要除名或改列黑名單。
+4. **待辦（第五項，只立計畫）：前言與 SKILL 瘦身。** 兩份檔的大半是逐日沿革與事故敘事，採集員每輪開工先讀 3.6–5.7 萬字元。
+   計畫：①敘事段移到 CHANGELOG，正文每條規則只留「規則＋一行出處日期」；②`slice_preamble.py` 已有 `strip_maintainer_only()`，
+   可擴成剝掉帶標記的「沿革」區塊，讓切片只含規則；③以 `context_profile.py` 量瘦身前後的子代理重讀量，
+   **先在一份切片（C）試，其餘六份不動** —— 同 2026-08-25 切片上線時「一次只動一個變因」的做法。另開一場做。

@@ -119,6 +119,26 @@ class System:
     組 entry 時 KeyError。**接縫漏一個維度，第二個使用者才會發現。**
     """
 
+    side_files: "Callable[[dict, Path, Any], dict] | None" = None
+    """(草稿, 資料 repo 路徑, payload) → `{repo 相對路徑: 檔案全文}`，**index 以外的衍生狀態檔**。
+
+    2026-09-29 加的，**同一道接縫漏掉的第五個維度**（前四個是 `index_entry`／
+    `index_meta`／`staged_paths`／`republish_rule`）。匯流的舊 repo `publish.py`
+    每期除了單期檔與 index，還會寫 `data/calls.json`（訊號帳本）與
+    `data/upstream.json`（上游指紋基準）。08-23 搬進 kb-core 時這兩個檔**沒有任何
+    欄位在負責**，於是從那天起一次都沒更新過 —— 回執 exit 0、站台記分板停在
+    0 勝 0 敗、上游改版偵測每期重報同一批差異，**而每一個訊號都說成功**。
+
+    **publish 在閘門之後、寫任何檔案之前呼叫它**：拋 `ValueError` 代表草稿與
+    衍生狀態對不上（例如結案一筆不存在的帳目），回 exit 10、`data/` 一個位元組
+    都不動。回傳的路徑必須落在 `staged_paths` 底下，否則 publish 拒絕寫入。
+
+    **這一欄給預設 None，跟其他欄位的「刻意不給預設」不同，理由是方向相反**：
+    其他欄位的預設值會讓下一套系統**安靜地做錯事**（add 錯路徑、用錯守衛）；
+    這一欄的預設是「不寫任何額外檔」，繼承它的系統不會寫出錯的東西，
+    而真的需要衍生檔的系統，缺它的症狀會出在自己的檢查或站台上。
+    """
+
 
 def frozen(old: dict, new: dict):
     """任何差異都擋。**日頻的定稿就是定稿。**"""

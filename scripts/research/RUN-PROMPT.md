@@ -59,11 +59,15 @@ python3 -c "import datetime as d;print('%d-W%02d'%(d.date.today()-d.timedelta(1)
 ## 第 1 步：入庫（純程式，你不要自己讀 PDF）
 
 ```
-python3 ~/kb-core/scripts/research/extract.py \
-  "/Users/macmini/Library/CloudStorage/GoogleDrive-haonung.chiang@gmail.com/我的雲端硬碟/Report Inbox"
-python3 ~/kb-core/scripts/research/build_index.py
-python3 ~/kb-core/tools/research_verify.py
+export BROKER_RESEARCH_ROOT="$HOME/mnt/broker-research"
+python3 $HOME/mnt/kb-core/scripts/research/extract.py "$HOME/mnt/Report Inbox"
+python3 $HOME/mnt/kb-core/scripts/research/build_index.py
+python3 $HOME/mnt/kb-core/tools/research_verify.py
 ```
+
+（2026-09-28 起這一段與下面各步的指令一律寫掛載路徑。之前寫的是 `~/kb-core`、
+Mac 路徑的 inbox —— **跟本文件開頭「路徑一律明講」自相矛盾**，每一輪都得自己翻譯一次。
+`device bash` 每一次呼叫都是新的 shell，**`export` 要跟指令寫在同一次呼叫裡**。）
 
 **沒有新報告就回報「本週無新報告」並結束，不要重跑上一期。**
 判準看 `extract.py` 的「新增 0」與 `build_index.py` 的「新增 0　已收錄 N」——
@@ -85,6 +89,15 @@ python3 ~/kb-core/tools/research_verify.py
 
 **第一支報孤兒時不要自己加 `--prune`**，先看它列出什麼、確認那些真的是舊 slug
 留下的，再決定。刪除要明確。
+
+**「已發布、但原文既不在 inbox 也沒有封存」是另一種，不是孤兒**（2026-09-28 分出來）。
+那是原文被 Drive 同名檔覆蓋掉的報告（週報系列每週檔名一樣），`--prune` 不會動它 ——
+它的抽取文字是那份報告唯一剩下的東西。**照抄進回報**，由使用者去 Drive 找回原文。
+
+**slug 撞號擋下的那幾份要具名抄進回報。** 檔名以 `YYYYMMDD_` 開頭的花旗檔
+2026-09-28 起改取日期之後那一段當產品名，不再撞號；**同一天、同一家公司或同一系列的
+兩篇**（例：花旗兩篇 Alpek、高盛兩篇《Americas Technology》）仍然會撞，
+那一種要改身分規則，不是這一輪能決定的。
 
 **標題不是檔名。** `extract.py` 會叫 `title.py` 去 PDF 中繼資料或第一頁取真實標題，
 並記下 `title_source`（`pdf_meta`／`page_one`／`filename`）。
@@ -151,10 +164,14 @@ python3 ~/kb-core/tools/research_verify.py
 **先替每一份組卷宗**（純程式，一份約 9 KB）：
 
 ```
-for s in ~/broker-research/extracted/*.json; do
-  python3 ~/kb-core/scripts/research/dossier.py "$(basename "$s" .json)"
-done
+export BROKER_RESEARCH_ROOT="$HOME/mnt/broker-research"
+python3 $HOME/mnt/kb-core/scripts/research/pending.py --dossier
 ```
+
+`pending.py` 列出 `extracted/` 裡**所有**還沒交件的報告（不只這一週），依報告自己的週次分組，
+`--dossier` 順手組卷宗。**派工名單就是它印的那份。** 2026-09-20 那一輪入庫的 W37 三份
+沒有人派、整整一週沒有精華 —— 那時候名單是從「這一輪／這一期」湊出來的，看不到舊週次。
+它印出不只一週時，第 4 步每一週都要各自組檔。
 
 卷宗裡有第一頁全文、內文的**頁次目錄**、以及**所有機械規則**
 （字數怎麼算、原句怎麼比對、`kind` 有哪些值、`theme` 的 15 組）。
@@ -169,8 +186,11 @@ done
 派工時給子代理三樣東西，缺一不可：
 
 1. `kb-core/scripts/research/preamble.md` 的**全文**（怎麼寫得好）
-2. 該份報告的**卷宗路徑** `~/broker-research/dossier/<slug>.md`
-3. 交件路徑 `~/broker-research/digest/_parts/<slug>.json`
+2. 該份報告的**卷宗路徑** `$HOME/mnt/broker-research/dossier/<slug>.md`
+3. 交件路徑 `$HOME/mnt/broker-research/digest/_parts/<slug>.json`
+
+子代理跟你一樣跑在 `device bash`，**它也要知道掛載路徑與 `BROKER_RESEARCH_ROOT`**
+（preamble 第零節寫了，派工單照樣把上面兩條路徑寫成 `$HOME/mnt/…`）。
 
 **不要再給 `extracted/<slug>.json` 的路徑當主要入口**，也不要重述卷宗裡的機械規則 ——
 兩份說法一旦不一致，子代理聽的是比較近的那一份。
@@ -186,11 +206,13 @@ done
 跟 preamble 對 `grounding` 的要求相牴觸，那個子代理照我的寫，於是整份圖被擋下。
 **兩份指示打架的時候，子代理聽的是比較近的那一份。**
 
-交件形狀（就四個鍵）：
+交件形狀（五個鍵，細節以 preamble 為準）：
 
 ```
-{"slug": "…", "summary": "…（Markdown）", "stances": [ … ], "charts": [ … ]}
+{"slug": "…", "summary": "…（Markdown）", "tags": [ … ], "stances": [ … ], "charts": [ … ]}
 ```
+
+（2026-09-28 之前這裡寫「就四個鍵」、少了 `tags`，跟 preamble 的「五個鍵」互相矛盾。）
 
 篇幅由頁數決定，卷宗已經替它算好目標與區間。
 
@@ -205,10 +227,13 @@ done
 ## 第 4 步：組檔
 
 ```
-python3 ~/kb-core/scripts/research/assemble.py <YYYY-Www>
-# 寫好 crosscut／watch／notes 之後，再跑一次：
-python3 ~/kb-core/scripts/research/assemble.py <YYYY-Www> --publish
+export BROKER_RESEARCH_ROOT="$HOME/mnt/broker-research"
+python3 $HOME/mnt/kb-core/scripts/research/assemble.py <YYYY-Www> \
+  --outbox "$HOME/mnt/outbox/research" --repo "$HOME/mnt/broker-research-digest"
+# 寫好 crosscut／watch／notes 之後，再跑一次（同樣兩個旗標）加 --publish
 ```
+
+**`--outbox` 與 `--repo` 不給，argparse 預設是 `~/…`，在沙箱裡會安靜地寫到沒有人會去看的地方。**
 
 它做六件機械的事，**沒有一件由撰寫者填**：覆寫 `summary_chars`、渲染圖表、
 組出 `file_url`、產生本機的 `.md` 與 `.html`（圖已內嵌）、
@@ -256,7 +281,8 @@ publish 每 60 秒收一次，第一次組檔就交出去的話，
 ## 第 5 步：閘門
 
 ```
-python3 ~/kb-core/tools/research_verify.py ~/broker-research/extracted
+export BROKER_RESEARCH_ROOT="$HOME/mnt/broker-research"
+python3 $HOME/mnt/kb-core/tools/research_verify.py "$HOME/mnt/broker-research/extracted"
 ```
 
 **全綠才算完成。**（`summary_length` 出 WARN 不擋，但要在回報裡說是哪幾份、超出多少。）
@@ -320,6 +346,11 @@ log 會印一行「改寫 …，系統的 republish_rule 判定這是允許的�
 回執 exit 0、git push 成功、本機與 origin 同一顆 commit。
 2026-08-23 到 08-31 站台就這樣凍了八天。**要確認上線，抓一次線上的
 `data/index.json`（帶 cache-buster）看 `updatedLabel` 與份數**，不要只看回執。
+
+**怎麼抓（2026-09-27 實測）：** `device bash` 與雲端容器的 `curl` 對 `github.io`
+都被出口代理擋（403）。**`WebFetch` 抓得到**，但它回的是摘要模型的轉述 ——
+`days[]` 各期的週次與份數讀得到，`updatedLabel` 那一欄它回報「找不到」。
+所以用它核對**份數**（這一期、以及補登的舊期是不是變多了），更新時刻看不到就照實說看不到。
 
 ## 這一輪不做的事
 

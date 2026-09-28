@@ -24,6 +24,26 @@ description: 產出每日五圖。每天台北 11:30 在 Mac mini 上執行；�
 **這一輪不推 GitHub，也不跑任何 git 指令。** 產出寫進 `~/outbox/chart`，
 `publish` 每分鐘掃一次、跑檢查當閘門、原子寫入、rebase、push、寫回執。
 
+### 路徑與環境（2026-09-28 加）
+
+這份文件的指令一律寫 `~/kb-core`、`~/chart-of-the-day`、`~/outbox`。
+**2026-09-23 起輪次跑在雲端容器**，Mac 的資料夾在 `device_bash` 裡掛在
+`~/mnt/<資料夾>`，`~/kb-core` 並不存在。開工第一個指令先補兄弟連結
+（**建在 `$HOME`、repo 外面** —— repo 裡不准有 symlink，Pages 會 exit 1）：
+
+```
+cd ~ && for d in kb-core chart-of-the-day outbox advisory-rewrite; do [ -e ~/$d ] || ln -s mnt/$d ~/$d; done
+```
+
+**`scan_moves`／`build_series`／`render_day` 要 `CHART_REPO`**（`_repo.py` 刻意不猜），
+而每個 `device_bash` 都是新的 shell，所以**每一行都帶**：`CHART_REPO=~/chart-of-the-day python3 …`。
+`prep_chart` 自己會推兄弟 repo，不必帶。2026-09-20、09-21、09-28 三輪都在這裡撞過一次，
+兩份報告把它列成待修，而它一直只活在報告裡。
+
+資料夾讀不到時，連線工具依執行環境而不同：雲端容器是
+`mcp__remote-devices__device_request_folder_access`，Mac 桌面版是 `mcp__cowork__request_cowork_directory`。
+**用到不存在的工具名跟「連不上」在輸出上長得一樣。**
+
 ---
 
 ## 步驟
@@ -94,8 +114,8 @@ python3 ~/kb-core/scripts/chart/prep_chart.py
 **slot 2 的掃描有程式，不要每天手寫一次**：
 
 ```
-python3 ~/kb-core/scripts/chart/scan_moves.py            # 1 日與 5 日變動＋近三年分位
-python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
+CHART_REPO=~/chart-of-the-day python3 ~/kb-core/scripts/chart/scan_moves.py            # 1 日與 5 日變動＋近三年分位
+CHART_REPO=~/chart-of-the-day python3 ~/kb-core/scripts/chart/scan_moves.py --json     # 要拿去出圖時
 ```
 
 它只讀快取、不連外。**每天當場重寫的統計，每天都有一次寫錯的機會**——
@@ -224,6 +244,21 @@ prep 會把它們跟「新的硬失敗」分開印成一行，**你不必在 `ab
 
 ### 6. 出圖
 
+**一律對工作檔操作，不要寫 `data/<今天>.json`**（2026-09-28 起）。日檔只由 publish 寫：
+
+```
+W=~/outbox/chart/_work/<今天>.json
+CHART_REPO=~/chart-of-the-day python3 ~/kb-core/scripts/chart/build_series.py <今天> --doc $W
+CHART_REPO=~/chart-of-the-day python3 ~/kb-core/scripts/chart/render_day.py <今天> --doc $W
+python3 ~/kb-core/tools/chart_verify.py ~/chart-of-the-day <今天> --doc $W
+```
+
+`_work/` 是子目錄，publish 只掃 `outbox/chart/*.draft.json`（非遞迴），寫到一半的工作檔不會被撿走。
+圖檔照舊畫進 `charts/<今天>/` —— 那是 `staged_paths` 宣告由產生端先畫好的。
+**為什麼**：`render_day` 以前只認 `data/<日>.json`，於是每一期都先寫了日檔，
+publish 的回執從 09-23 起連六期響 `already-published-prewritten`；
+2026-08-29 那次 exit 11 假警報是同一個根因。**一個每天都響的警告，就是一個沒有人看的警告。**
+
 兩軌**從同一份 spec 渲染**，而 `render_day.py` 會把算出來的 option 一起寫回日檔
 （`anchors.rendering.stored_option` 是 true）——**那是 `chart.option_matches_spec` 的驗證對象，
 不要拿掉**。2026-08-30 更正：這一行原本寫「日檔不存 option」，而實測 23 份封存**每一份都有**。
@@ -237,7 +272,9 @@ prep 會把它們跟「新的硬失敗」分開印成一行，**你不必在 `ab
 
 ### 7. 交出草稿
 
-寫成 `~/outbox/chart/<今天>.draft.json`。
+工作檔定稿（`qa_dispositions`、`about.run`、`window.to` 都寫進去）後，
+**複製**成 `~/outbox/chart/<今天>.draft.json` —— 這一步才是交件，publish 60 秒內會撿走。
+回執的 `stage` 應該是 `pushed`；**再看到 `already-published-prewritten` 就是有人又寫了日檔**，要追。
 
 **暫存腳本一律寫在專屬輸出目錄、檔名帶日期，並且確認寫檔成功再執行。**
 2026-08-12 事故：腳本命名 `/tmp/mk.py` 撞上前一輪殘留的同名檔，
@@ -307,6 +344,9 @@ QA 旗標與處置、降級與理由、以及下一輪要修的事。
 > 而正確的路（沙箱掛載裡的 `/sessions/<session>/mnt/.claude/projects/session/`）
 > 前一天的報告就寫著。**照抄一份過期的找法，比沒有找法更貴。**
 > 所以這裡改成只指路、不抄步驟 —— `MEASURE.md` 是它唯一的家。
+> **輪次跑在雲端容器時**（2026-09-23 起），逐字稿在容器裡、Mac 讀不到，
+> 要先搬回 Mac 再寫 sidecar —— 見 `MEASURE.md`〈輪次跑在雲端容器時〉。
+> 09-26 那一輪把容器路徑寫進 `transcript`，那一列就永遠沒有進帳。
 系統 id 是 `chart`。寫完等 `com.kenny.kbusage`（每 600 秒）撿走，檔案消失就是進帳了。
 
 **為什麼要明寫**：2026-08-30 盤 `usage.csv`，chart 有 **6 列 `sidecar`、4 列 `commit`**。
@@ -328,7 +368,9 @@ sidecar 是可信度最高的那一級，`commit` 切的是 publish 成功的時
 2. **slot 3 改用更輕的圖型**（序列點數少的）
 3. **判讀取區間下緣**
 
-**五張圖、theme 不重複、軌道對星期不在這張清單上。** 它們是這套系統的定義。
+**五張圖的張數、slot 順序、theme 不重複、軌道對星期與篇幅下界不在這張清單上。** 它們是這套系統的定義。
+（2026-09-28 對齊：排程副本 `RUN-PROMPT.md` 的這兩段曾與這裡不同 —— 第 2、3 項順序相反、
+第 3 項寫成「重製圖改為並列摘要」、定義少了軌道。以這份為準，副本已改成一樣。）
 
 ## 這一輪不做的事
 

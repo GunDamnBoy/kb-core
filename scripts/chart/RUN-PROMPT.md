@@ -8,7 +8,9 @@
 需要三個 —— `kb-core`（讀規格、門檻與程式）、`chart-of-the-day`（讀快取與封存）、
 `outbox`（寫草稿到 `outbox/chart/`）。
 
-讀不到就自己連：`mcp__cowork__request_cowork_directory`（無人值守下不會跳核准對話框）。
+讀不到就自己連。**工具名依執行環境而不同**：雲端容器（2026-09-23 起的常態）是
+`mcp__remote-devices__device_request_folder_access`，Mac 桌面版是 `mcp__cowork__request_cowork_directory`。
+雲端容器裡資料夾掛在 `~/mnt/<資料夾>`，SKILL〈路徑與環境〉有補連結的一行指令。
 
 **連不上就停下來，在回報裡具名寫出是哪一個、你試了什麼、看到什麼錯誤。**
 不要用「找不到檔案」草草結束 —— 那跟「今天沒有題材」在輸出上長得一樣，
@@ -43,7 +45,9 @@ stderr。人修好之前重試不會好，修好之後下一輪就會自己完�
 
 **exit 11 之前先問一句：那一天真的發布過嗎？** 守衛比的是「檔案存在且內容不同」，
 而**它看不見那一天有沒有上線**。2026-08-29 就撞過一次假警報：
-`render_day.py` 必須先寫 `data/<今天>.json` 才畫得出圖，那份工作檔於是被當成封存。
+`render_day.py` 當時必須先寫 `data/<今天>.json` 才畫得出圖，那份工作檔於是被當成封存。
+（2026-09-28 起 `render_day`／`build_series`／`chart_verify` 都帶 `--doc` 對工作檔操作，
+日檔只由 publish 寫，這個假警報的成因已拿掉；判準照舊留著。）
 判準是 `chart-of-the-day/data/index.json` 有沒有那一天、回執的 `commit` 是不是空的——
 **兩個都說沒有，就不是封存，掛 errata 是錯的處置**（那會在紀錄裡留下一筆不存在的更正）。
 確認沒發布過就讓工作檔與草稿內容一致，下一輪 publish 會走「內容相同、跳過寫入」那條路。
@@ -58,9 +62,10 @@ stderr。人修好之前重試不會好，修好之後下一輪就會自己完�
 ## 進度落後時砍什麼
 
 依序砍，一次一項：slot 4（主題深掘）改用已在預抓涵蓋內的序列 →
-`reading` 取下限 → 重製圖改為並列摘要。
+slot 3 改用更輕的圖型（序列點數少的）→ `reading` 取區間下緣。
 
-**五張圖的張數、slot 順序、theme 不重複與篇幅下界不在這張清單上。它們是這套系統的定義。**
+**五張圖的張數、slot 順序、theme 不重複、軌道對星期與篇幅下界不在這張清單上。它們是這套系統的定義。**
+（2026-09-28 與 SKILL 正本對齊。）
 
 ## 回報
 
@@ -75,6 +80,8 @@ FAIL 與 SKIPPED 逐條列出）、回執的 exit code。
 
 這一套的系統 id 是 `chart`，**要寫的是 sidecar `~/outbox/chart/<今天>.usage.json`**
 （`until` 取日檔的 `window.to`，`transcript` 是這一場自己的主逐字稿絕對路徑）。
+**跑在雲端容器時逐字稿在容器裡、Mac 讀不到**：先照 `MEASURE.md`〈輪次跑在雲端容器時〉
+把它搬到 `~/outbox/chart/_transcripts/`，`transcript` 寫 Mac 端路徑 —— 09-26 寫了容器路徑，那一列就沒有進帳。
 2026-08-30 盤過：chart 有 6 列 `sidecar`、4 列 `commit`，差別不在忙不忙，
 在於**這一步以前不在任何文件裡**。做完去 `usage.csv` 確認最後一列的 `bounded` 是 `sidecar`。
 

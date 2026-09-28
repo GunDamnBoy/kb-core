@@ -62,6 +62,12 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    （舊名 `advisory-dashboard-daily` 已不存在），記下
    cron／enabled／nextRunAt／lastRunAt，並 Read 它的 `path`。
    同帳號另有 podcast、chart 等排程，這一場只碰 advisory 這條。
+   **⚠️ 2026-09-28 起這一項要改查雲端排程**：advisory 現在由 Claude 帳號的 scheduled task
+   `Advisory daily 0730`（`trig_01RsArwcwzB1YzEgpWTvMFQo`，`CRON_TZ=Asia/Taipei 30 7 * * *`）觸發、
+   跑在雲端沙箱裡 —— 用 `list_triggers` 找它，看 `enabled`／`next_run_at`／`last_run`。
+   `list_scheduled_tasks` 裡找不到 `advisory-daily-0730` 不代表排程壞了。
+   雲端輪次的用量不走 sidecar（逐字稿不在 Mac 上），改由輪次在容器裡跑 `usage_report.py`
+   再把那一行 append 進 `usage.csv`，見 `skills/advisory/SKILL.md` 文末〈用量〉。
 4. 程式化跑檢查取現況 —— `about.run` 是自述、不是證據
    （2026-08-06 曾自稱有 7 則 Reuters、實際 0 則）：
 
