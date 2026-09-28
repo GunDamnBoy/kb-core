@@ -618,6 +618,7 @@ def _chars_in_tier(p):
     這跟投顧那次保底卡的 `base` 欄位是同一件事：**一條判準若在資料裡找不到
     對應的欄位，它就不是機械可判的。**
     """
+    mark = _A(p, "dedup", "placeholder_not_collected")
     bad = []
     for e in _docs(p):
         m = e.get("minutes")
@@ -638,6 +639,14 @@ def _chars_in_tier(p):
             bad.append(f"{e.get('id')} {n} 字超過上界 {cap}（{m} 分）")
         elif n < lo and not e.get("lowerBoundException"):
             bad.append(f"{e.get('id')} {n} 字低於下界 {lo} 且沒有具名的下界例外")
+        # 第四層佔位（source 以 ⚠︎ 開頭、約 500 字）不套段數區間（2026-09-29）。
+        # 舊版在它帶了 lowerBoundException 之後仍落到這一格，70 分鐘的集數要把
+        # 500 字拆成 20–33 段才過得了——唯一的過法是灌段落，否則整輪 FAIL。
+        # 這個分支到 09-29 才第一次被走到（那天六集全部拿不到逐字稿）。
+        # 只免段數：上界照判、低於下界照樣要 lowerBoundException。
+        elif ((e.get("source") or "").lstrip().startswith(mark)
+              and n < lo):
+            pass
         elif not (plo <= paras <= phi):
             bad.append(f"{e.get('id')} {paras} 段不在 {plo}–{phi}（{m} 分）")
     if bad:
@@ -655,18 +664,28 @@ register(Check(
         "官方逐字稿的超規容許只認 `sourceLayer == 1`：組檔者忘了填這個欄位時，"
         "官方稿集數會照一般上界判（偏嚴、會 FAIL、看得見）；填錯成 1 則會多放行一成（看不見）",
         "`minutes` 本身是從 manifest 抄來的，抄錯這條看不出來",
+        "第四層佔位（`source` 以 ⚠︎ 開頭且低於下界）不驗段數：**正常集數誤標 ⚠︎ 會連帶躲掉段數檢查**"
+        "（代價是 quotes 必須為空、去重會把它當未收錄，所以誤標會在別處現形）",
     ],
     run=_chars_in_tier,
-    fixture={"anchors": {"length_tiers": [
+    fixture={"anchors": {"dedup": {"placeholder_not_collected": "⚠︎"}, "length_tiers": [
         {"under_minutes": 30, "chars": [2000, 3000], "paras": [10, 15]},
         {"under_minutes": None, "chars": [4000, 6500], "paras": [20, 33]}]},
         "doc": {"episodes": [{"id": "iltb-1", "minutes": 76, "chars": 6520,
-                              "sections": [{"paragraphs": ["x"] * 27}]}]}},
-    near_miss={"anchors": {"length_tiers": [
+                              "sections": [{"paragraphs": ["x"] * 27}]},
+                             {"id": "profg-1", "minutes": 70, "chars": 520,
+                              "source": "⚠︎ 全文摘譯待補（轉錄失敗）",
+                              "lowerBoundException": "逐字稿 0 字，退第四層",
+                              "sections": [{"paragraphs": ["x"] * 2}]}]}},
+    near_miss={"anchors": {"dedup": {"placeholder_not_collected": "⚠︎"}, "length_tiers": [
         {"under_minutes": 30, "chars": [2000, 3000], "paras": [10, 15]},
         {"under_minutes": None, "chars": [4000, 6500], "paras": [20, 33]}]},
         "doc": {"episodes": [{"id": "iltb-1", "minutes": 76, "chars": 6500,
-                              "sections": [{"paragraphs": ["x"] * 27}]}]}},
+                              "sections": [{"paragraphs": ["x"] * 27}]},
+                             {"id": "profg-1", "minutes": 70, "chars": 520,
+                              "source": "⚠︎ 全文摘譯待補（轉錄失敗）",
+                              "lowerBoundException": "逐字稿 0 字，退第四層",
+                              "sections": [{"paragraphs": ["x"] * 2}]}]}},
     suite="podcast",
 ))
 

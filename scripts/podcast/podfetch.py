@@ -627,9 +627,19 @@ def delete_file(api_key, name):
 
 # ---------------------------------------------------------------- 模型挑選
 
+# 探測時遇到 5xx 重試仍失敗的模型（暫時性，不是「不能用」）。
+# build_model_pool() 讀它決定要不要稍後重測、要不要寫 72 小時快取。
+PROBE_TRANSIENT = set()
+_TRANSIENT_HTTP = (500, 502, 503, 504)
+
 _BAD_MODEL_TOKENS = ("embedding", "image", "imagen", "veo", "tts", "aqa",
                      "gemma", "learnlm", "vision", "-tuning", "live",
-                     "native-audio", "dialog", "robotics", "computer-use")
+                     "native-audio", "dialog", "robotics", "computer-use",
+                     # 2026-09-29：gemini-3.5-transcribe 在 Console 歸 Live API，
+                     # 探測的 0.6 秒音訊過得了，但 TPM 只有 10K——一段 20 分鐘音訊
+                     # 約 38K token，實跑必然 429／回空。那天池子只剩它與 3.6 Flash，
+                     # 四集 0 字、兩集 FAILED。`live` 擋不到它，因為名字裡沒有 live。
+                     "transcribe")
 
 _PROBE_MP3_B64 = (
     "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//NYwAAAAAAAAAAAAEluZ"
@@ -827,7 +837,20 @@ def probe_model(api_key, name):
             {"text": "Reply with the single word OK."},
             {"inline_data": {"mime_type": "audio/mpeg", "data": _PROBE_MP3_B64}},
         ]}], "generationConfig": gc}
-        return http_post_json(url, body, {"x-goog-api-key": api_key}, timeout=timeout)
+        # **5xx 在這裡先重試（2026-09-29）。** 舊版探測遇到 503 直接回「不能用」，
+        # 而探測結果會快取 72 小時——01:00:20–01:00:45 一次 25 秒的過載尖峰，
+        # 就把三個 500 RPD 的 Lite 全部排除在池外三天。這是 4C 第 4 條
+        # 「暫時性錯誤不可以產生永久性後果」在探測路徑上的同一個洞。
+        for wait in (10, 20, None):
+            try:
+                return http_post_json(url, body, {"x-goog-api-key": api_key},
+                                      timeout=timeout)
+            except urllib.error.HTTPError as e:
+                if e.code not in _TRANSIENT_HTTP or wait is None:
+                    raise
+                e.read()
+                log("    %s 探測回 %s，%d 秒後重試" % (name, e.code, wait))
+                time.sleep(wait)
 
     bad_arg = False
     for vi, gc in enumerate(gen_variants(MAX_OUTPUT_TOKENS)):
@@ -854,6 +877,9 @@ def probe_model(api_key, name):
                 if e.code == 400:
                     bad_arg = True
                     break                      # 換下一組 generationConfig
+                if e.code in _TRANSIENT_HTTP:
+                    PROBE_TRANSIENT.add(name)
+                    return False, "HTTP %s（重試後仍過載，暫時性）" % e.code, None
                 return False, "HTTP %s" % e.code, None
             except Exception as e:
                 if attempt == 2:
@@ -926,11 +952,39 @@ def build_model_pool(api_key, cfg, state):
     else:
         take(heavy, want_heavy, "Flash")
         take(lite, want_lite, "Lite・高額度")
+    # **暫時性失敗的模型等一下再測一次（2026-09-29）。** 過載尖峰通常以分鐘計，
+    # 而池子一旦定案就要用一整場。重測只補空著的名額，最後依原本的優先序重排。
+    if PROBE_TRANSIENT:
+        retry = [n for n in order if n in PROBE_TRANSIENT]
+        PROBE_TRANSIENT.clear()
+        log("  %d 個模型探測時過載（%s），120 秒後重測"
+            % (len(retry), "、".join(retry)))
+        time.sleep(120)
+        nl = sum(1 for n in pool if is_lite(n))
+        nh = len(pool) - nl
+        lite_r = [n for n in retry if is_lite(n)]
+        heavy_r = [n for n in retry if not is_lite(n)]
+        if bool(cfg.get("prefer_lite", True)):
+            take(lite_r, want_lite - nl, "Lite・重測")
+            take(heavy_r, want_heavy - nh, "Flash・重測")
+        else:
+            take(heavy_r, want_heavy - nh, "Flash・重測")
+            take(lite_r, want_lite - nl, "Lite・重測")
+        first = (lambda n: not is_lite(n)) if bool(cfg.get("prefer_lite", True)) \
+            else is_lite
+        pool.sort(key=lambda n: (first(n), order.index(n)))
     if not pool:
         raise RuntimeError("沒有任何可用模型。已測試：%s" % "；".join(notes))
     state["model_pool"] = pool
+    # 重測後仍有模型過載：這個池子是在尖峰中湊出來的，**不要讓它活 72 小時**。
+    # 照樣寫進快取（供本次執行與 gencfg 參考），但標 force_reprobe，下次重測。
+    unsettled = bool(PROBE_TRANSIENT)
+    if unsettled:
+        log("  仍有 %d 個模型過載（%s），本次池子不快取、下次執行重新探測"
+            % (len(PROBE_TRANSIENT), "、".join(sorted(PROBE_TRANSIENT))))
     state["probe"] = {"ts": time.time(), "pool": pool,
-                      "gencfg": dict(MODEL_GENCFG)}
+                      "gencfg": dict(MODEL_GENCFG),
+                      "force_reprobe": unsettled}
     return pool
 
 
