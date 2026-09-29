@@ -913,7 +913,8 @@ def build_model_pool(api_key, cfg, state):
     # 計入 RPD——每天 6–10 個請求，其中 3 個以上打在只有 10 RPD 的 Flash 池上，
     # 佔全日請求 25–30%，而結果早就存進 state 只是從不回讀。
     # 失效防線：404 會走 ModelUnavailable→EXHAUSTED；400 會沿 gen_variants 降參；
-    # 若本次執行有模型 404（NOT_FOUND 非空），main() 會標 force_reprobe，隔天重測。
+    # 若本次執行有模型 404（NOT_FOUND 非空），main() 會標 force_reprobe，隔天重測；
+    # 探測時有模型因 5xx 未進池，本函式自己也會標（2026-09-29）。
     cached = state.get("probe") or {}
     if (cached.get("pool") and not cached.get("force_reprobe")
             and time.time() - float(cached.get("ts", 0)) < 72 * 3600):
@@ -954,16 +955,24 @@ def build_model_pool(api_key, cfg, state):
         take(lite, want_lite, "Lite・高額度")
     # **暫時性失敗的模型等一下再測一次（2026-09-29）。** 過載尖峰通常以分鐘計，
     # 而池子一旦定案就要用一整場。重測只補空著的名額，最後依原本的優先序重排。
+    # **名額被補滿的也要算（2026-09-29 複驗補）。** 高優先的模型過載、名額被排在後面、
+    # 探測通過的模型補上時，不會進重測，但它仍是「因暫時性錯誤被排除」——
+    # 若不標 force_reprobe，就又是一個被快取 72 小時的暫時性結果。
+    def outranked(n):
+        return any(is_lite(q) == is_lite(n) and order.index(n) < order.index(q)
+                   for q in pool)
+    retry = []
     if PROBE_TRANSIENT:
         retry = [n for n in order if n in PROBE_TRANSIENT]
         PROBE_TRANSIENT.clear()
-        log("  %d 個模型探測時過載（%s），120 秒後重測"
-            % (len(retry), "、".join(retry)))
-        time.sleep(120)
         nl = sum(1 for n in pool if is_lite(n))
         nh = len(pool) - nl
-        lite_r = [n for n in retry if is_lite(n)]
-        heavy_r = [n for n in retry if not is_lite(n)]
+        lite_r = [n for n in retry if is_lite(n)] if want_lite > nl else []
+        heavy_r = [n for n in retry if not is_lite(n)] if want_heavy > nh else []
+        if lite_r or heavy_r:                  # 沒有空名額就不重測、也不空等 120 秒
+            log("  %d 個模型探測時過載（%s），120 秒後重測"
+                % (len(retry), "、".join(retry)))
+            time.sleep(120)
         if bool(cfg.get("prefer_lite", True)):
             take(lite_r, want_lite - nl, "Lite・重測")
             take(heavy_r, want_heavy - nh, "Flash・重測")
@@ -978,10 +987,14 @@ def build_model_pool(api_key, cfg, state):
     state["model_pool"] = pool
     # 重測後仍有模型過載：這個池子是在尖峰中湊出來的，**不要讓它活 72 小時**。
     # 照樣寫進快取（供本次執行與 gencfg 參考），但標 force_reprobe，下次重測。
-    unsettled = bool(PROBE_TRANSIENT)
+    # 曾因 5xx 未進池的模型：重測仍過載、或排名高於池內同類的某個模型（名額被較低
+    # 優先者補滿），都代表這個池子是在尖峰裡湊出來的。
+    still = {n for n in retry if n not in pool
+             and (n in PROBE_TRANSIENT or outranked(n))} | set(PROBE_TRANSIENT)
+    unsettled = bool(still)
     if unsettled:
-        log("  仍有 %d 個模型過載（%s），本次池子不快取、下次執行重新探測"
-            % (len(PROBE_TRANSIENT), "、".join(sorted(PROBE_TRANSIENT))))
+        log("  仍有 %d 個模型因過載未進池（%s），本次池子照寫快取但標 force_reprobe，下次執行重新探測"
+            % (len(still), "、".join(sorted(still))))
     state["probe"] = {"ts": time.time(), "pool": pool,
                       "gencfg": dict(MODEL_GENCFG),
                       "force_reprobe": unsettled}
