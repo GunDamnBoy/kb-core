@@ -729,6 +729,13 @@ A、B 照前言先叫 `createIfEmpty`，**C 拿到的新分頁剛導到 Fed Rate
 > **群組重建之後，立刻再叫一次 `tabs_create_mcp` 開一個你自己的分頁、只用那一個** —— 重建後的第一個分頁會被別人拿走。
 > 之後每次呼叫都帶 `tabId`，收工只關你自己建的分頁。除此之外不要叫 `tabs_context_mcp`。
 
+**⚠️ 瀏覽器一律固定用使用者的 Chrome「Home」（deviceId `627f2563-69da-4ce3-a151-b824d69e2100`）—— 2026-10-01 使用者在對話中明訂。**
+當日帳號同時連著兩個 Chrome，子代理的 `tabs_create_mcp` 回「Multiple Chrome browsers are connected… none has been selected」，
+B、G 一次請求都沒發就停下、D 退到未登入的內建瀏覽器（MarketWatch 因此被擋）。使用者選定 Home 後說「都固定用 home」。
+**任務卡現行寫法（每一張卡都寫）**：開工第一個動作 `select_browser{deviceId:"627f2563-69da-4ce3-a151-b824d69e2100"}`，
+再 `tabs_create_mcp`；**不要改用內建瀏覽器（Claude_Browser）採集**。select_browser 失敗就回報錯誤原文並停，不要自己挑別台。
+主線開場測試前也先 `select_browser` 同一台。
+
 **節流的要求要在任務卡上重述一次，不要只靠 `preamble`。**
 2026-08-23 採集員 E 對 NYT 用同網域 `fetch()` 連發約 20 次時間戳預篩、中間沒有延遲，
 **之後 NYT 每一個文章頁都渲染成空殼、當日零成卡**，而列表頁與 `fetch()` 本身都還正常。
