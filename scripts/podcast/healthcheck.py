@@ -271,7 +271,14 @@ def check_show_names_in_docs():
 
 
 def check_shows_sync():
-    """`shows.json` 有**兩份**，這條是唯一在對它們帳的地方。
+    """對帳 kb-core 與 `~/.podfetch/` 兩個路徑上的 `shows.json`。
+
+    **⚠ 2026-10-03 註記：下面這段 docstring 描述的是 08-22 之前的形態。** 現況是
+    `~/.podfetch/shows.json` 為指向 kb-core 那份的 symlink（`anchors.json` 的 `_not_here`、
+    `AGENT_BRIEF.md` 第 2 節），所以這條在 symlink 前提下等於把同一個檔讀兩次、**結構上不會失敗**；
+    它真正還抓得到的只剩「symlink 被換成實體檔」那一種。以下保留原文作為成因紀錄。
+
+    （原文）`shows.json` 有**兩份**，這條是唯一在對它們帳的地方。
 
     podfetch 執行時讀的是 `~/.podfetch/shows.json`（見 podfetch.py 的 SHOWS_PATH）；
     版控的那份在 `kb-core/scripts/podcast/shows.json`，`patch_shows.py` 負責同步。

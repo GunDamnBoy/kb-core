@@ -8,6 +8,7 @@
 | `kb-core/podcast/anchors.json` | **每一個數字**：篇幅層級、每集件數、受控詞表、去重、品質門檻、帳本規則 | 每日排程、`checks/podcast.py`、podfetch |
 | `kb-core/scripts/podcast/DIGEST-PROMPT.md` | **每天怎麼跑**：順序與分支判斷（**正本**；排程 `SKILL.md` 是它的副本） | 每日排程 |
 | `kb-core/scripts/podcast/preamble.md` | **撰寫 subagent 的規則**，派工時整份給它 | 每集的撰寫 subagent |
+| `kb-core/scripts/podcast/dispatch-common.md` | **派工單每天都一樣的那一半**：交件 JSON 形狀、`sourceLayer` 定義、工作目錄規則、無人值守硬規則（2026-10-03 新增）。**規則不寫這裡**，寫 `preamble.md` | 每集的撰寫 subagent（與 preamble 一起給） |
 | `AGENT_BRIEF.md` | **只剩四塊是權威的**：第 1 節節目清單與全文來源（含 A／B 分類與官方稿入口）、第 2 節 podfetch 管線、第 6 節基礎設施、第 8 節變更紀錄。其餘看開頭的失效橫幅 | 維護者；每日排程只在需要 A 類清單時讀第 1 節 |
 | `MAINTENANCE.md` | 維護說明、事故檔案（第 7 節）、podfetch 內部設計（第 4C 節）、變更紀錄歸檔（第 11 節）、版本登記簿（第 12 節） | 維護者 |
 

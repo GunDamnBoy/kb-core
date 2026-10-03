@@ -25,7 +25,7 @@ TRANSCRIPTS = Path(os.path.expanduser("~/podcast-transcripts"))
 # 每一條檢查會伸手去拿的 anchors 鍵。缺一個就在組 payload 時大聲失敗——
 # fixture 自帶 anchors，所以 selftest 驗不到「真實設定裡有沒有這一項」。
 REQUIRED = ["length_tiers", "_length_tiers_rules", "per_episode",
-            "topics_vocabulary", "quality", "observations"]
+            "topics_vocabulary", "quality", "observations", "dedup"]
 
 
 class AnchorsMissing(Exception):
