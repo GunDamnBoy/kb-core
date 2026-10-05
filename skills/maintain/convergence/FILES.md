@@ -21,7 +21,7 @@
 
 兩個跨期累積機制：**訊號帳本**（可證偽判斷登帳 → publish 折入 → 下期 PREP 逼驗收 → 站台記分板）與**上游改版偵測**（監控庫指紋 diff，開工前在 `PREP.md` 頂部亮 🛑）。**兩者都靠 publish 每期寫檔**——2026-08-23～09-28 那一段沒人寫，兩個機制都靜默失效（CHANGELOG 3.5）。
 
-排程 taskId `convergence-weekly-1500`，每週一台北 15:00，Cowork 桌面夾四個資料夾（`convergence-weekly`／`outbox`／`kb-core`／`broker-research-digest`）。草稿寫 `~/outbox/convergence/`，由 launchd `com.kenny.kbpublish.convergence` 每 60 秒發布、寫回執。
+排程是雲端排程「Convergence weekly 1600」（Require this computer，2026-10-05 起；舊桌面排程 `convergence-weekly-1500` 已停用），每週一台北 16:00，在 Mac 上執行並夾四個資料夾（`convergence-weekly`／`outbox`／`kb-core`／`broker-research-digest`）。草稿寫 `~/outbox/convergence/`，由 launchd `com.kenny.kbpublish.convergence` 每 60 秒發布、寫回執。
 
 ## 上游介面
 

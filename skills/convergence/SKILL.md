@@ -1,6 +1,6 @@
 ---
 name: convergence-weekly
-description: 產出主題匯流訊號報的每週一期。每週一台北 15:00 在 Mac mini 上執行（桌面排程 convergence-weekly-1500）；也可在互動對話說「跑這週的匯流」手動觸發。
+description: 產出主題匯流訊號報的每週一期。每週一台北 16:00 在 Mac mini 上執行（雲端排程 Convergence weekly 1600，Require this computer）；也可在互動對話說「跑這週的匯流」手動觸發。
 ---
 
 產出「主題匯流訊號報」的本期一期。全程繁體中文（台灣用語）。

@@ -100,7 +100,7 @@ SCHEDULE = {
     "podcast":         {"dow": None, "at": (3, 0),   "grace": 240},
     "chart":           {"dow": None, "at": (11, 30), "grace": 90},
     "bubble":          {"dow": 0,    "at": (9, 0),   "grace": 180},
-    "convergence":     {"dow": 0,    "at": (15, 0),  "grace": 180},
+    "convergence":     {"dow": 0,    "at": (16, 0),  "grace": 180},  # 2026-10-05 15:00→16:00（改雲端排程時）
     "broker-research": {"dow": 6,    "at": (23, 0),  "grace": 240},
     "houseview":       {"dow": 4,    "at": (16, 30), "grace": 180},
 }

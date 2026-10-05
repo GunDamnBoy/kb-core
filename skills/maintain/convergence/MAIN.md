@@ -25,7 +25,7 @@
 
 1. **取一份乾淨的對照**：`git clone --depth 1 https://github.com/GunDamnBoy/convergence-weekly.git /tmp/cwgh`，跟本機 `diff -rq`。有差異＝有人改了沒提交（下次發布會 exit 15），先帶進報告。
 2. 讀 `AGENT_BRIEF.md` 全文、`MAINTENANCE.md` 全文、`CHANGELOG.md` 最新一版＋版本索引。
-3. 用 `list_scheduled_tasks` 找 `convergence-weekly-1500`，記 cron／enabled／nextRunAt／lastRunAt，並讀 prompt 全文（`path` 欄位；讀不到時用 uploads 裡的副本），對照正本 `kb-core/skills/convergence/SKILL.md`。**lastRunAt 不是「那一輪有沒有跑」的證據**——看 `~/outbox/convergence/<日期>.receipt.json`。
+3. 排程是雲端排程「Convergence weekly 1600」（Require this computer），**不會出現在 `list_scheduled_tasks`**——請使用者在 App 的 Scheduled 頁截圖時間、資料夾與 Instructions，或在排程輪次內讀 uploads 裡的 prompt 副本，對照正本 `kb-core/skills/convergence/SKILL.md`。`list_scheduled_tasks` 只會看到已停用的舊桌面排程 `convergence-weekly-1500`。**lastRunAt 不是「那一輪有沒有跑」的證據**——看 `~/outbox/convergence/<日期>.receipt.json`。
 4. 讀 `data/index.json`（最近三期與量化快照、errata）、`data/calls.json`（戰績與未結案帳目——**它應該在每期發布後更新**，mtime 停住就是折帳壞了）、`data/upstream.json`（同理）。
 5. 讀最近兩期的回執與 `publish.log` 尾巴。
 6. 需要驗內容時：在 `/tmp` 跑一次 `prepare.py`（`--work` 指容器本地），再對最新一期跑 `kb-core/tools/convergence_verify.py`。**`healthcheck.py` 已退場，不要跑。**

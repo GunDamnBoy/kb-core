@@ -14,7 +14,7 @@ description: 七套自動化系統的維護入口——投顧知識庫儀表板�
 | Podcast 摘譯 | `podcast/` | `podcast-daily-300` | `~/podcast-knowledge-digest` | 節目清單、`podfetch`、轉錄、集數缺漏、成本基線 |
 | 外資報告週摘 | `research/` | 「外資報告週摘（週日深夜）」 | `~/broker-research-digest` | 外資／券商報告、精華、原句牆、立場帳本、標籤、浮水印、重製圖 |
 | AI 泡沫監控 | `bubble/` | `bubble-weekly-0900`（每週一） | — | 指標、層權重、計分錨點、觸發器、台股子模型 |
-| 主題匯流訊號報 | `convergence/` | `convergence-weekly-1500`（每週一） | `~/outbox/convergence/` → `com.kenny.kbpublish.convergence` | 每週、跨庫、訊號帳本、發布閘門、上游改版偵測 |
+| 主題匯流訊號報 | `convergence/` | 雲端「Convergence weekly 1600」（每週一 16:00） | `~/outbox/convergence/` → `com.kenny.kbpublish.convergence` | 每週、跨庫、訊號帳本、發布閘門、上游改版偵測 |
 | 國際市場 Houseview 月報 | `houseview/` | `houseview-weekly-1630`（每週五） | — | 月度 pptx、十五章、縱深、DROPPED、版面壓字 |
 
 **前四套是活的**（2026-08-22 查證：排程與 launchd 都在跑，且都接上了
@@ -35,6 +35,11 @@ description: 七套自動化系統的維護入口——投顧知識庫儀表板�
 **2026-09-29 查證**：桌面排程器上除 `convergence-weekly-1500` 外，其餘七支都是 **disabled**
 （lastRun 停在 9/18–9/24），而各庫仍有 9/28 的產出——看起來已改由別處觸發，待使用者確認。
 若確認，`tools/schedule_gaps.py` 的 `SCHEDULE` 要跟著改（見下節）。
+
+**2026-10-05 確認**：那七支是改成了 App 裡的**雲端排程＋「Require this computer」**（雲端派工、在 Mac 上跑、夾資料夾），
+**不會出現在 `list_scheduled_tasks`**——那支工具只看得到桌面排程，看到 disabled 不代表停擺。
+匯流同日也搬過去（「Convergence weekly 1600」，每週一 16:00），桌面的 `convergence-weekly-1500` 已停用。
+截圖上其餘幾支的時間與 `SCHEDULE` 相符；匯流的 15:00 → 16:00 已同步改進 `SCHEDULE`。
 
 
 **`advisory-knowledge-hub`／`chart-of-the-day`／`podcast-knowledge-digest`
