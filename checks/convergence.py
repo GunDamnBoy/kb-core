@@ -597,7 +597,7 @@ def _verdicts_complete(p):
     **沒有任何流程負責判它們**。這條檢查是那個接手的機械保證：
     當週到期的每一筆，要嘛有裁決，要嘛明講為什麼還判不了。
 
-    `未定` 必須寫理由，理由不是形式 —— 一個可以無理由填「未定」的欄位，
+    `延後` 必須寫理由，理由不是形式 —— 一個可以無理由填「延後」的欄位，
     就是「為了讓燈變綠而全部改判無法驗證」那條失效模式的入口，
     而那條**機器擋不住**，只能逼它留下痕跡讓人看得到。
     """
@@ -637,7 +637,7 @@ def _verdicts_complete(p):
     missed = [x["id"] for x in due if x["id"] not in seen]
     if missed:
         bad.append(f"{len(missed)} 筆到期而完全沒有裁決：{missed[:3]} —— "
-                   "**到期而沒被碰的主張是安靜地掉的**，判不了就寫「未定」加理由")
+                   "**到期而沒被碰的主張是安靜地掉的**，判不了就寫「延後」加理由")
     if bad:
         return fail("；".join(bad[:5]))
     n = {r: sum(1 for x in rulings if x.get("result") == r) for r in RESULTS}
