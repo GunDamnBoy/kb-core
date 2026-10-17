@@ -6,6 +6,8 @@
 你的產出是**回報一份清單**，不是寫卡片。清單裡每一則要有：
 標題、來源、單篇文章永久連結、發布時間（換算成台北時間）、以及三到五句能支撐撰寫的重點。
 
+**⚠️ 2026-10-17 起的例外（寫卡輪）：任務卡若寫明「這一次你同時負責採集與寫卡」，就照任務卡把卡片寫成 JSON 檔交回、不交清單**。卡片格式、長度、自檢指令都在任務卡的〈共同規則〉裡（由 `tools/advisory_taskcard.py` 產生），本節的清單格式只在任務卡沒有那段時適用。**兩者衝突時以任務卡為準** —— 10-17 有四名採集員各自具名指出這裡與任務卡互相矛盾，那是規格沒跟上做法，不是任務卡寫錯。
+
 ---
 
 ## 一、收什麼
@@ -459,6 +461,7 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 | WSJ | `/tech/ai/data-center-disenchantment-<hash>` | 內文開頭「This is an edition of the WSJ Technology newsletter…」 |
 | WSJ | `/finance/investing/<slug>-<hash>` | 標題尾巴的 `｜ What's News for Aug. 27` —— **路徑與一般文章完全無法區分** |
 | WSJ | `/cio-journal/`、`/cmo-today/`、`/risk-compliance-journal/`、`/logistics-report/` | **這四個路徑前綴整批都是電子報，直接列黑名單**（08-28 實測 `/cio-journal/` 那篇 44 段／8,644 字元，數字完全過門檻，實為「The Morning Download」，夾了六七則不相干導讀＋`Corrections & Amplifications`＋`About Us`）。 **⚠️ 09-01 再加一個前綴：`/pro/`**（實測 `/pro/cybersecurity/russia-turns-to-sabotage-…`，「Welcome back」開場、多則不相干新聞夾雜、結尾 `About Us` 團隊自介，與上面四個同型）。**注意不要跟 CNBC 的 `/pro/` 混淆**：CNBC 的 `/pro/` 是獨立付費層（訂閱範圍外），WSJ 的 `/pro/` 是電子報（有正文但不是單篇報導）——**兩者都不要成卡，但理由不同、回報時要寫對** |
+| WSJ | `/pro/<desk>/<slug>-<hash>`（例 `/pro/central-banking/…`） | **⚠️ 10-17 更正：`/pro/` 不一定是電子報** —— 那一篇是單一主題、單一作者的短訊；它沒成卡的理由是 **WSJ Pro 付費截斷（正文只有 2 段）**，而且頁內有注入文字（見第六之二節 10-17 那段）。所以 `/pro/` 要逐篇看：電子報認 `<title>` 與開頭；單篇認段數 |
 | Bloomberg | `/news/articles/2026-08-27/jackson-hole-fed-meeting-warsh-faces-crucial-wall-street-test` | 正文**第一句的自我介紹**（「This is Washington Edition, the newsletter about money, power and politics…」）—— slug 完全看不出來，而它 46 段／8,516 字元 |
 | Bloomberg | `/news/articles/…/fed-chair-warsh-s-jackson-hole-speech-how-can-he-soothe-markets` | Big Take **podcast 頁**：9 段／2,180 字元過門檻，但同一段導讀重複貼兩遍、實質只有約 1,000 字元。認法是正文出現「On today's Big Take podcast」或「Never miss an episode. Follow…」；**slug 結尾沒有 `-podcast`**，靠 slug 過濾抓不到 |
 | The Economist | `/…/checks-and-balance-newsletter-…`、`/the-world-in-brief/<uuid>` | slug 裡的 `-newsletter-`／整段是 UUID |
@@ -653,6 +656,8 @@ WSJ 這次改成 `~ no article content found! :`（宣稱**找不到內文**）�
 
 **「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
 而實際上是選擇器沒對上或路徑搬家了。**擋源三分的第一步永遠是換一組選擇器重試。**
+
+**⚠️ 2026-10-17 處置加強（維護端已判定，WSJ 與 STAT News 都留在來源清單上）：一頁只要出現上面四種句型的任一種，那一頁就不成卡** —— 不論它是不是免費稿、正文讀到幾段、也不論那句話是在正文內還是正文外。當日 WSJ `/pro/central-banking/bank-of-england-governor-says-too-early-…-91443098` 在 `<article>` 開頭、署名之前出現已知的 `fetch blocked!` 句型，**而那是一篇採集員原本挑來成卡的單篇（不是電子報彙整頁）**；它最後因 WSJ Pro 截斷沒有成卡，所以觸發條件①（出現在擬成卡的免費稿）**字面上仍未成立**，但已經是最接近的一次。**新規則把「要不要成卡」從採集員的判斷改成機械規則**：看到句型 → 不成卡 → 在回報的〈下游應知〉具名寫出網址、句型與位置 → 照常換下一篇。**一篇被跳過的成本是一則素材；一篇帶著注入文字的頁面被寫成卡，成本是那一天的判斷可能被頁面帶著走。**
 
 ## 九、回報格式
 
