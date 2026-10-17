@@ -6,7 +6,7 @@
 |---|---|---|
 | `kb-core/podcast/BRIEF.md` | **什麼算對的產出**、當期失敗判準 | 每日排程 |
 | `kb-core/podcast/anchors.json` | **每一個數字**：篇幅層級、每集件數、受控詞表、去重、品質門檻、帳本規則 | 每日排程、`checks/podcast.py`、podfetch |
-| `kb-core/scripts/podcast/DIGEST-PROMPT.md` | **每天怎麼跑**：順序與分支判斷（**正本**；排程 `SKILL.md` 是它的副本） | 每日排程 |
+| `kb-core/scripts/podcast/DIGEST-PROMPT.md` | **每天怎麼跑**：順序與分支判斷（**正本**；2026-10-17 起排程只放指標、叫執行者讀它） | 每日排程 |
 | `kb-core/scripts/podcast/preamble.md` | **撰寫 subagent 的規則**，派工時整份給它 | 每集的撰寫 subagent |
 | `kb-core/scripts/podcast/dispatch-common.md` | **派工單每天都一樣的那一半**：交件 JSON 形狀、`sourceLayer` 定義、工作目錄規則、無人值守硬規則（2026-10-03 新增）。**規則不寫這裡**，寫 `preamble.md` | 每集的撰寫 subagent（與 preamble 一起給） |
 | `AGENT_BRIEF.md` | **只剩四塊是權威的**：第 1 節節目清單與全文來源（含 A／B 分類與官方稿入口）、第 2 節 podfetch 管線、第 6 節基礎設施、第 8 節變更紀錄。其餘看開頭的失效橫幅 | 維護者；每日排程只在需要 A 類清單時讀第 1 節 |
@@ -30,14 +30,14 @@
 （這比上一版的「任務卡」好一點：任務卡是抄在 `SKILL.md` 裡的一段文字，
 `preamble.md` 是一個真實檔案，至少 diff 得出來。）
 
-**是債的那處：排程 `SKILL.md` 對 `DIGEST-PROMPT.md` 的整份複製。**
-正本在 kb-core，排程那份是副本，**改動一律先改正本再整份貼過去**。
+**是債的那處：排程 `SKILL.md` 對 `DIGEST-PROMPT.md` 的整份複製。**（**2026-10-17 已清償**：排程改成指標式 prompt、不再有副本。本段以下的驗法只在有人把副本貼回去時才用得到；要驗的改成「排程那段指標還指著對的路徑」。）
+（以下為 10-17 之前的規矩，只在有人把副本貼回去時適用）正本在 kb-core，排程那份是副本，改動一律先改正本再整份貼過去；
 沒有任何機制在維持這件事，所以每場維護都要 `diff` 一次。
 
 **同步是一個時點的事實，本檔只寫「怎麼驗」、不寫「驗過了」。**
-驗法：`diff <(cat kb-core/scripts/podcast/DIGEST-PROMPT.md) <(排程那份)`，只差 front matter 五行才算同步。
-**排程那份對檔案工具唯讀，沙箱也看不到 `/Users/macmini/Claude/Scheduled/`** —— 排程執行時它會整份出現在
-`uploads/SKILL.md`（那就是當天真的跑了什麼），互動場次則 `Read` `list_scheduled_tasks` 回傳的 `path`。
+驗法：`diff <(cat kb-core/scripts/podcast/DIGEST-PROMPT.md) <(排程那份)`，逐字相同才算同步（2026-10-17 實測：正本已沒有 front matter；副本檔尾少一個換行符不算差異）。
+**排程那份是雲端排程「Podcast daily 0300」的 prompt**（2026-10-05 起）：用 `mcp__claude-code-remote__list_triggers` 翻頁找到它、讀 `derived_state.prompt`；
+`list_scheduled_tasks` 看不到它，排程執行時也不再出現 `uploads/SKILL.md`（2026-10-17 訂正）。
 
 **第二處債：`kb-core/skills/maintain/` 正本 ↔ 已安裝技能副本。**
 改維護文件要「改 kb-core 正本 → 整個 `maintain` 目錄打包成 `.skill` → 安裝覆蓋」，

@@ -223,8 +223,7 @@
 
 **付費訂閱（從已登入的 Chrome 讀）**：Bloomberg、WSJ、NYT、Nikkei Asia、
 Washington Post、Barron's、IBD、Politico、The Hill、
-SemiAnalysis（**文章在 `newsletter.semianalysis.com`**，`semianalysis.com` 只剩訂閱模型頁）、
-The Economist。
+SemiAnalysis（**文章在 `newsletter.semianalysis.com`**，`semianalysis.com` 只剩訂閱模型頁）。
 
 **Barron's 是計量制，不是「可讀／不可讀」的二分。** 2026-08-19 同一天測到兩種相反的結果：
 傍晚兩篇 `article.access=paid` 的個股與財報文都完整讀到（13 段／2,331 字、15 段／2,784 字），
@@ -239,7 +238,7 @@ The Economist。
 `…/articles/bond-yields-markets-fear-index-vix-9c4edcaf` 變成
 `…/articles/bond-yields-stock-market-fear-index-vix-9c4edcaf`。
 **交卡前一律讀一次載入後的最終網址**，否則讀者隔天點進去會 404。
-（The Economist 也有這個行為，見第六節該列——**兩家都是「有時」不是「一定」**，
+（已除名的 The Economist 當年也有這個行為——**這種改寫是「有時」不是「一定」**，
 所以不能靠「上次沒變」推論這次不會變。）
 
 **開場可用性測試對計量制來源會樂觀。** 測試時額度還在，判定「可讀」；採集到中後段才發現被截斷。
@@ -275,7 +274,8 @@ KED Global（已由 Korea Herald 取代）、COMEX 黃金庫存（連三輪確�
 CME FedWatch 官網（跨網域 iframe ＋ reCAPTCHA，改用 Investing.com Fed Rate Monitor）、
 WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續三輪被重導）、
 **FT（2026-08-19 開場測試：文章頁標題 "Subscribe to read"、內文 0 段 ——
-沒有有效訂閱，屬「訂閱範圍外」而不是「被擋」）**。
+沒有有效訂閱，屬「訂閱範圍外」而不是「被擋」）**、
+**The Economist（2026-10-17 除名：Chrome Home 已登入但帳號沒有訂閱 —— 帳號選單有「Log out」、頁面同時顯示「Subscribe」，社論正文只讀得到約 2 段；連十一輪 0 卡、另有 DataDome 風控頁紀錄。與 FT 同屬「訂閱範圍外」，不是登入問題）**。
 
 **FT 那一則的分類要看清楚。** 內文 0 段很容易被記成「被付費牆擋」，但被擋的前提是
 **有訂閱卻讀不到**；沒有訂閱就讀不到是預期行為，不是故障。兩者記錯會污染來源健康度：
@@ -284,7 +284,7 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 **除名清單比來源清單更重要。** 2026-08-10 有兩組各自讀到已移除三天的 Reuters，
 4 則素材全數捨棄 —— 因為當時只從清單裡刪掉，沒有寫進黑名單。
 
-**節奏正常，不是降級**：SemiAnalysis 週更一到兩篇、The Economist 是週刊。
+**節奏正常，不是降級**：SemiAnalysis 週更一到兩篇。
 窗口內沒有新文是它們的正常狀態。
 
 **選擇器與路徑（撞過才記的，末欄是最後一次實測的日期）**
@@ -295,7 +295,6 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 `/"articleUrl":"[^"]*?wsj\.com(\/[^"]+)"[\s\S]{0,900}?"timestamp":"([^"]+)"/g`
 —— 08-28 在 `/2026/08/27` 上抓到 **138 組配對、全數落在窗口內**（最早 05:14Z、最新 23:57Z）。**舊寫的 `{"url":…,"timestamp":…}` 那個形狀今天配不到任何一筆**（`cnt` 有 136 個 timestamp、`arr` 卻是空的），而它失敗的樣子是「回 0 筆」——跟「今天沒新聞」一模一樣。**`/news/latest-headlines` 08-28 整個沒有 `__NEXT_DATA__`（`getElementById` 回 null），不要拿它預篩。** 頂層版面頁（`/finance`、`/economy`、`/politics`、`/world`、`/tech`…）仍帶 50–86 筆，子版面頁（`/world/europe`、`/finance/banking`…）只有固定 35 筆全站 top-stories，把「0 筆」當成「該版面無新聞」會漏稿。`/livecoverage/` 是滾動直播頁、其 `/card/` 也不是單篇永久連結，不要當文章用。**正文用 `get_page_text` 取回是可靠的**（`Source element: <article>` 回完整正文），不是 Bloomberg／Barron's／MarketWatch 那種低估；`javascript_tool` 回傳 WSJ 全文會被工具層擋掉（`[BLOCKED: Cookie/query string data]`，觸發物疑為頁尾的 Dow Jones 追蹤雜湊），**用 `javascript_tool` 量段數與取 `ld+json`、用 `get_page_text` 取正文**。**08-29 補兩條**：①`__NEXT_DATA__` 的配對正則仍然有效，`/news/archive/2026/08/28` 抓到 117 組、時間戳範圍 `04:00Z → 次日 04:00Z`，**美東日界確認**；跨窗口起點時**必須抓兩天的 archive**，只抓當天會漏掉台北 07:00–12:00 那五小時。②**`/politics/` 也會出電子報**（`/politics/cia-chiefs-trip-to-moscow-has-everyone-on-edge-<hash>` 實為 WSJ Politics Newsletter，`main p` 只有 10 段／794 字元、正文開頭是 `NEWSLETTERS` ＋ `Good morning.`），**唯一認得出來的地方是 `<title>` 尾巴的 `Newsletter for <日期>`** —— 它同時不符「完整」也不符「被擋」，換選擇器救不回來，因為本來就沒有正文。 **⚠️ 08-30 查清了 archive 那個 `timestamp` 到底是什麼：它是 `dateModified`，不是 `datePublished`。** 兩次獨立實測——一篇 archive 顯示 `08-29T02:15`、`ld+json` 的 `datePublished` 是 `08-29T00:38Z`、`dateModified` 正好是 `02:15`；另一篇 archive 顯示 `08-29T18:42`、而 **`datePublished` 是 `08-28T20:44Z`（早於窗口起點），標題也已從 `detained` 改寫成 `Deports`**。**影響方向是單向的**：用 archive timestamp 篩窗口**不會漏抓**（published ≤ modified），但**會混入窗口外的舊稿改版** —— 所以 **archive timestamp 只能當粗篩，落窗判定一律用文章頁 `ld+json` 的 `datePublished`**。 **⚠️ archive 頁要等 5–6.5 秒 `__NEXT_DATA__` 才進 DOM**：08-30 開場測試在第 3 秒 `getElementById` 回 null、0 組配對（**長得跟「今天沒新聞」一模一樣**），第 5 秒才有；採集端用 6,500ms 兩次都一次取到。**週末的量本來就少**：08-29（週六）整日 archive 只有 24 組配對，08-28（週五）121 組，平日 117–138 —— **24 組不是漏抓** **⚠️ 09-08 補三條，第一條會安靜吃掉「同一來源 15 篇」的額度。****①版面頁的 `articleUrl` 帶 `?mod=` query string，archive 頁不帶。**實例：同一篇 Merz 稿在 archive 是 `/world/europe/after-far-right-…-670f62c7`，在 `/politics` 版面頁是 `…-670f62c7?mod=politics_whatsnews_pos4`。**不先 `.split('?')[0]` 再去重，同一篇會被算成兩篇**，而本列上面那個配對正則沒有處理這件事。**②它會改寫標題但不改網址 —— 方向與 Economist／Barron's 的 slug 改寫相反。**三個實例：`…jlr-plans-redundancy-program…` 的 `<title>` 已是「Range Rover Maker JLR to Cut Jobs in $2 Billion Savings Push」；`nikkei-rises-1-8-led-by-chip-related-stocks` 已是「European Chip Stocks Rise, Buoyed By Asian Peers」；`investors-move-markets-read-signs` 已是「Institutional Investors Move Markets. Here's How to Read Their Signs.」。**網址全部沒變、不會 404，但拿 archive 列表標題寫卡的人會寫出一個頁面上找不到的標題** ——**標題一律取自載入後的 `<title>` 或 `h1`**。**③美國國定假日的 archive 產量介於週末與平日之間**：09-07（勞動節週一）只有 **70 組配對**（對照平日 117–138、週五 121、週六 24），同日 `/politics` 版面頁只有 27 筆（本列上面記頂層版面頁 50–86）。**70 組不是漏抓，是假日節奏** | 09-08 |
 | **Washington Post**（2026-09-04 新增，**先前整張表上沒有這一家**） | 正文 **`article p`**（09-04 實測 21 段／6,991 字元與 10 段／1,755 字元）。**`main p` 會混入側欄**：同一篇資料中心稿 `article p` 33 段 vs `main p` 56 段 —— **判定用 `article p`，不要拿 `main p` 的段數當第二個判準**（同 Bloomberg 09-02 與 Korea Herald 兩列的形狀）。發布時間取 `meta[property="article:published_time"]`（真 UTC，＋8 得台北），09-04 實測五個頁面每篇都有值。**⚠️ 導覽後要等 2–3 秒再量**，太早量會拿到 0 段 —— 同輪主線在開場測試時就因此量到一次 0 段，差點誤判。**⚠️ 這一家也有電子報彙整頁，路徑格式與一般文章完全相同**，見「電子報彙整頁」那一節該列 **⚠️ 09-13 新增一條本列先前沒有的：列表頁不能用同網域 `fetch()` 預篩，回的 HTML 一條文章連結都沒有。** 當日採集員 B 對 `/world/`、`/business/`、`/technology/`、`/politics/`、`/national-security/`、`/climate-environment/`、`/world/middle-east/`、`/world/europe/` 各發一次 `fetch()` 並抽路徑日期，**八個版面全部回 0 條連結、而且沒有任何錯誤** —— 那個形狀跟「今天沒新聞」一模一樣。**改用已載入頁面的 DOM**（`document.querySelectorAll('a[href]')` 篩含四位年份與月日的路徑），同一個 `/world/` 立刻拿到 **25 條、其中 5 條是當日**；**首頁 DOM 最有效率，一次 105 條、其中 34 條落在當日與次日**。**這一家是客戶端渲染，不是擋你。** 代價已經量到：那八次白打佔掉當輪 WaPo 預篩額度的 **40%** | 09-13 |
-| The Economist | 正文 `article p`；**備援用 `main p`（兩者完全等值），`[data-test-id="Article Body"] p` 已死、回 0 段**。`article:published_time` 與 `ld+json` 的 `datePublished` 一致到毫秒，可直接當落窗依據。**週刊節奏，窗口內沒有新文是正常的**；另外 `/the-world-in-brief/<uuid>` 與 `/…/checks-and-balance-newsletter-…` 都是**電子報彙整頁不是文章**，後者的路徑與一般文章一模一樣，只有 slug 裡的 `-newsletter-` 認得出來。**⚠️ 它會改寫 slug，但是「有時」不是「一定」**：08-29 開場測試那篇載入後路徑由 `…giorgia-meloni-is-italys-steadiest-postwar-prime-minister` 變成 `…giorgia-meloni-is-fusing-populism-and-moderation`，而同輪另一篇完全沒變。**交卡前一律讀一次載入後的最終網址**（否則讀者隔天可能 404），但不必預設它會變。 **⚠️ 08-30 補兩條路徑行為。①`economist.com/latest` 會 302 到首頁**（不是 404，所以不會報錯，只是你以為在看最新清單、其實在看首頁）。**②版面頁會 rewrite 成 `/topics/<name>`**（`/europe`、`/finance-and-economics`、`/britain`、`/international` 皆是），**連結清單仍然正常**，看到網址變了不是被導走。 **⚠️ 週末的產量極低**：08-30 全站窗口內只有 **1 篇真文章**，其餘全是 `the-world-in-brief`、`-newsletter-` 與 podcast —— **那是週刊節奏，不要記進來源健康度**。 **⚠️ 09-06 補一條這一列先前沒有的：文章頁要輪詢，第一次量會回 0 段。** 實測 `navigate` 之後立刻量，`article p` 與 `main p` **雙雙回 0 段**、`document.title` 只有 `economist.com`；輪詢到有內容後同一頁是 **26 段／7,841 字元**。**那個形狀跟「被擋」「選擇器搬家」一模一樣**，而它只是還沒渲染。WSJ 與 MarketWatch 兩列都記了同一個坑，這一列先前沒有 —— 所以碰到 0 段先確認你等過，再懷疑別的。列表頁同樣要等（五個版面首次查詢時 `a[href]` 命中 0–2 條，輪詢「命中數 > 3 才跳出、上限 20 秒」五次都在 3 秒內滿足） **⚠️ 09-15 補一條，它與上面那個「先確認你等過」不是同一件事，而且要先判它：這一家會回機器人風控攔截頁，而它的症狀與「還沒渲染」逐項相同。** 當日實測 `document.body.innerText` 長度 **0**、`a[href]` **0 個**、`document.title` 只剩 `economist.com`，**輪詢 27 秒沒有任何變化**。**分辨它只要一次 JS**：攔截頁的 `document.documentElement.outerHTML` **長度約 111,130–111,199 字元**（三個不同網址量到的值幾乎等長，因為那本來就是同一張頁），且內含 `cmsg`、`DataDome`、`captcha` 三個字串（實測位置 `cmsg` 在第 259 字元、`captcha` 在 109,532、`DataDome` 在 110,432）。同網域 `fetch(location.pathname)` 回 **HTTP 403、776 bytes**。**不要嘗試通過 CAPTCHA，那是合規紅線。** **判它是「被風控擋」而不是「週刊沒新文」很重要，因為兩者的處置相反**：當日**六個 RSS 端點全部回 200**（`/europe`、`/britain`、`/finance-and-economics`、`/business`、`/international`、`/the-world-this-week`，各 300 筆上下），**證明窗口內它確實發了 3 篇真文章**（含瑞典大選結果與 Anthropic 2 兆美元 IPO），**只是正文一個字都讀不到**。**所以 RSS 是目前唯一還通的路，而它只給得出標題與時間戳 —— 拿 RSS 的標題去寫卡等於沒讀過原文，不可以。**遇到這個指紋就直接判零素材並具名回報，不要再輪詢。 | 09-15 |
 
 **「回 0 段」與「被擋」長得一樣。** 上表每一列都曾經以「這家今天讀不到」的形式出現過，
 而實際上是選擇器沒對上或路徑搬家了。**擋源三分的第一步永遠是換一組選擇器重試。**
@@ -307,68 +306,6 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 而〈發稿日曆〉那一節按「表上出現了誰的來源」分派，於是 **A、C、E 三份切片從來看不到它**
 —— 同一個形狀在 08-30 的選擇器表上發生過一次，那一次的護欄只罩住了表本身。
 **判準：不綁來源的散文不要放在按來源分派的子節裡。**）
-
-### 發稿日曆：哪幾家在哪幾天本來就不發稿
-
-**窗口內零發布與「這家讀不到」是兩件完全不同的事，而它們的症狀一模一樣。**
-下面這幾條是撞過才記的，**看到就直接判節奏、不要再花請求去複驗**：
-
-| 來源 | 什麼時候本來就沒有 | 實測 |
-|---|---|---|
-| SemiAnalysis | 週更一到兩篇，多數窗口內是 0。**⚠️ archive 的日期是全大寫 `SEP 16`，大小寫敏感的正則回 0 筆 —— 而 0 筆跟「這家窗口內沒新文」長得一模一樣。** 09-17 採集員 D 第一次用 `(Jan\|Feb\|…\|Sep\|…)` 掃**回 0 筆**，改掃原始文字才看到 `SEP 16` 那一篇。**正則要加 `i` 旗標**，格式是 `SEP 16 • <作者群>` | 08-30 archive 最新 08-25，其後 08-24／08-21／08-19／08-16／08-10；09-17 archive 最新 SEP 16（**而那正是前一版用過的那一篇**，依跨版去重排除，窗口內可交 0 則 —— **那是節奏加去重，不是來源故障**） |
-| The Economist | 週刊；**週末全站可能只有 1 篇真文章**（其餘是 `the-world-in-brief`、`-newsletter-`、podcast） | 08-30 實測全站窗口內真文章 1 篇 |
-| Oil & Gas Journal | 美東下午之後就不發稿，**週六不發** | 08-30 窗口內 0 篇 |
-| EIA | 週報行事曆：石油週三、天然氣週四 | 08-30 頁面健康、`Next Release: September 2` |
-| **CME 金屬結算表**（`metals/precious/gold.settlements`） | 只有交易日有；**週五結算會在台北週六 12:55 貼出**，那是週末窗口唯一穩定的「新發布」。**輪詢條件用 `document.querySelectorAll('table tr').length > 3`，08-30 實測 500ms 就滿足**，不必等秒數 **⚠️ 09-13：`Last Updated` 那個頁註的語意變了，現在是渲染時鐘、不是資料貼出時刻。** 當日採集員 D 在連續六次呼叫中量到頁註**逐次遞增**（CT 20:33:34 → 20:33:37 → 20:33:47 → 20:34:13 → 20:34:14 → 20:34:21），而先前歷次紀錄的頁註都是資料貼出時間（如 `04 Sep 2026 11:55 CT`）可直接當「這批結算什麼時候貼的」。**後果：現在無法從頁面量到結算貼出時點，`ts` 只能用「週五結算台北週六 12:55 貼出」這個慣例推定並標估值。** 好消息是它同時給了一個量得到的取數時鐘（CT 換台北 ＋13 小時）。~~**下一輪請覆測這個欄位的語意**~~ **✅ 09-17 覆測完畢，語意沒有變 —— 頁面上本來就有兩個 `Last Updated`，09-13 掃到的是另一個。** 採集員 D 當日在 WTI 頁第一次用 `/Last Updated[^\n]{0,40}/` 掃**全頁第一個命中**，拿到 `16 Sep 2026 07:17:20 PM CT`（**市場資料免責聲明區的渲染時鐘**）；改成定位到 `TRADE DATE` 附近再取，拿到 `15 Sep 2026 11:55:00 PM CT`（**結算貼出時刻**，與本列歷次紀錄同型）。**兩個都一直在，差別只在抓法命中了哪一個。** **現行取法：一律以 `TRADE DATE` 字串為錨、取其後 80 字元內的 `Last Updated`，不要對全頁掃第一個命中。** **所以 09-13 記的「無法從頁面量到結算貼出時點、`ts` 只能推定」不成立，`ts` 可以量到**；而那個渲染時鐘順帶給了一個量得到的採集牆鐘（09-17 那次 CT 19:17 ＝ 台北 08:17）。**這一筆值得記的是形狀**：一個「欄位語意變了」的結論，實際成因是**選擇器選中了同名的另一個東西** —— 同本節 Nikkei 與 Korea Herald 兩列反覆記的那一種 | 09-06 實測 TRADE DATE `Friday, 04 Sep 2026`、頁註 `04 Sep 2026 11:55 CT`，14 列；09-17 六頁同批量到 TRADE DATE `Tuesday, 15 Sep 2026`、結算頁註 `15 Sep 2026 11:55:00 PM CT` |
-| **CME 能源結算表**（WTI／Brent LDF／天然氣／RBOB） | **⚠️ 2026-09-06 從上面那一列拆出來：能源與金屬的行為不一樣，而先前寫成同一條。** 同一批呼叫內，金屬結算已到 `Friday, 04 Sep 2026`，而**能源三頁全部停在 `Wednesday, 02 Sep 2026`**。做過破快取複驗（網址帶 `#cachebust`）：TRADE DATE 仍是 02 Sep，**而同頁的市場狀態時鐘自報 `Last Updated 05 Sep 2026 07:24:36 PM CT`** —— **頁面是活的、渲染是新的，只有結算資料日沒前進，確認不是瀏覽器快取。** **所以台北早上讀能源 settlements，拿不到週四與週五的結算；要週五數字只能走 `*.quotes.html`（Globex 最後成交價 LAST，非結算價）。** 兩個口徑不可混用，卡上各自標明。**這一列還不知道的是它會落後幾天** —— 09-06 那次是落後兩個交易日，單一觀測不足以寫成常數，**下一輪碰到能源結算時把 TRADE DATE 抄回報告，累積到三次再判** **⚠️ 09-13 第二次觀測到了，而結果相反：能源沒有落後金屬，五頁完全同步。** 當日採集員 D 在同一批呼叫內讀到 **WTI、Brent LDF、天然氣、RBOB、ULSD 與金屬六頁的 TRADE DATE 全部是 `Friday, 11 Sep 2026`**。**這是合格的第二次觀測**（09-09 那一輪只量了能源、沒有同時量金屬，該日 CHANGELOG 已明寫「不要拿它當成第二次」）。**所以 09-06 那次落後兩個交易日不宜寫成常數，它更像當週的一次性現象。** 實務上的差別很大：**能源結算可用時就用官方 SETTLE，不必退回 `*.quotes.html` 的 Globex 最後成交價** —— 09-09 那一輪六張全走 quotes，而 09-13 四張全走 settlements，**兩輪的口徑說明因此不可沿用前一版**。~~**第三次觀測仍然要收**：下一輪請照舊把六頁的 TRADE DATE 一起抄回報告，**而且要同一批呼叫內同時量金屬與能源**，否則不算~~ **✅ 09-17 收到了合格的第三次觀測，本列結案：能源與金屬同步是常態，09-06 那次落後兩個交易日是一次性現象。** 採集員 D 當日**在同一批連續呼叫內**讀到 WTI、Brent LDF、天然氣、RBOB、ULSD、黃金**六頁的 TRADE DATE 全部是 `Tuesday, 15 Sep 2026`**（符合 09-13 訂的「同一批呼叫內同時量」這個門檻）。**累積三次：1 次落後（09-06）、2 次同步（09-13、09-17）。** **實務結論：台北早上讀能源 settlements，預設它跟金屬一樣可用、直接走官方 SETTLE；讀到落後再退回 `*.quotes.html`，不要預先假設要退。** **⚠️ 但「當日結算拿不到」這件事沒有被推翻、而且是結構性的**：當日結算美東 23:55 CT 才貼、換台北是次日 12:55，**所以台北早上的輪次永遠讀到的是前一個交易日的結算**（09-17 那一輪六頁全是 09-15，而當天是 09-17）。**這一條與「能源有沒有落後金屬」是兩件事，不要混起來讀** | 09-13；**09-17 三次收齊、結案** |
-| ~~CME 各結算表（合併寫法）~~ | ~~只有交易日有；但週五結算會在台北週六 12:55 貼出~~ **09-06 拆成上面兩列。** 留這一列是因為那句合併寫法會讓下一輪把「能源結算沒前進」誤判成故障 | 08-30 四頁 TRADE DATE 皆 `Friday, 28 Aug 2026`、頁註 `28 Aug 2026 11:55:00 PM CT`。 **⚠️ 2026-09-01 補一條，它擋的是誤判不是失效**：這一頁**未達輪詢條件時 `table tr` 回 0、`body.innerText` 只有約 2 千字元**，看起來像連不上；實測輪詢後 14 列正常。**「0 列」是還沒渲染，不是站方擋你。** 同日另確認 `TRADE DATE` 欄位要當成資料，不要當成今天：台北 09-01 上午讀到的仍是 `Friday, 28 Aug 2026`——**週一的結算要等美東當天收盤後才貼**，所以週二輪拿不到週一結算是節奏，不是故障 |
-| MoneyDJ 編輯稿 | **週末不出**，只有 MOPS 公告轉發流 | 08-30 七個分類窗口內合計 1 則產業稿 |
-| 鉅亨 Anue 台股本體稿 | 週末發稿量極低，`tw_stock` 可能整個窗口只有一批 | 08-30 最新一筆停在 8/29 10:36 |
-| TrendForce 中文站 | 非每日 | 08-30 `/presscenter/news` 最新 08-28 |
-| **Fierce Biotech** | **以工作日為主，偶有週末排程稿** —— ~~純工作日出刊~~ 09-13 推翻：窗口內唯一一篇是 **週六 19:00 ET 整點**（`article:published_time` `2026-09-12T19:00:00-0400`），形狀像排程發布。**一次觀測不足以定案，累積到三次再判**；在那之前**不要因為是週末就跳過這一家不掃** | 08-30 全站最新美東 8/28 13:50；09-13 窗口內 1 篇（週六 19:00 ET） |
-| **STAT News** | 週末只有零星稿，且常是 STAT+ | 08-30 `/feed/` 窗口內僅 1 篇、且是訂閱牆 |
-| **Kitco News** | **純工作日出刊，週末零篇** | 08-31 首頁 68 條 ＋ `/opinion` 34 條、**合計 102 條連結裡 8/29（六）與 8/30（日）各 0 篇**；分佈是 8/24 10、8/25 2、8/26 3、8/27 33、8/28 50 |
-| **LBMA 定盤（`prices.lbma.org.uk/json/gold_*.json`）** | **跟著英國銀行假日休市——那一天沒有定盤，不是端點壞了。** 定盤由 IBA 每個*倫敦交易日* 10:30（AM）與 15:00（PM）各一次；英國放假就整天不定，序列直接跳過那一天。**看到尾端沒有往前走，先查那天是不是英國銀行假日，再懷疑來源。** 2026 的日子：01-01、04-03（耶穌受難日）、04-06（復活節週一）、05-04、05-25（春季）、**08-31（夏季）**；之後還有 12-25、12-28。**這一條同時解釋一個會嚇到人的組合**：美國正常交易、倫敦休市時，**SPDR 有新資料點而 LBMA 沒有**——那不是矛盾，是兩個市場的假日不同步 | 2026-09-01 實測：PM 序列 14,672 筆，2026 六個英國銀行假日**全部缺席**、假日隔天（05-26）有；2025 的三個對照（08-25、05-26、04-21）也全部缺席 |
-
-**⚠️ 生技健護這一組在週日輪會結構性偏薄，這是窗口與出刊日的乘積，不是你採得不好。**
-週日輪的窗口換算美東是**週五 19:00 → 週六 20:30**，完整落在美國週五收盤之後到週六，
-而 Fierce Biotech 與 STAT News 是純工作日媒體。2026-08-30 那一輪對**九個來源**逐一查證，
-最接近的健護稿**全部卡在窗口起點前 1 到 20 小時**：Fierce 早 5 小時、CNBC 健護版早 12 小時、
-WaPo 健康版早 14 與 10 小時、Korea Herald 的三星生物增資早近 20 小時、WSJ `/health` 早 54 分鐘、
-The Economist 科技版早 6.6 小時、Mint 製藥版最新 8/24、Bloomberg 八個版面無一健護、
-STAT 僅 1 篇 STAT+。**那一輪為此跑了兩輪補位、花掉 21 分鐘，最後仍只補到 1 則邊緣稿。**
-
-**七次週末輪的實交量是 2–4 則、下限 2 從未被破**（08-09 起依序 3／4／3／2／3／4／2）
-—— **交到 2 就是達標，不必為了湊第三則自己去別人的來源找**。
-真的還缺，就在回報裡寫明「差幾則、查過哪些頁面、各頁最新一筆的時間戳」，
-**由派工端決定要不要跨組指派** —— 跨組是派工的權限，不是採集員的。
-那份否定證據跟素材一樣有價值，它會被寫進當期的 `about.run`。
-
-**⚠️ 黃金組在週末輪只有官方數據卡，這是市場結構不是採集失誤 —— 加來源解決不了。**
-2026-08-28 的判斷是「先有來源，才有餘裕」，08-30 補了限定詞「先有**在你那一輪會發稿的**來源」。
-**2026-08-31 把這條追到底，結論是：週末不存在那樣的來源，因為貴金屬市場本身週末休市。**
-
-當輪為此做了三件事，證據都列在這裡：
-
-- **連續第三輪的否定證據**：MarketWatch `/column/metals-stocks` 最新 **2026-06-08**、
-  `/investing/commodities` 唯一的黃金稿同為 2026-06-08 常青稿、
-  Tom's Hardware `/feeds.xml` 窗口內 13 則無一貴金屬、SemiAnalysis 窗口內唯一一篇是 neocloud 資安。
-- **新增了 Kitco News 給 D**（見上表與發稿日曆），它是專做貴金屬的新聞室、
-  週五單日就發 50 篇 —— **但它週末零篇**，實測 102 條連結裡 8/29 與 8/30 各 0。
-- **另試了 Mining.com**：`/markets/commodity/gold/` 上九則裡只有 **1 則**標 `August 30, 2026`，
-  頁面本身也很薄（3,438 字元）。**不足以當一家來源，只當一條旁證。**
-
-**所以要分開講兩件事**：
-**①平日輪的缺口，Kitco 修好了** —— 在此之前 D 手上七家來源沒有任何一家做黃金新聞，
-黃金組平日也只能靠官方數據卡，那是真的缺來源。
-**②週末輪的缺口修不好，也不該修** —— LBMA 不定盤、COMEX 不結算、ETF 不申贖，
-**那一天本來就沒有新的黃金事實可寫**。硬要湊敘事只會拿到週間舊聞的改寫稿。
-
-**週末輪的正確做法**：黃金組交下限 2 則官方數據卡（GLD、GLDM 或 LBMA 定盤三選二），
-在卡片正文首段明講「本期無新資料點」與成因，
-**並把跨期序列的變化寫出來** —— 衛星組的價值在跨期累積，不在當日新聞性。
-**不要為了湊配額 3 去開補位輪**（2026-08-30 為生技組跑兩輪補位、21 分鐘只換到 1 則邊緣稿，
-那個教訓在這一組同樣成立）。
 
 ### `[BLOCKED: Cookie/query string data]` 是工具層攔截，不是來源出問題
 
@@ -464,7 +401,6 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 | WSJ | `/pro/<desk>/<slug>-<hash>`（例 `/pro/central-banking/…`） | **⚠️ 10-17 更正：`/pro/` 不一定是電子報** —— 那一篇是單一主題、單一作者的短訊；它沒成卡的理由是 **WSJ Pro 付費截斷（正文只有 2 段）**，而且頁內有注入文字（見第六之二節 10-17 那段）。所以 `/pro/` 要逐篇看：電子報認 `<title>` 與開頭；單篇認段數 |
 | Bloomberg | `/news/articles/2026-08-27/jackson-hole-fed-meeting-warsh-faces-crucial-wall-street-test` | 正文**第一句的自我介紹**（「This is Washington Edition, the newsletter about money, power and politics…」）—— slug 完全看不出來，而它 46 段／8,516 字元 |
 | Bloomberg | `/news/articles/…/fed-chair-warsh-s-jackson-hole-speech-how-can-he-soothe-markets` | Big Take **podcast 頁**：9 段／2,180 字元過門檻，但同一段導讀重複貼兩遍、實質只有約 1,000 字元。認法是正文出現「On today's Big Take podcast」或「Never miss an episode. Follow…」；**slug 結尾沒有 `-podcast`**，靠 slug 過濾抓不到 |
-| The Economist | `/…/checks-and-balance-newsletter-…`、`/the-world-in-brief/<uuid>` | slug 裡的 `-newsletter-`／整段是 UUID |
 | **WSJ Market Talk（滾動彙整型）**（09-08 新增） | `/finance/stocks/nikkei-rises-1-8-led-by-chip-related-stocks-<hash>` | **正文出現多個 `NNNN GMT –` 開頭的時間戳區塊**。09-08 實測該頁 10 段／3,534 字元**完全過門檻**，實為 **5 則互不相干的 Market Talk、5 位不同記者**（歐洲晶片股／歐股早盤／荷莫茲能源股／日本中小型股／日經），而 **slug 命名的是其中一則、`<title>` 命名的是另一則** —— 兩邊都不能代表整頁 |
 | **Washington Post**（09-04 新增） | `/politics/2026/09/03/republicans-court-debate-expanding-supreme-court/` | **路徑格式與一般 WaPo 文章一模一樣**（`/<版面>/YYYY/MM/DD/<slug>/`），網址上完全認不出來。認法是內文的 **`In today's edition …`** 與 **`Want this in your inbox?`**；該篇 `article p` 量到 **45 段／10,951 字元**（大幅過完整門檻），中段還夾 `Our picks`（六則不相干導讀）、`What we're watching`、`From you`（讀者來信）。**開頭是 `Analysis by <記者名>` 而不是一般署名，那是第二個訊號。** |
 

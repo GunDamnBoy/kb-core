@@ -223,8 +223,7 @@
 
 **付費訂閱（從已登入的 Chrome 讀）**：Bloomberg、WSJ、NYT、Nikkei Asia、
 Washington Post、Barron's、IBD、Politico、The Hill、
-SemiAnalysis（**文章在 `newsletter.semianalysis.com`**，`semianalysis.com` 只剩訂閱模型頁）、
-The Economist。
+SemiAnalysis（**文章在 `newsletter.semianalysis.com`**，`semianalysis.com` 只剩訂閱模型頁）。
 
 **Barron's 是計量制，不是「可讀／不可讀」的二分。** 2026-08-19 同一天測到兩種相反的結果：
 傍晚兩篇 `article.access=paid` 的個股與財報文都完整讀到（13 段／2,331 字、15 段／2,784 字），
@@ -239,7 +238,7 @@ The Economist。
 `…/articles/bond-yields-markets-fear-index-vix-9c4edcaf` 變成
 `…/articles/bond-yields-stock-market-fear-index-vix-9c4edcaf`。
 **交卡前一律讀一次載入後的最終網址**，否則讀者隔天點進去會 404。
-（The Economist 也有這個行為，見第六節該列——**兩家都是「有時」不是「一定」**，
+（已除名的 The Economist 當年也有這個行為——**這種改寫是「有時」不是「一定」**，
 所以不能靠「上次沒變」推論這次不會變。）
 
 **開場可用性測試對計量制來源會樂觀。** 測試時額度還在，判定「可讀」；採集到中後段才發現被截斷。
@@ -275,7 +274,8 @@ KED Global（已由 Korea Herald 取代）、COMEX 黃金庫存（連三輪確�
 CME FedWatch 官網（跨網域 iframe ＋ reCAPTCHA，改用 Investing.com Fed Rate Monitor）、
 WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續三輪被重導）、
 **FT（2026-08-19 開場測試：文章頁標題 "Subscribe to read"、內文 0 段 ——
-沒有有效訂閱，屬「訂閱範圍外」而不是「被擋」）**。
+沒有有效訂閱，屬「訂閱範圍外」而不是「被擋」）**、
+**The Economist（2026-10-17 除名：Chrome Home 已登入但帳號沒有訂閱 —— 帳號選單有「Log out」、頁面同時顯示「Subscribe」，社論正文只讀得到約 2 段；連十一輪 0 卡、另有 DataDome 風控頁紀錄。與 FT 同屬「訂閱範圍外」，不是登入問題）**。
 
 **FT 那一則的分類要看清楚。** 內文 0 段很容易被記成「被付費牆擋」，但被擋的前提是
 **有訂閱卻讀不到**；沒有訂閱就讀不到是預期行為，不是故障。兩者記錯會污染來源健康度：
@@ -284,7 +284,7 @@ WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續�
 **除名清單比來源清單更重要。** 2026-08-10 有兩組各自讀到已移除三天的 Reuters，
 4 則素材全數捨棄 —— 因為當時只從清單裡刪掉，沒有寫進黑名單。
 
-**節奏正常，不是降級**：SemiAnalysis 週更一到兩篇、The Economist 是週刊。
+**節奏正常，不是降級**：SemiAnalysis 週更一到兩篇。
 窗口內沒有新文是它們的正常狀態。
 
 **選擇器與路徑（撞過才記的，末欄是最後一次實測的日期）**
@@ -405,7 +405,6 @@ EIA（3 次）、SPDR、SemiAnalysis** 撞到 —— **連 EIA 這種純政府�
 | WSJ | `/pro/<desk>/<slug>-<hash>`（例 `/pro/central-banking/…`） | **⚠️ 10-17 更正：`/pro/` 不一定是電子報** —— 那一篇是單一主題、單一作者的短訊；它沒成卡的理由是 **WSJ Pro 付費截斷（正文只有 2 段）**，而且頁內有注入文字（見第六之二節 10-17 那段）。所以 `/pro/` 要逐篇看：電子報認 `<title>` 與開頭；單篇認段數 |
 | Bloomberg | `/news/articles/2026-08-27/jackson-hole-fed-meeting-warsh-faces-crucial-wall-street-test` | 正文**第一句的自我介紹**（「This is Washington Edition, the newsletter about money, power and politics…」）—— slug 完全看不出來，而它 46 段／8,516 字元 |
 | Bloomberg | `/news/articles/…/fed-chair-warsh-s-jackson-hole-speech-how-can-he-soothe-markets` | Big Take **podcast 頁**：9 段／2,180 字元過門檻，但同一段導讀重複貼兩遍、實質只有約 1,000 字元。認法是正文出現「On today's Big Take podcast」或「Never miss an episode. Follow…」；**slug 結尾沒有 `-podcast`**，靠 slug 過濾抓不到 |
-| The Economist | `/…/checks-and-balance-newsletter-…`、`/the-world-in-brief/<uuid>` | slug 裡的 `-newsletter-`／整段是 UUID |
 | **WSJ Market Talk（滾動彙整型）**（09-08 新增） | `/finance/stocks/nikkei-rises-1-8-led-by-chip-related-stocks-<hash>` | **正文出現多個 `NNNN GMT –` 開頭的時間戳區塊**。09-08 實測該頁 10 段／3,534 字元**完全過門檻**，實為 **5 則互不相干的 Market Talk、5 位不同記者**（歐洲晶片股／歐股早盤／荷莫茲能源股／日本中小型股／日經），而 **slug 命名的是其中一則、`<title>` 命名的是另一則** —— 兩邊都不能代表整頁 |
 | **Washington Post**（09-04 新增） | `/politics/2026/09/03/republicans-court-debate-expanding-supreme-court/` | **路徑格式與一般 WaPo 文章一模一樣**（`/<版面>/YYYY/MM/DD/<slug>/`），網址上完全認不出來。認法是內文的 **`In today's edition …`** 與 **`Want this in your inbox?`**；該篇 `article p` 量到 **45 段／10,951 字元**（大幅過完整門檻），中段還夾 `Our picks`（六則不相干導讀）、`What we're watching`、`From you`（讀者來信）。**開頭是 `Analysis by <記者名>` 而不是一般署名，那是第二個訊號。** |
 

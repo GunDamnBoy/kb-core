@@ -11,7 +11,7 @@ description: 七套自動化系統的維護入口——投顧知識庫儀表板�
 |---|---|---|---|---|
 | 投顧知識庫儀表板 | `advisory/` | `advisory-daily-0730` | `~/advisory-rewrite` | 新聞來源、子類別、分級下限、徽章、跨版趨勢 |
 | 每日五圖 | `chart/` | `chart-daily-1130` | `~/chart-of-the-day` | slot、軌道輪盤、圖型、chartkit、token 稽核 |
-| Podcast 摘譯 | `podcast/` | `podcast-daily-300` | `~/podcast-knowledge-digest` | 節目清單、`podfetch`、轉錄、集數缺漏、成本基線 |
+| Podcast 摘譯 | `podcast/` | 雲端「Podcast daily 0300」 | `~/podcast-knowledge-digest` | 節目清單、`podfetch`、轉錄、集數缺漏、成本基線 |
 | 外資報告週摘 | `research/` | 「外資報告週摘（週日深夜）」 | `~/broker-research-digest` | 外資／券商報告、精華、原句牆、立場帳本、標籤、浮水印、重製圖 |
 | AI 泡沫監控 | `bubble/` | `bubble-weekly-0900`（每週一） | — | 指標、層權重、計分錨點、觸發器、台股子模型 |
 | 主題匯流訊號報 | `convergence/` | 雲端「Convergence weekly 1600」（每週一 16:00） | `~/outbox/convergence/` → `com.kenny.kbpublish.convergence` | 每週、跨庫、訊號帳本、發布閘門、上游改版偵測 |

@@ -98,7 +98,7 @@ def build(draft, repo: Path):
     }
 
 
-# 這個站的 index entry 只需要導覽用的五欄——它不做跨日推理，
+# 這個站的 index entry 只需要導覽用的六欄——它不做跨日推理，
 # 跨日的東西住在 `data/observations.json`（帳本）而不是索引裡。
 INDEX_FIELDS = ("date", "label", "short", "episodeCount", "shows", "file")
 

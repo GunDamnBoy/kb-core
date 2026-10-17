@@ -11,7 +11,7 @@
 > 第 2 節 podfetch 管線的讀法與排查、第 6 節基礎設施備忘、第 8 節變更紀錄。
 > 其餘一律以 `kb-core/podcast/` 為準。
 
-**排程 `SKILL.md` 可能在對話進行中被別場維護整份覆寫。動手前重讀當下的檔案，只信這一秒讀到的內容**——即使你認為自己就是上一個改它的人。
+**`DIGEST-PROMPT.md` 與規格檔可能在對話進行中被別場維護改寫**（2026-10-17 起排程只是指向它的指標）。**動手前重讀當下的檔案，只信這一秒讀到的內容**——即使你認為自己就是上一個改它的人。
 
 全程繁體中文（台灣用語）。repo 根目錄 `~/podcast-knowledge-digest`。
 
@@ -72,7 +72,7 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
 4. 讀 `~/podcast-knowledge-digest/MAINTENANCE.md`，尤其第 5 節（新增節目步驟表）、第 7 節（事故檔案）、第 12 節（登記簿）。第 4C 節（podfetch 的四個不要改的設計）只有要動 `podfetch.py` 時才需要讀。第 11 節（變更紀錄歸檔）是純歷史，要查「當初為什麼這樣改」時才回來讀。
 5. 讀規格。**現在是四份小的，不是一份大的**：`kb-core/podcast/BRIEF.md`、`kb-core/podcast/anchors.json`、`kb-core/scripts/podcast/DIGEST-PROMPT.md`、`kb-core/scripts/podcast/preamble.md`。要動節目清單、官方稿入口或 podfetch 內部時，另外讀 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 的第 1／2／6 節。
    四份各自都很好讀，所以最常見的失效是只改其中一份——查漂移時四份一起看。
-6. `mcp__scheduled-tasks__list_scheduled_tasks` 記下 `cronExpression`／`enabled`／`nextRunAt`／`lastRunAt`，並 Read 它回傳的 `path` 全文。
+6. `mcp__claude-code-remote__list_triggers`（輸出很大，用 `next_cursor` 翻頁）找「Podcast daily 0300」，記下 `cron_expression`／`enabled`／`next_run_at`／`last_run`，並讀 `derived_state.prompt` 全文。**`last_run` 的 SUCCEEDED 只代表派工成功**，發布結果看回執。（2026-10-17 訂正：舊寫 `list_scheduled_tasks`，排程 10-05 起已搬到雲端，那支工具看不到它。）
 7. 讀 `~/podcast-knowledge-digest/data/index.json`。
 
 完成條件：七項都有實際輸出在手，沒有一項靠記憶或推論。健康檢查已涵蓋的項目到此為止，注意力留給腳本抓不到的東西——也就是下一步。
@@ -93,7 +93,7 @@ launchd 也是從那裡執行。`~/.podfetch/` 現在只剩**執行期狀態**�
 
 ## 第 4 步：執行修改
 
-拿到第 3 步的確認之後，讀 [`MODIFY.md`](MODIFY.md) 並照它走——改哪個檔、排程 `SKILL.md` 整份覆寫的規矩、brief 第 8 節歸檔、第 12 節登記簿、節目清單異動的連鎖點，以及改完必須全數通過的驗證清單。
+拿到第 3 步的確認之後，讀 [`MODIFY.md`](MODIFY.md) 並照它走——改哪個檔、排程 prompt（指標式）要動時的覆寫規矩、brief 第 8 節歸檔、第 12 節登記簿、節目清單異動的連鎖點，以及改完必須全數通過的驗證清單。
 
 > **一輪只改一小批，每一批各自收尾。** 一場裡連改多批時，「記錄本場」這件事本身會落後於改動——**量測與登記要排在每一批的收尾，不是整場的收尾**，否則寫進登記簿的數字會停在中途值，而且後面幾批很容易完全漏掉登記。
 

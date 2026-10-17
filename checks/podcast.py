@@ -598,7 +598,7 @@ def _docs(p):
 
 
 def _tier(p, minutes):
-    """回傳該片長所屬層級的 (下界, 上界, 段下界, 段上界)。含下界、不含上界。"""
+    """回傳該片長所屬篇幅級距的 (下界, 上界, 段下界, 段上界)。含下界、不含上界。"""
     for t in _A(p, "length_tiers"):
         cap = t["under_minutes"]
         if cap is None or minutes < cap:
@@ -606,13 +606,13 @@ def _tier(p, minutes):
     raise KeyError("length_tiers 最後一層必須是 under_minutes: null")
 
 
-# ── 11. 篇幅落在所屬層級 ─────────────────────────────────────────────
+# ── 11. 篇幅落在所屬篇幅級距 ─────────────────────────────────────────────
 def _chars_in_tier(p):
     """BRIEF 第七節第一條當期失敗判準。
 
     2026-08-20 寫這條時發現的洞：**doc 裡沒有任何欄位存得下片長**——
     `published` 是「2026年8月18日｜片長 56 分鐘」這種給人讀的字串。
-    層級是由片長決定的，所以這條判準當時在資料上是判不了的，只是看起來像。
+    篇幅級距是由片長決定的，所以這條判準當時在資料上是判不了的，只是看起來像。
     於是給每集加了 `minutes`。
 
     這跟投顧那次保底卡的 `base` 欄位是同一件事：**一條判準若在資料裡找不到
@@ -623,7 +623,7 @@ def _chars_in_tier(p):
     for e in _docs(p):
         m = e.get("minutes")
         if m is None:
-            bad.append(f"{e.get('id')} 沒有 minutes 欄位 —— 層級判不了")
+            bad.append(f"{e.get('id')} 沒有 minutes 欄位 —— 篇幅級距判不了")
             continue
         lo, hi, plo, phi = _tier(p, m)
         n = e.get("chars") or 0
@@ -651,12 +651,12 @@ def _chars_in_tier(p):
             bad.append(f"{e.get('id')} {paras} 段不在 {plo}–{phi}（{m} 分）")
     if bad:
         return fail("；".join(bad[:4]))
-    return ok(f"{len(_docs(p))} 集都在層級區間內")
+    return ok(f"{len(_docs(p))} 集都在篇幅級距區間內")
 
 
 register(Check(
     id="podcast.chars_in_tier",
-    covers="每集的 chars 與段數落在片長所屬層級的區間內；低於下界要有具名的 lowerBoundException",
+    covers="每集的 chars 與段數落在片長所屬篇幅級距的區間內；低於下界要有具名的 lowerBoundException",
     blind_to=[
         "字數對但內容是注水的——**短節目硬拉長比長節目超規格更難發現**",
         "`also_top_tier_if_topics`（主題數達門檻時升到最高層）這條沒有實作，"

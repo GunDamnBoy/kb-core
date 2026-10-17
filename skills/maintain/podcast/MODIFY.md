@@ -8,7 +8,7 @@
 |---|---|---|
 | 什麼算對的產出、失敗判準 | `kb-core/podcast/BRIEF.md` | 判準若引用門檻，門檻要在 `anchors.json` |
 | 任何一個數字或門檻 | `kb-core/podcast/anchors.json` | 讀它的檢查與 `preamble.md` 一起看 |
-| 每天怎麼跑（流程或分支） | `kb-core/scripts/podcast/DIGEST-PROMPT.md`（**正本**） | **改完整份貼進排程 `SKILL.md`**，見下方 |
+| 每天怎麼跑（流程或分支） | `kb-core/scripts/podcast/DIGEST-PROMPT.md`（**正本**） | 2026-10-17 起排程是指標式，**改正本就是改排程，不必再貼**（見下方） |
 | 撰寫 subagent 的規則 | `kb-core/scripts/podcast/preamble.md` | 與 `BRIEF`／`anchors` 的重疊處兩邊都要改（見 `FILES.md`） |
 | 發布前檢查 | `kb-core/checks/podcast.py` | 見下方「新增檢查」 |
 | 節目清單、官方稿入口 | `AGENT_BRIEF.md` 第 1 節＋見下方「節目清單」 | `shows.json` **有兩份**（kb-core 與 `~/.podfetch/`），沙箱通常只看得到一份 |
@@ -17,7 +17,11 @@
 
 ## 排程 SKILL.md
 
-它對檔案工具唯讀，只能走 `update_scheduled_task`，而 `prompt` 是**整份覆寫**：先 Read 目前檔案，以它為基礎修改後送出完整內容。拿記憶中的版本重寫＝覆寫事故（來歷見 `MAINTENANCE.md` 第 7 節）。
+> **⚠ 2026-10-17 起本節的前提已經不存在**：排程「Podcast daily 0300」改成**指標式 prompt**（約 20 行，叫執行者讀 `DIGEST-PROMPT.md`，比照投顧那支），
+> **不再有整份副本，改正本就是改排程，不必再貼**。只有要改那段指標本身、cron 或 enabled 時才動排程；
+> 動的時候仍是整份覆寫、仍要先讀目前的 `derived_state.prompt`。下面兩段留作那種情況的規矩。
+
+它是雲端排程「Podcast daily 0300」的 prompt，只能走 `mcp__claude-code-remote__update_trigger`，而 `prompt` 是**整份覆寫**：先用 `list_triggers` 讀目前的 `derived_state.prompt`，以正本為基礎送出完整內容。這支排程帶了 Mac 資料夾（需要電腦），**新 prompt 要在連到那台 Mac 的 Cowork 對話裡核准才生效**；回 `needs_device_approval` 時什麼都沒改，照實告訴使用者，**不要刪掉重建**（會丟掉執行紀錄與綁定的電腦）。拿記憶中的版本重寫＝覆寫事故（來歷見 `MAINTENANCE.md` 第 7 節）。
 
 **覆寫時不要順手改內容。** 上面那條擋得住「拿記憶重寫」，**擋不住「一邊貼一邊多寫一句」** —— 那等於在同步的動作裡製造新的漂移。要改內容就先改正本、重讀、再整份貼。**流程是「正本改完 → Read 正本 → 原封不動貼過去」，貼的那一步不做任何編輯。**
 

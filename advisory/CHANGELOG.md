@@ -3180,3 +3180,34 @@ E 27,573／F 32,887／G 32,407）—— **這就是 `strip_maintainer_only()` �
 - **2-0 的「等 10 分鐘」是猜的上限**，依據只有 10-14 那一次（重連在 24 分鐘後，所以那一次就算有這條也救不回來；它防的是短暫斷線）。
 - `SKILL.md` 仍有 1,191 行級的長度，本次刻意沒有精簡（使用者決定等寫卡輪穩定後再做）。
 - WSJ 與 STAT News 都留在來源清單上；「不成卡」規則讓注入文字從採集員判斷變成機械規則，代價是偶爾少一則素材。
+
+## 2026-10-17 續｜`SKILL.md` 精簡：只留規則，敘事整份封存到 `HISTORY.md`
+
+**動到哪些檔**：`skills/advisory/SKILL.md`（重寫為規則版）、新檔 `skills/advisory/HISTORY.md`（精簡前那一份原樣封存，前面加 8 行說明「排程不讀、現行以 SKILL.md 為準」）。
+
+**量測**：`SKILL.md` 1,249 行／102,584 bytes → **323 行／28,331 bytes（−72%）**。每一輪的主線都要從頭讀這一份，省下的是每輪約 7 萬 bytes 的必讀量與它在整輪裡被重讀的成本。
+步驟編號與小節編號全部保留（1-0、1-1、2-0、3-0、3-1…9），因為 `preamble.md` 有「↩ 被引用：`SKILL.md` 步驟 1／2／3」的反向指標（實測 7 處），編號一變就斷。
+
+**怎麼驗的**：請一個分身把 `HISTORY.md` 第 9–1257 行與新版逐條對照，只找「會改變執行行為的遺漏或改錯」。回報 0 條會造成發布失敗的項目，7 條中低嚴重度遺漏（採集員 `select_browser` 失敗即停、週末生技的 G 端那句、Bloomberg `/industries` 判準、複合 `tone` 改回中性、注入文字條件①升級成來源重審、開場差異寫進報告、「不確定不是觀測」）與 1 條改錯（「主要付費來源」應為「每一家」），**全部已補回後才寫入**。
+`drift_check.py` 對 advisory 這一組比得是帳號 skill `advisory-daily`，見下面風險第 2 條。
+
+**怎麼倒回去**：`tail -n +9 skills/advisory/HISTORY.md > skills/advisory/SKILL.md` 就是精簡前那一份（寫入前用 `cmp` 驗過兩者逐位元相同）。
+
+**已知風險**
+- 稽核是一個分身讀一次，**不是機器檢查**；被拿掉的若有漏網規則，症狀會出現在下一輪的派工或回報裡。前兩輪要特別看報告的〈下游應知〉。
+- **帳號 skill `advisory-daily`（Cowork 同步的那一份）是 08 月 Mac 時代的 394 行舊副本**，內容寫的是 `~/outbox`、桌面排程。排程不走它（排程 prompt 是指標式），但互動對話說「跑今天的儀表板」會觸發它 —— 那會照著過期規格跑。已交給使用者一份指標式的 `SKILL.md`，由使用者決定是否覆蓋帳號 skill。
+
+## 2026-10-17 再續｜The Economist 除名，Politico 保留
+
+**決定（使用者）**：The Economist 從來源清單拿掉；Politico 保留（待使用者在 Chrome Home 登入）。
+**依據**：當日在 Chrome Home 實測 —— The Economist 帳號選單有「Log out」（已登入）、頁面同時有「Subscribe」（無訂閱），10-15 社論 `article p` 只有 4 段／905 字元、正文約 2 段；**連十一輪 0 卡**。Politico 頁面只有 `login.politico.com` 的登入連結、無帳號選單，載入 Piano 付費牆元件，正文第 4 段後換成電子報表單 —— **未登入**，屬可修的設定問題。
+
+**動到哪些檔**：`scripts/advisory/preamble.md`（付費清單拿掉、寫進「已除名」黑名單並附理由、刪掉三張表裡的三列、兩處行文改寫）、七份切片重生成；`advisory/anchors.json` 的 `collectors.roster.B.sources`（剩 WSJ、Washington Post）與 `_roster_notes`；`scripts/advisory/slice_preamble.py` 兩張表的歸屬關鍵字拿掉 The Economist。
+**量測**：`preamble.md` 114,261 → 約 112,100 字元；B 的切片 41,567 → 32,909 字元（−21%）。各組配額不變（它這十一輪本來就沒貢獻張數）。
+**怎麼驗的**：`anchors.json` 可 `json.load`；`slice_preamble.py --check` exit 0；B 切片裡 The Economist 只剩黑名單那一行與一句歷史行文；`advisory_verify` 對 10-17 仍 19 PASS · 0 WARN · 0 FAIL；檢查自檢 0 失敗。
+**怎麼倒回去**：把黑名單那一則移回付費清單、`roster.B.sources` 加回、從 kb-core 版控歷史還原三張表的列，再重跑 `slice_preamble.py`。
+**已知風險**：B 只剩兩家，歐洲組（下限 3、配額 5）更依賴 WSJ；若 WSJ 哪天被擋，歐洲組會先掉。另：本次維護中途誤跑了一次 `git -C kb-core diff --stat`（違反「不跑 git 指令」），事後確認 `.git/index.lock` 不存在、未擋住推送。
+
+## 2026-10-17 末｜Politico 複測：`.com` 判訂閱範圍外、`.eu` 完整可讀
+
+主線在 Chrome Home 開 `politico.com` 三篇與 `politico.eu` 一篇：`.com` 三篇都在第 4–5 段後截斷（正文 1,257–1,389 字元），`ld+json` 的 `isAccessibleForFree` 全是 `false`；`.eu` 那篇 29 段／5,948 字元。**動到的檔**：`preamble.md` 的 Politico 列（加上 `isAccessibleForFree` 這個機械判準、`.eu` 入口改首頁、`/section/economy/` 已 404），E 的切片重生成、`--check` exit 0。**風險**：`.eu` 偏歐洲題材，E 的美國政治組若靠它補不足，仍由 The Hill／NYT 撐；`.com` 登入後要再複驗一次。

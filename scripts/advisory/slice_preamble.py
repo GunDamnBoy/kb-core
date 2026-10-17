@@ -71,13 +71,14 @@ SECTION_OWNER = {
     "### 節流：":            ALL,
     "## 五、合規":            ALL,
     "## 六、來源":            ALL,          # 散文全體共用，只有裡面那張表要篩
+    # 2026-10-17：The Economist 除名，兩張表的列與這裡的關鍵字一起拿掉。
     # 2026-08-30 新增。記的是「哪幾家在哪幾天本來就不發稿」，判準同下面那一列：
     # **表上出現了誰的來源**，不是「這個教訓誰用得到」。表列 SemiAnalysis／OGJ／EIA／
     # TrendForce（→D）、The Economist（→B）、MoneyDJ／鉅亨（→F）、Fierce／STAT（→G）。
     # A、C、E 手上沒有任何一家出現在表上，所以拿不到 —— 那正是切片要的效果。
     # （表裡另有 CME 一列，它不在 roster 的任何來源清單裡，故不影響歸屬。）
     "### 發稿日曆":           ["SemiAnalysis", "Oil & Gas Journal", "EIA", "TrendForce",
-                              "The Economist", "MoneyDJ", "鉅亨", "Fierce Biotech", "STAT News"],
+                              "MoneyDJ", "鉅亨", "Fierce Biotech", "STAT News"],
     "### `[BLOCKED:":        ALL,
     # 2026-08-28 改：原本只給 SemiAnalysis（＝D），但那張表列的是 NYT／WSJ／
     # The Economist，一個都不屬於 D —— **真正需要它的三個採集員一列都看不到**。
@@ -88,7 +89,7 @@ SECTION_OWNER = {
     # 完全相同、只能靠內文特徵認）。B 本來就因 WSJ 與 The Economist 拿得到這一節，
     # 所以這一改不影響任何人拿不拿得到 —— **加它是為了讓這張表與判準保持一致**：
     # 判準是「表上出現了誰的來源」，漏登記會在下一次有人重排 roster 時安靜地失效。
-    "### 電子報彙整頁":       ["NYT", "WSJ", "The Economist", "Bloomberg", "SemiAnalysis",
+    "### 電子報彙整頁":       ["NYT", "WSJ", "Bloomberg", "SemiAnalysis",
                               "Washington Post"],
     "## 六之二、":            ALL,
     "## 七、台股官方端點":     ["TWSE"],

@@ -18,7 +18,7 @@
 
 **`AGENT_BRIEF.md` 開頭掛著 2026-08-21 的失效橫幅，只剩第 1／2／6／8 節權威**，其餘一律以 kb-core 為準。**但「已降級」不等於「可以放著爛」** —— 08-23 就在第 6 節（權威區）抓到兩處硬錯：一支已退場的推送者、一份少了兩個資料夾的連線清單。**權威區的錯誤比降級區嚴重，優先查它。**
 
-對照檔還有：排程 **`podcast-daily-300`** 的 `SKILL.md`（沙箱看不到 `/Users/macmini/Claude/Scheduled/`，要用 `Read` 讀 `list_scheduled_tasks` 回傳的 `path`；排程執行當下它會整份出現在 `uploads/SKILL.md`）、`data/observations.json`、`README.md`。
+對照檔還有：雲端排程「Podcast daily 0300」的 prompt（用 `mcp__claude-code-remote__list_triggers` 翻頁找到、讀 `derived_state.prompt`；`list_scheduled_tasks` 看不到它，排程執行時也不再出現 `uploads/SKILL.md`，2026-10-17 訂正）、`data/observations.json`、`README.md`。
 
 ## 正本 ↔ 副本（**有兩組，不是一組**）
 
@@ -31,9 +31,12 @@
 
 ### 第一組：`DIGEST-PROMPT.md` ↔ 排程 `SKILL.md`
 
+**2026-10-17 起這一組改成：排程 prompt 是指標式（約 20 行），只核三件事**——它指的路徑 `kb-core/scripts/podcast/DIGEST-PROMPT.md` 還在、
+它寫的「讀到最後一行」那句與正本末行一致、它那三條破壞性禁令沒有和正本衝突。**若發現有人把整份副本貼回去了**，才照下面的舊規矩逐字比對。
+
 **這是唯一一處整份複製，也是最會出事的一處。**
 
-- `diff` 正本與副本，**只差 front matter 五行才算同步**。
+- `diff` 正本與副本，**逐字相同才算同步**（2026-10-17 起正本沒有 front matter；副本檔尾少一個換行符不算差異）。
   **不要用行數當判準**（副本檔尾可能沒有換行符，`wc -l` 會誤報成「看起來不同步」）。
 - **不要接受文件裡任何「目前同步」的宣稱當證據** —— 08-22 `FILES.md` 寫了「實測只差 front matter」，而那是 06:41 量的，正本 11:59 又改了，副本整整少了一節（第 199–217 行的用量指示），**沒有人回頭改那句話**。實害：兩輪都照舊版填了自述值，`eff_tokens_k` 因此有 4913／235／276 三個相差 20 倍的值。
 - 副本缺一整節時，**症狀是「執行者照舊版做事」而不是報錯**。所以要比對的是內容，不是「有沒有人說過同步」。
@@ -52,7 +55,7 @@
 
 **拆檔之後的失效形態是「只改其中一份」，所以四份要一起看。**
 
-- **執行時刻**：`anchors.schedule`（wake 00:55／podfetch 01:00／digest 03:00／`official_transcripts` 應為 `null`）↔ `AGENT_BRIEF` 第 0 節時序表 ↔ 實查 `list_scheduled_tasks` 的 `cronExpression`
+- **執行時刻**：`anchors.schedule`（wake 00:55／podfetch 01:00／digest 03:00／`official_transcripts` 應為 `null`）↔ `AGENT_BRIEF` 第 0 節時序表 ↔ 實查 `list_triggers` 的 `cron_expression`（實際觸發看 `last_fired_at`／`last_run.fired_at`，約晚 10 分鐘）
 - **節目數量與 showKey**：`shows.json` ↔ `README` 的「N 檔」與追蹤清單 ↔ `AGENT_BRIEF` 第 1 節的 A 類表。**README 內部也要自我核對**（08-23 抓到它的 A 類清單含已除役的 Lex Fridman，與同檔追蹤清單矛盾）
 - **退援四層**：順序、FT 是第 1 層特例不是獨立層、FT 失效退回第 2 層不跳 YouTube，**以及「>120 分鐘的 A 類直接用 podfetch 稿」** —— 這一條要在 `anchors.fallback_order`、`AGENT_BRIEF` 第 1／2 節、**`DIGEST-PROMPT` 第 1 之二步**都在（08-23 補上流程正本那一處；在此之前每天唯一講「A 類怎麼辦」的那段文字裡沒有它）
 - **去重**：`anchors.dedup`（`title` ＋ `durationMs` 兩者都同才合併、`require_both`、`keep_by`、`⚠︎` 佔位不算已收錄）↔ `DIGEST-PROMPT` 第 2 步 ↔ `checks/podcast.py` 的 `_no_dupes`（應從 anchors 讀，不寫死）
