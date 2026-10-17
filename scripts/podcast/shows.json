@@ -12,7 +12,7 @@
  "hardfork": {
   "appleId": "1528594034",
   "name": "Hard Fork",
-  "hosts": "Kevin Roose, Casey Newton"
+  "hosts": "Max Read（2026-10 起代班主持「未來幾個月」，搭配 NYT 記者輪替）, Kevin Roose, Casey Newton（原主持，暫離）"
  },
  "unhedged": {
   "appleId": "1691284824",
@@ -28,7 +28,7 @@
  "twentyvc": {
   "appleId": "958230465",
   "name": "20VC",
-  "hosts": "Harry Stebbings"
+  "hosts": "Harry Stebbings, Jason Lemkin, Rory O'Driscoll (the latter two on the weekly news-roundup episodes)"
  },
  "iltb": {
   "appleId": "1154105909",
@@ -44,12 +44,12 @@
  "moneystuff": {
   "appleId": "1739582836",
   "name": "Money Stuff: The Podcast",
-  "hosts": "Matt Levine, Katie Greifeld (Bloomberg Opinion; 偶有代班共同主持人)"
+  "hosts": "Matt Levine, Katie Greifeld（2026-09 起育嬰假，代班共同主持人輪替：Mary Childs、Max Abelson、Sylvia Killingsworth）"
  },
  "ingoodcompany": {
   "appleId": "1614211565",
   "name": "In Good Company",
-  "hosts": "Nicolai Tangen (CEO of Norges Bank Investment Management; guests are CEOs of major listed companies)",
+  "hosts": "Nicolai Tangen (CEO of Norges Bank Investment Management), Marthe Skaar (co-host of the Friday Wrap-Up episodes); guests are CEOs of major listed companies",
   "wpm": 160
  },
  "compound": {
@@ -75,7 +75,7 @@
  "latentspace": {
   "appleId": "1674008350",
   "name": "Latent Space",
-  "hosts": "Shawn Wang (swyx), Vibhu"
+  "hosts": "Shawn Wang (swyx), Vibhu, Brandon Anderson, RJ Honicky (the latter two host the AI for Science series)"
  },
  "oddlots": {
   "appleId": "1056200096",
@@ -86,7 +86,7 @@
  "macrovoices": {
   "appleId": "1079172742",
   "name": "MacroVoices",
-  "hosts": "Erik Townsend, Patrick Ceresna",
+  "hosts": "Erik Townsend, Patrick Ceresna, Massil Beguenane (Trading Desk segment)",
   "wpm": 160
  },
  "markethuddle": {
@@ -98,18 +98,18 @@
  "bloomberg": {
   "appleId": "296237493",
   "name": "Bloomberg Surveillance",
-  "hosts": "Tom Keene, Jonathan Ferro, Lisa Abramowicz, Paul Sweeney, Isabelle Lee, Scarlett Fu",
+  "hosts": "依版本而定，先看集數標題：音訊主集（平日）Tom Keene, Paul Sweeney（常見代班 Alexis Christoforous、Damian Sassower）；週末 Bloomberg Money 版 Tom Keene, Scarlett Fu；標題為「Bloomberg Surveillance TV: <日期>」的電視版 Jonathan Ferro, Lisa Abramowicz, Annmarie Hordern",
   "limit": 20
  },
  "gsx": {
   "appleId": "948913991",
   "name": "Exchanges at Goldman Sachs",
-  "hosts": "Allison Nathan",
+  "hosts": "Allison Nathan, George Lee, Alison Mass (Great Investors series)",
   "wpm": 180
  },
  "fwdguidance": {
   "appleId": "1592743188",
   "name": "Forward Guidance",
-  "hosts": "Felix Jauvin"
+  "hosts": "Felix Jauvin, Quinn Thompson (co-host of the Weekly Roundup)"
  }
 }

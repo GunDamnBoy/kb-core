@@ -39,7 +39,9 @@ ADD = {
         # 空著的話 Forward Guidance 第一次出集數就會整集都是 Speaker N，
         # 而 completeness 照樣 100%，沒有任何檢查會叫。
         # 來源：blockworks.com/brand/forward-guidance 的 Behind the Brand 欄位。
-        "hosts": "Felix Jauvin",
+        # 2026-10-17 補 Quinn Thompson：本腳本重跑會「已存在，覆寫」，這裡必須與 shows.json 現值一致，
+        # 否則重跑會把名單倒回去（10 集中 6 集有 Quinn，節目頁列 Felix Jauvin、Quinn Thompson）。
+        "hosts": "Felix Jauvin, Quinn Thompson (co-host of the Weekly Roundup)",
     },
 }
 
