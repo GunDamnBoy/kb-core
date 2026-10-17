@@ -1,5 +1,47 @@
 # 每日五圖｜重建紀錄
 
+## 2026-10-17（六）｜熱力圖標籤錯開半格、一條登錄過的失效序列每天仍在響
+
+**動到哪些檔**
+- `scripts/chart/chartkit.py`：`_fit_ticks` 加 `offset`，`_draw_heatmap` 改傳 `offset=.5`、拿掉被覆蓋的 `set_xticks`。
+- `scripts/chart/prep_chart.py`：新增 `_known_failure()`；`_failure_streaks` 與「握手失敗」那一行把
+  「`dead_series` 登錄過、失敗訊息含 `failure_match`」的序列收成一行；`--selftest-offline` 加四個案例。
+- `chart/anchors.json`：`dead_series.^TWOII` 加 `failure_match`（「握手客戶端回空表」）與 `failure_shape_history`。
+- `skills/chart/SKILL.md`：地形表改成雲端容器、第 1 步加 dead_series 例外、第 7 步加 `device_bash` E2BIG 提醒。
+- `skills/maintain/chart/MAIN.md`／`MODIFY.md`／`FILES.md`：排程改指雲端排程（`list_triggers`／`update_trigger`）。
+- `chart-of-the-day/charts/`：12 期封存的熱力圖 PNG／SVG 重繪（09-14、09-16、09-19、09-22、09-26、10-03、10-04、
+  10-05、10-06、10-08、10-10、10-14）＋當期 10-17。只重繪 `kind == heatmap` 那一張，日檔一個位元都沒動。
+
+**量測**
+- 熱力圖：`_fit_ticks` 無條件 `set_xticks(range(n))`，蓋掉 `_draw_heatmap` 的 `i + .5`。每個欄標籤落在格子左邊界、
+  最後一欄右半格沒有標籤。封存裡 15 張熱力圖，08-22 之後的 13 張受影響（08-13、08-15 未查、未動）。互動軌不受影響。
+- `^TWOII`：`_prefetch_history.jsonl` 顯示它 2026-09-16 起每輪都在 `failed`，到 10-17 連續 32 輪；
+  `dead_series` 那一格寫的仍是 09-04 登錄時的形狀（「取得到、末日停在 07-17」）。
+
+**它當初藏住的方式**
+- 熱力圖：數字與配色都對、圖看起來完整，`chart_verify` 不看刻度位置。**看起來完整的錯，比缺一塊更難發現**
+  —— 跟 `_fit_ticks` 自己要防的「糊成一團」同一類，而且就是它造成的。
+- `^TWOII`：`dead_series` 只接進了 `_stale()`/`_dead()`，沒接進 `_failure_streaks()`。登錄表說「不必每輪重寫」，
+  計數器說「已達門檻，具名寫一句」，兩邊都對、互相不知道。結果是 32 期 `about.run` 各多一句同樣的話
+  （2026-09-13 從 `failed` 搬走哨兵時記過的同一個形狀）。
+- 附帶更正：10-16、10-17 兩期 `about.run` 寫「連續 N 輪（為下界）」，但 prep 當天並沒有印「下界」——
+  帳從 09-01 起、連續從 09-16 起，那兩個數字是答案不是下界。已發布，不改寫，記在這裡。
+
+**怎麼驗的**
+- 重繪 10-17、10-03 兩張熱力圖並實際看圖：標籤落在格心。
+- `prep_chart.py --selftest-offline` 全過（含新的四案：相符收合、相符不逐條列、沒登錄仍逐條、形狀變了要響）；
+  實跑 prep：`^TWOII` 收成一行，「握手失敗」那一行不再出現。
+- MODIFY.md 驗證清單（見本次維護報告）。
+
+**怎麼倒回去**
+- 拿掉 `dead_series.^TWOII.failure_match` 即恢復逐條報（程式不必動）。`chartkit` 倒回只要把 `offset=.5` 拿掉。
+- 封存 PNG：用舊 `chartkit` 再跑一次同樣的重繪即可；或不推送工作樹裡的這些檔（見下）。
+
+**當時已知的風險**
+- **重繪的封存 PNG 只在 `chart-of-the-day` 的工作樹裡**：`rebuild_option.py` 與 publish 都不會把它們帶上遠端，
+  要另外處理推送（本次維護沒跑 git）。在那之前網站與 House View 拿到的仍是舊圖。
+- `failure_match` 是子字串比對：錯誤訊息改了措辭也會被當成「形狀變了」而重新響 —— 那是偏嚴的一側，刻意的。
+
 ## 2026-09-28（一）｜四個「每天都有人繞過去、所以沒有人修」的地方
 
 維護對話，接在當天 11:30 那一輪（exit 0，commit `053336b`）之後。四項都不是當天才壞的，

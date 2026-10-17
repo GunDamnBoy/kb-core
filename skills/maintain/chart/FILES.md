@@ -20,7 +20,7 @@
 | 這一份 | 怎麼更新 |
 |---|---|
 | 流程正本 `kb-core/skills/chart/SKILL.md` | 直接編輯 |
-| 排程 prompt（taskId `chart-daily-1130`） | `mcp__scheduled-tasks__update_scheduled_task`，**整份取代**；先改正本再整份貼過去 |
+| 排程 prompt（雲端排程，2026-10-05 起；舊 taskId `chart-daily-1130` 已停用） | `mcp__claude-code-remote__update_trigger` 的 `prompt`，**整份取代**、需在這台 Mac 的 Cowork 對話核准；先改正本再整份貼過去 |
 | 維護文件正本 `kb-core/skills/maintain/chart/*.md` | 直接編輯，然後**整包重打 `maintain.skill` 安裝** |
 
 **技能的子檔沒辦法從工作階段更新**：`save_skill` 只取代 `SKILL.md`，

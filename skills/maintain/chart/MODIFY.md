@@ -31,7 +31,10 @@
 
 ## 排程 prompt
 
-`mcp__scheduled-tasks__update_scheduled_task` 是**整份取代**：
+排程在雲端（2026-10-05 起），改 prompt 用 `mcp__claude-code-remote__update_trigger` 的 `prompt`，
+它同樣是**整份取代**；這支排程綁著這台電腦，新 prompt 要使用者在連著這台 Mac 的 Cowork 對話裡核准才生效
+（回 `needs_device_approval` 就是還沒生效，**不要刪掉重建**）。舊的桌面排程工具
+`mcp__scheduled-tasks__update_scheduled_task` 已不是 chart 的排程所在。整份取代的意思是：
 先 Read 現有全文，漏帶的段落等於刪除。歷次實測教訓原樣留著。
 先改 `skills/chart/SKILL.md` 正本，再整份貼過去。
 

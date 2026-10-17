@@ -60,8 +60,11 @@ Edit 失敗（old_string not found）＝檔案已變，停下重讀。
    `~/chart-of-the-day`、`~/outbox`，需要看上游再加 `~/advisory-rewrite`。
 2. Read `/Users/macmini/kb-core/skills/chart/SKILL.md` —— 每天實際跑的流程正本。
    排程裡那份是副本，兩邊要一致。
-3. `mcp__scheduled-tasks__list_scheduled_tasks` 找 chart 那條，
-   記下 cron／enabled／nextRunAt／lastRunAt，並 Read 它的 `path`。
+3. 排程現況：**2026-10-05 起 chart 是 App 的雲端排程（Require this computer）**，
+   `mcp__scheduled-tasks__list_scheduled_tasks` 只看得到桌面排程、看到 disabled 不代表停擺。
+   用 `mcp__claude-code-remote__list_triggers`（分頁，帶 `next_cursor`）找 chart 那條，
+   記下 cron／enabled／next_run_at／last_run，prompt 在 `derived_state.prompt`。
+   **那一輪有沒有跑看回執**（`~/outbox/chart/<日期>.receipt.json`），不看排程器的自述。
    同帳號另有投顧、podcast 等排程，這一場只碰 chart 這條。
 4. Read `/Users/macmini/chart-of-the-day/data/index.json`：
    近幾期的 `themes` 與 `kinds` 分布（同 theme 連續多天＝選題僵化；

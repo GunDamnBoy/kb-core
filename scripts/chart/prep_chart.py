@@ -51,6 +51,31 @@ def sib(name):
     return p if os.path.isdir(p) else os.path.expanduser("~/" + name)
 
 
+def _known_failure(sid, err, anchors):
+    """這一條今天的失敗，是不是 `anchors.dead_series` 登錄過的**那一種**失敗。
+
+    回登錄那一格（相符）或 None（沒登錄、或登錄了但失敗形狀不同）。
+
+    **2026-10-17 加。** `^TWOII` 2026-09-04 就登錄成長期失效，而 `_failure_streaks`
+    不讀那張登錄表 —— 於是 09-16 起它每輪都被印成「連續 N 輪、已達門檻，
+    在 `about.run` 具名寫一句」，到 10-17 已 32 輪，每一期的 `about.run` 都多一句
+    同樣的話。這正是 2026-09-13 從 `failed` 搬走哨兵時記過的形狀：
+    **一個永遠會響的計數器，跟一個沒有計數器，在輸出上長得一模一樣。**
+
+    **為什麼要比對 `failure_match` 而不是「登錄過就一律收起來」**：
+    登錄寫的是「這條會怎麼壞」。`^TWOII` 登錄時的形狀是「取得到、末日停在 07-17」，
+    09-16 起變成「握手客戶端回空表」—— 形狀變了是新資訊，那一天就該響。
+    所以沒帶 `failure_match`、或錯誤訊息對不上，一律照舊逐條報。
+    """
+    reg = ((anchors or {}).get("dead_series") or {}).get(sid)
+    if not isinstance(reg, dict):
+        return None
+    pat = reg.get("failure_match")
+    if pat and pat in str(err or ""):
+        return reg
+    return None
+
+
 def _failure_streaks(pre, anchors):
     """今天失敗的每一條，各自**連續失敗了幾輪**。回一串要印的行。
 
@@ -90,6 +115,7 @@ def _failure_streaks(pre, anchors):
     since = rows[0].get("run", "")[:10] if rows else ""
     out = [f"　**取數失敗 {len(failed)} 條**（連續輪數取自 `_prefetch_history.jsonl`，"
            f"帳從 {since or '—'} 起）："]
+    known = []
     for sid in sorted(failed):
         streak = 0
         for r in reversed(rows):
@@ -108,8 +134,16 @@ def _failure_streaks(pre, anchors):
             head = f"連續 {streak} 輪{floor}"
         else:
             head = "（帳上查不到連續紀錄——今天第一次失敗，或那幾輪根本沒跑）"
+        reg = _known_failure(sid, failed[sid], anchors)
+        if reg is not None:
+            # 已登錄、而且壞法跟登錄的一樣：一行帶過，不要求寫 about.run。
+            known.append(f"{sid}（{reg.get('label','')}，連續 {streak} 輪{'，下界' if floor else ''}）")
+            continue
         out.append(f"　　{sid:<14}{head}")
         out.append(f"　　　　{str(failed[sid]).splitlines()[0][:100]}")
+    if known:
+        out.append("　　已登錄長期失效、失敗形狀與登錄相符（`anchors.dead_series.*.failure_match`），"
+                   f"**不必在 `about.run` 重寫**：{'、'.join(known)}")
     return out
 
 
@@ -589,7 +623,8 @@ def main(argv):
                 print(f"　**哨兵 {can['id']} 轉綠了** —— Yahoo 可能不再要求握手，"
                       "回頭檢討 `anchors.rate_limits.handshake_allowlist` 是否還需要，"
                       "並在 `about.run` 寫一句")
-        hs = (pre.get("handshake") or {}).get("failed") or []
+        hs = [h for h in ((pre.get("handshake") or {}).get("failed") or [])
+              if _known_failure(h, (pre.get("failed") or {}).get(h), anchors) is None]
         if hs:
             print(f"　**握手失敗**：{'、'.join(hs)} —— 這幾條今天退回代理或改題，"
                   "並在 `about.run` 說明")
@@ -800,6 +835,26 @@ def selftest_offline() -> int:
     if not isinstance(_blocked_map(), dict):
         print("✗ _blocked_map 沒有回字典")
         ok = False
+
+    # ── `_known_failure` 與 `_failure_streaks` 的收合（2026-10-17 加）───────
+    # **三個案例缺一不可**：相符要收、形狀變了要響、沒登錄要響。
+    # 只驗「會收」的話，把整段改成一律收起來也會通過 —— 那正是要防的事。
+    a2 = {"prefetch": {"failure_streak_warn": 3},
+          "dead_series": {"^D": {"label": "測試", "failure_match": "回空表"}}}
+    pre2 = {"failed": {"^D": "RuntimeError: ^D：握手客戶端回空表",
+                       "^E": "RuntimeError: 429"}}
+    body = "\n".join(_failure_streaks(pre2, a2))
+    pre3 = {"failed": {"^D": "RuntimeError: SeriesRegressed"}}
+    body3 = "\n".join(_failure_streaks(pre3, a2))
+    for label, got in [
+        ("相符的收成一行", "不必在 `about.run` 重寫" in body and "^D（測試" in body),
+        ("相符的不逐條列", "　　^D  " not in body),
+        ("沒登錄的仍逐條列", "　　^E" in body),
+        ("形狀變了要逐條列", "　　^D" in body3 and "不必在" not in body3),
+    ]:
+        if not got:
+            print(f"✗ _failure_streaks 收合：{label}")
+            ok = False
 
     print("selftest-offline 全部通過 ✓" if ok else "★ selftest-offline 有錯")
     return 0 if ok else 1

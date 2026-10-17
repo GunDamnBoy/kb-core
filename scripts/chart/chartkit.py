@@ -172,10 +172,17 @@ class Chart:
 _label_slots: dict = {}
 
 
-def _fit_ticks(ax, cats, rotate_ok=True):
+def _fit_ticks(ax, cats, rotate_ok=True, offset=0.0):
     """類別標籤依每一格的可用寬度斷行；還是塞不下就縮字級。
 
     **標籤糊成一團跟沒有標籤一樣糟，而且更難發現** —— 圖看起來是完整的。
+
+    `offset`：刻度位置＝`i + offset`。長條圖的柱心在整數位置（0）；
+    熱力圖的格子是 `Rectangle((c, …), 1, 1)`，格心在 `c + .5`。
+    **2026-10-17 修**：這支原本無條件 `set_xticks(range(n))`，把 `_draw_heatmap`
+    自己設好的 `i + .5` 蓋掉，於是熱力圖的每個欄標籤都落在格子的**左邊界**、
+    最後一欄的右半格沒有標籤。圖看起來完整、數字也對，只是標籤跟欄錯開半格 ——
+    跟本函式要防的「糊成一團」同一類：**看起來完整的錯，比缺一塊更難發現。**
     """
     cats = [str(c) for c in cats]
     n = max(1, len(cats))
@@ -185,7 +192,7 @@ def _fit_ticks(ax, cats, rotate_ok=True):
     if longest > slot * 3:          # 三行還放不下 → 縮字級，等比放寬每行容量
         size = max(6.5, 9.0 * (slot * 3) / longest)
     lines = [_wrap_vis(c, max(4, int(slot * 9.0 / size)))[:4] for c in cats]
-    ax.set_xticks(range(n))
+    ax.set_xticks([i + offset for i in range(n)])
     ax.set_xticklabels(["\n".join(x) for x in lines], fontsize=size,
                        rotation=0, ha="center")
 
@@ -456,8 +463,7 @@ def _draw_heatmap(ch: Chart, ax):
                     ha="center", va="center", fontsize=8.5,
                     color=("white" if depth > 0.55 else INK))
     ax.set_xlim(0, len(ch.cats)); ax.set_ylim(0, len(m))
-    ax.set_xticks([i + .5 for i in range(len(ch.cats))])
-    _fit_ticks(ax, ch.cats)
+    _fit_ticks(ax, ch.cats, offset=.5)            # 格心在 c + .5，見 _fit_ticks 的病歷
     ax.set_yticks([len(m) - 1 - i + .5 for i in range(len(ch.rows))])
     ax.set_yticklabels(ch.rows, fontsize=9)
     # **左邊界要為列標籤讓位。** render_static 的 left=0.075 是給 y 軸刻度數字用的，
