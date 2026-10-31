@@ -3211,3 +3211,33 @@ E 27,573／F 32,887／G 32,407）—— **這就是 `strip_maintainer_only()` �
 ## 2026-10-17 末｜Politico 複測：`.com` 判訂閱範圍外、`.eu` 完整可讀
 
 主線在 Chrome Home 開 `politico.com` 三篇與 `politico.eu` 一篇：`.com` 三篇都在第 4–5 段後截斷（正文 1,257–1,389 字元），`ld+json` 的 `isAccessibleForFree` 全是 `false`；`.eu` 那篇 29 段／5,948 字元。**動到的檔**：`preamble.md` 的 Politico 列（加上 `isAccessibleForFree` 這個機械判準、`.eu` 入口改首頁、`/section/economy/` 已 404），E 的切片重生成、`--check` exit 0。**風險**：`.eu` 偏歐洲題材，E 的美國政治組若靠它補不足，仍由 The Hill／NYT 撐；`.com` 登入後要再複驗一次。
+
+## 2026-10-31｜Barron's 除名
+
+**決定（使用者）**：Barron's 從來源清單拿掉（文章頁與報價頁一併停用）。
+**依據**：Chrome Home 帳號 `meta[name="user.type"]`＝`freeRegister`（已註冊、未訂閱）。10-28～10-31 連四輪文章頁只給導言：10-31 開場測試 `big-tech-earnings-couldnt-ignite-chip-stocks-what-semis-need-now-4c261976` 量到 `article p` 10 段／1,158 字元，有 `Continue reading this article with a Barron's subscription`；E 複驗 13 段／1,179 字元，三判準全中。這四輪 0 卡。與 FT、The Economist 同屬「訂閱範圍外」，不是登入問題。
+
+**動到哪些檔**：
+- `scripts/advisory/preamble.md`：付費清單拿掉；「已除名」黑名單加一則並附理由；計量制實務規則、slug 改寫、「開場測試對計量制樂觀」三段改成一行除名說明；三項機械判準保留並改寫成適用 IBD；選擇器表刪掉「Barron's（報價頁）」一列。七份切片已重生成。
+- `advisory/anchors.json`：`collectors.roster.E.sources` 改為 NYT、IBD、Politico、The Hill；`_roster_notes` 加註。
+- `skills/advisory/SKILL.md`：步驟 2-1 的計量制那行、步驟 3-4 的被擋判準那行改成只寫 IBD。
+- `tools/advisory_taskcard.py`：〈共同規則〉裡的「Barron's／IBD」改為「IBD」。
+- 第二節、第四節與 MarketWatch 列裡的歷史行文沒有動（同 Economist 的處理方式）。
+
+**量測**：
+- `preamble.md` 112,600 → 111,942 字元。
+- E 的切片 74,727 → 73,431 bytes，切片裡剩 12 處提到 Barron's，都是黑名單與歷史行文。
+- 各組配額不變，因為 Barron's 這四輪本來就沒有貢獻張數。
+
+**怎麼驗的**（全部通過）：
+- `slice_preamble.py --check` exit 0（七份一致）。
+- `py_compile` 全過，檢查自檢 0 失敗。
+- `advisory_verify` 對 10-31 結果是 19 PASS · 0 WARN · 0 FAIL。
+- `advisory_taskcard.py` 以 11-01 試產，〈共同規則〉裡 0 處 Barron's。
+
+**怎麼倒回去**：把黑名單那一則移回付費清單、`roster.E.sources` 加回 Barron's，從版控歷史還原計量制三段與報價頁那一列，SKILL 與 taskcard 那兩行還原，然後重跑 `slice_preamble.py`。
+
+**已知風險**：
+- E 失去報價頁，那是取個股收盤最便宜的一條路（10-31 那輪三檔個股收盤都從那裡拿）。之後要靠 IBD／NYT 稿內數字；若稿內沒有，watch 對答案會缺格。
+- 若要只留報價頁，要把它寫回選擇器表並註明「文章頁停用」。
+- 本次在互動對話中維護，沒有跑任何 git 指令。

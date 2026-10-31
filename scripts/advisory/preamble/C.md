@@ -244,29 +244,12 @@ Bloomberg 12、The Hill 12–14、NYT 34。所以 CJK 那一組只把段數從 8
 ## 六、來源
 
 **付費訂閱（從已登入的 Chrome 讀）**：Bloomberg、WSJ、NYT、Nikkei Asia、
-Washington Post、Barron's、IBD、Politico、The Hill、
+Washington Post、IBD、Politico、The Hill、
 SemiAnalysis（**文章在 `newsletter.semianalysis.com`**，`semianalysis.com` 只剩訂閱模型頁）。
 
-**Barron's 是計量制，不是「可讀／不可讀」的二分。** 2026-08-19 同一天測到兩種相反的結果：
-傍晚兩篇 `article.access=paid` 的個股與財報文都完整讀到（13 段／2,331 字、15 段／2,784 字），
-而白天採集階段卻只拿到導言。兩份紀錄都是真的——這個 profile 的
-`meta[name="user.type"]` 是 **`freeRegister`**（已註冊、未訂閱），額度未用完時給全文、用完後只給導言。
+**Barron's 已於 2026-10-31 除名**（見下方「已除名」清單）。原本這裡記的計量制實務規則、slug 改寫與「開場測試對計量制樂觀」三段一併拿掉；下面的三項機械特徵**保留**，因為 IBD 的逐篇授權是同一個形狀，例子仍以當年 Barron's 的實測為準。
 
-**實務規則三條**：①判定訂閱狀態讀 `user.type`，`freeRegister` 是「註冊未訂閱」，
-不是「被擋」；②額度有限，優先把 Barron's 留給沒有替代來源的題材，別拿它補量；
-③同一輪後段若內文量突然掉到導言水準，那是額度用完，不是選擇器壞掉——換來源，不要重試。
-
-**⚠️ Barron's 會改寫 slug（2026-08-30 實測）。** 開場測試那篇載入後路徑由
-`…/articles/bond-yields-markets-fear-index-vix-9c4edcaf` 變成
-`…/articles/bond-yields-stock-market-fear-index-vix-9c4edcaf`。
-**交卡前一律讀一次載入後的最終網址**，否則讀者隔天點進去會 404。
-（已除名的 The Economist 當年也有這個行為——**這種改寫是「有時」不是「一定」**，
-所以不能靠「上次沒變」推論這次不會變。）
-
-**開場可用性測試對計量制來源會樂觀。** 測試時額度還在，判定「可讀」；採集到中後段才發現被截斷。
-這不是測試方法錯，是計量制本來就沒有單一狀態——**把開場結論當成「此刻可讀」，不是「今天可讀」。**
-
-**⚠️ 任務卡給你的那組被擋門檻，套在計量制來源上會失效 —— 用下面這三項機械特徵取代。**
+**⚠️ 任務卡給你的那組被擋門檻，套在計量制／逐篇授權的來源上會失效 —— 用下面這三項機械特徵取代**（現行適用 IBD；例子出自已除名的 Barron's）。
 任務卡的字面是「段數 ≤ 3 **且** 字元數 ≤ 800 **且** 有攔截字串」，三個條件同時成立才算被擋。
 2026-08-31 採集員 E 對 Barron's 三篇獨立複驗，**其中兩篇是 10 段／797 字元與 12 段／830 字元**
 —— **字元數壓在 800 上下、但段數遠大於 3**，照字面兩篇都不構成「被擋」，會被歸進中間地帶。
@@ -297,7 +280,8 @@ CME FedWatch 官網（跨網域 iframe ＋ reCAPTCHA，改用 Investing.com Fed 
 WGC goldhub 的 ETF 流向（需登入）、MOPS 舊網頁版表單頁（連續三輪被重導）、
 **FT（2026-08-19 開場測試：文章頁標題 "Subscribe to read"、內文 0 段 ——
 沒有有效訂閱，屬「訂閱範圍外」而不是「被擋」）**、
-**The Economist（2026-10-17 除名：Chrome Home 已登入但帳號沒有訂閱 —— 帳號選單有「Log out」、頁面同時顯示「Subscribe」，社論正文只讀得到約 2 段；連十一輪 0 卡、另有 DataDome 風控頁紀錄。與 FT 同屬「訂閱範圍外」，不是登入問題）**。
+**The Economist（2026-10-17 除名：Chrome Home 已登入但帳號沒有訂閱 —— 帳號選單有「Log out」、頁面同時顯示「Subscribe」，社論正文只讀得到約 2 段；連十一輪 0 卡、另有 DataDome 風控頁紀錄。與 FT 同屬「訂閱範圍外」，不是登入問題）**、
+**Barron's（2026-10-31 除名，使用者決定：Chrome Home 的帳號 `user.type=freeRegister`（已註冊、未訂閱），文章頁連續四輪（10-28～10-31）只給導言 ＋ `Continue reading this article with a Barron's subscription`；計量額度從 08-19 起就時有時無。文章頁與報價頁一併停用 —— 個股收盤改從 IBD／NYT 稿內或採集員自己來源的報價取。與 FT、The Economist 同屬「訂閱範圍外」）**。
 
 **FT 那一則的分類要看清楚。** 內文 0 段很容易被記成「被付費牆擋」，但被擋的前提是
 **有訂閱卻讀不到**；沒有訂閱就讀不到是預期行為，不是故障。兩者記錯會污染來源健康度：
