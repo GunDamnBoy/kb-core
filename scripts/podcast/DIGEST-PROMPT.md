@@ -222,6 +222,7 @@ Acquired 動輒四個半小時，踩得到這一條。（08-23 的 latentspace �
 **核心重點與金句的條數上下界**（`per_episode.takeaways` 與 `per_episode.quotes`）、
 **第 1 步 `podcast_dupmap.py` 印出來、屬於這一集的那一段（原樣貼上，含分段標示）**、
 **以及壓縮比**——逐字稿字數 ÷ 目標字數上界，算好給它。
+**單位是「英文詞／中文字元」**：分子取 manifest 的 `words`（英文詞數），分母取篇幅級距的字元上界，派工單照寫單位（例：5,163 詞 ÷ 3,000 字元 ≈ 1.72 詞／字元），**不要拿逐字稿的字元數當分子**（2026-11-11 補：在此之前分子沒有定義單位）。
 自己估壓縮比是 subagent 最容易省略的一步，而那一步沒做就會寫超。
 
 **篇幅一律寫「篇幅級距 N（X–Y 字元、A–B 段）」，不要寫「第 N 層」。**「第 N 層」只指退援層級
@@ -291,6 +292,7 @@ podfetch 稿是**一行一個時間戳**（`[MM:SS] Speaker N: 內容`），所�
 
 **4. 組檔**　`chars` 用 python 機械覆寫。**每集要帶 `minutes`**（由 `durationMs` 換算）
 —— 篇幅級距是由片長決定的，而 `published` 是給人讀的字串，沒有這個欄位篇幅那條判準就判不了。
+**`published` 的日期取 manifest `releaseDate` 的 UTC 日期**，格式 `YYYY年M月D日｜片長 N 分鐘`（重播填原始播出日）；**`episodes[]` 的順序照 `kb-core/scripts/podcast/config.json` 的 `show_priority`**（不是 `shows.json` 的鍵順序），同一檔多集照 `releaseDate` 由舊到新——`systems/podcast.py` 的 `index_entry()` 假設日檔已照 `show_priority` 排好（2026-11-11 補：在此之前兩者都沒有寫在流程裡，09–11 月約一成的 `published` 用的是台北或美東日期，11-11 那期 hardfork 排到了 latentspace 前面）。
 
 **每集也要帶 `trackId`**（從 `appleUrl` 的 `?i=` 取），**這個欄位沒有的話金句閘門會安靜失效**
 —— `quote_misses()` 用 `<showKey>-<trackId>.md` 去找逐字稿，找不到就整輪回 `None`、
@@ -416,6 +418,7 @@ podfetch 稿是**一行一個時間戳**（`[MM:SS] Speaker N: 內容`），所�
 > 它全庫沒有第二個家 —— **整套系統要求「不能有逾期未判」，卻沒有任何一份文件寫「怎麼判」。**
 
 然後把當日觀察點附加上去，`status` 填「觀察中」。
+**寫回帳本一律原地覆寫原檔（python `open(p,'w').write(...)`，格式 `json.dumps(o, ensure_ascii=False, indent=1)`），不要先寫 `.tmp`／`.bak` 再改名**——掛載點可以建檔、不能刪檔，暫存檔會刪不掉、留在 `data/`，而 publish 對本 repo 做的是 `git add -- data`。`data/.gitignore` 已排除 `*.tmp`／`*.bak`／`*.orig`，那是最後一道，不是許可（2026-11-11 那一輪實際留下過一個 `observations.json.tmp`）。寫完 `json.load` 讀回一次，並確認頂層 `updated` 改成今天的**台北日期** `YYYY-MM-DD`（不是 UTC 日期——healthcheck 把純日期當台北日期讀，寫成 UTC 會天天報 WARN）。
 **新項目一律要帶 `due` 欄位**（ISO 日期，通常是三個月後）**與 `source` 欄位**（出自哪一集，`節目名｜原文標題`，多集用「；」分隔），
 text 裡照樣寫「檢驗方式：…（到期 YYYY-MM-DD）」——欄位給機器讀，句子給人讀。
 
