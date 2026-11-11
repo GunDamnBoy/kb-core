@@ -63,7 +63,16 @@ python3 /tmp/bubble-$(date +%F)/healthcheck.py
 
 記下 `composite`、`quadrant`、觸發器點亮數當作事後對照的基準。
 
-**完成條件**：`healthcheck.py` 跑過，現有的 FAIL 清單被記下來當基準。
+**完成條件**：`healthcheck.py` 跑過，現有的 FAIL 清單被記下來當基準；`AGENT_BRIEF.md` 已完整讀過。
+
+**動手前就有 FAIL 時，先分清楚是誰的**（brief §8.4 末段）。指向覆核動不到的欄位——典型是
+`meta.lastAutoRun` 的「新的失敗來源已連續失敗 ≥2 次」——就是**引擎端 FAIL**：覆核修不了、也不准修
+（不要去改 `lastAutoRun`、`failrun` 或 `KNOWN_FAIL`）。這時照樣做完第 2–4 步，但**第 5 步不投遞**
+（閘門必擋、草稿會被 park 且不重試），改用 `SendUserFile` 把兩個檔送進對話留底，
+推播開頭標「⚠ 警示：引擎端 FAIL，覆核未發布」，寫明是哪一條，
+請 Kenny 到 Actions 對 `update-and-deploy` 按 **Run workflow**；**重跑之後要從新的 clone 重做收尾再投遞**
+——舊草稿帶著 clone 當時的 `lastAutoRun`，閘門照樣會擋（2026-11-09 實測）。
+白名單外的來源**只失敗一次**是 WARN 不是 FAIL（v2.3.2 起），照常做、在交付訊息提一行即可。
 
 ## 2. 每週研究（近 7–14 天，每項都要附日期與來源）
 
@@ -81,8 +90,8 @@ healthcheck 因此出現過期 WARN 時，在交付訊息註明「本週已查�
   **IPO 進度落在兩個地方**：`stage.checklist` 第 4 項（人讀的證據），
   以及 `megaipo` 觸發器 —— 它的 `state` 由人工旗標 `params.megaipo_done` 直接決定
   （`update_data.py` 的 `set_trig("megaipo", bool(params["megaipo_done"]), …)`），
-  **所以那個旗標是這一輪要維護的**。口徑見 `AGENT_BRIEF` §3.5；
-  注意 **SpaceX 2026-06-12 的掛牌不計入** —— 它不是 AI 標的。
+  **所以那個旗標是這一輪要維護的**。口徑見 `AGENT_BRIEF` §3.5：**OpenAI 或 Anthropic**
+  任一家完成掛牌即設 `true`；SpaceX 2026-06-12 的掛牌不計入（理由寫在 §3.5）。
 - **(d)「AI bubble」敘事** 1–5 級（映射 10/30/50/70/90）→ `narrative`
 - **(e) Token 經濟**（OpenRouter 用量、中國模型市占、token 價格戰）→ `tokens`
 - **(f) 財報季**：三大雲（**1／4／7／10 月底**）營收年增 → `cloudrev`；
@@ -102,7 +111,8 @@ healthcheck 因此出現過期 WARN 時，在交付訊息註明「本週已查�
 `ngdp_nominal` 要等下一次引擎重評 `triggers` —— **不要自己去改 `triggers` 的 `state`
 來「讓它一致」**，註明「已更新 `params.X`，發布後觸發的自動更新會套用」即可（覆核上線約 1 分鐘後
 push 觸發的 Actions 就會重評，不必等下一個交易日）。
-**`megaipo_done` 是這條的例外**：它不經引擎重算，改了下一次 `set_trig` 就生效。
+**`megaipo_done` 也一樣要等引擎**（`set_trig` 就在引擎的 `main()` 裡）；它例外的地方只在於
+**同時要在 `stage.checklist` 第 4 項反映**，而 `stage` 本來就是人維護的。
 `params` 目前三個鍵：`nvda_eps`、`ngdp_nominal`、`megaipo_done`。
 
 **(i) `stage` 整塊**：`checklist` 六項的 `state`／`evi`、`stage.note`，
@@ -116,8 +126,8 @@ push 觸發的 Actions 就會重評，不必等下一個交易日）。
 ③ `current`、`label`、`stages[]` 的 `active`／`done` 三者互相對得上，也對得上點亮數。
 **沒有機器看得到的是 `evi` 的內容與 `label` 的文字**，那兩樣只能自己重讀。
 
-**第 4 項「AI 巨頭 IPO 潮與首日暴漲」自 2026-08-23 起是巨型 IPO 事件的唯一去處**。
-注意 **SpaceX 2026-06-12 的掛牌不計入本項**：它不是 AI 標的，理由見 §3.5。
+**第 4 項「AI 巨頭 IPO 潮與首日暴漲」自 2026-08-23 起是巨型 IPO 事件的唯一去處**，
+口徑與 `megaipo` 相同（OpenAI／Anthropic；SpaceX 不計入，§3.5）。
 
 ## 3. 你這一輪要碰的欄位就是白名單那兩份（§8.3）
 
@@ -221,7 +231,7 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 寫完用 `device_bash` 在 `$HOME/mnt/outbox/bubble/` 跑 `wc -c` 與 `md5sum`，
 **跟容器裡那兩份比對**——比的是 Mac 上那份，不是容器裡那份。
 
-**不要自己 `git push`**（雲端本來就推不動，也不要找繞路）。發布的閘門
+**不要自己 `git push`**（雲端本來就推不動，也不要找繞路）。**不索取、不使用、不顯示任何 token。**發布的閘門
 （`gate.py` 與 `healthcheck.py`）在 `auto_publish.py` 裡。
 **你的工作是把檔案放到那個目錄，不是把它送上線。**
 
@@ -237,7 +247,8 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 （被覆寫成剛剛的時間＝發布器活著，只是還沒輪到；很舊＝launchd 沒在跑），
 後者看 `publish.log`。**空的 log 與沒跑過長得一模一樣**，所以先看心跳再下結論。
 
-**完成條件**：手上有一份回執，且它的 `exit` 有被讀過。
+**完成條件**：手上有一份回執，且它的 `exit` 有被讀過。**讀完回執就結束**——發布後的線上驗證
+不由這一輪做（brief §8.3）。
 
 ## 7. 交付訊息（精簡）
 
@@ -252,7 +263,7 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 **末行寫發布狀態**：回執 exit 0 就寫「已上線」並附 commit。
 
 **開頭標「⚠ 警示」的條件只看資料**：溫度週變動 ≥5、任一指標轉紅、或觸發器新點亮。
-流程異常要警示的還有 healthcheck FAIL 不是 0（第 4 步卡住）、沒有回執、
+流程異常要警示的還有 healthcheck FAIL 不是 0（第 4 步卡住；引擎端 FAIL 的處置見第 1 步）、沒有回執、
 以及這一輪沒有 `mcp__remote-devices__*`（草稿交不出去）。
 
 **上週基準是「日期 ≤ 今天−7 的最後一筆」`history`，不是倒數第二筆**（§8.2）——
@@ -276,8 +287,9 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 而不是電子工業類指數），`elec_rel` 第一次有值加入動能子群，
 **`tw.heat` 於 2026-08-23 由 46.8 跳到 44.4，那一跳也是系統改動造成的**（§6.20）。
 
-觸發器自 2026-08-22 起有 **8 項**（`gsy150` 近期在 150% 門檻上下閃爍，見第 7 步）（新增 `sahm05`：Sahm Rule ≥0.50pp，FRED SAHMREALTIME，
-唯一量實體經濟的一項）。第 7 項是 `megaipo`（OpenAI／SpaceX 巨型 IPO 完成），
+觸發器自 2026-08-22 起有 **8 項**（新增 `sahm05`：Sahm Rule ≥0.50pp，FRED SAHMREALTIME，
+唯一量實體經濟的一項；任何一項在門檻附近都可能閃爍，看 `prog`，見第 7 步）。
+第 7 項是 `megaipo`（OpenAI／Anthropic 巨型 IPO 完成，v2.3.2 起；原為 OpenAI／SpaceX），
 **八項裡唯一沒有進度條的一項**（`prog: null`）—— 它是人工旗標，沒有可連續量測的外部數列。
 其餘七項都有 `prog`。
 
@@ -292,8 +304,8 @@ FAIL 不是 0 就不要交付，改在交付訊息說明卡在哪一項。
 `KNOWN_FAIL` 一起移除 —— **那是維護工作階段要做的事，覆核只要提一行**。
 目前白名單**兩項**：AAII 與台積電權重（`healthcheck.py` 的 `KNOWN_FAIL`，2026-08-23 實測）。
 AAII 持續在 Actions 端被擋、台積電權重要人工更新。**已退場的來源不在白名單裡 —— CBOE（2026-08-17 退場）
-與 CNN F&G（2026-08-22 退場）若出現在 fail 就是 healthcheck FAIL、會擋住交付**，
-那是刻意的，不要當成已知正常放過。
+與 CNN F&G（2026-08-22 退場）若出現在 fail，跟其他白名單外的來源一樣分級**：
+連續 1 次 WARN、連續 ≥2 次 FAIL 並擋住交付（處置見第 1 步）。不要當成已知正常放過。
 
 `senti` 卡片的來源時多時少是正常的（卡片 `sub` 會誠實顯示當次合成了哪幾個），
 在交付訊息回報即可，**不要自行改引擎或前端**。
