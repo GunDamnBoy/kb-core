@@ -31,7 +31,8 @@ spec 格式（每條序列一個物件）：
     yoy    對 12 期前的年增率 %（CPI／PCE 用；**前 12 期會被消耗掉**）
     ma:N   N 期移動平均，**自動標 derived**
     vol:N  N 期日報酬標準差 %，**自動標 derived**（衍生序列的 QA 四分法見 brief 3.4）
-    pct:N  N 期百分比變動 %，**自動標 derived**；**前 N 期會被消耗掉**，
+    pct:N  N 期百分比變動 %，**自動標 derived**；**前 N 期會被消耗掉**；
+           月頻按日曆回推 N 個月（缺月的下一期回 None，同 yoy），日頻按位置；
            而且窗口互相重疊（相鄰點共用 N−1 個觀測）——引用相關係數或分位時要說出來
 
 **跨序列的運算（相減、比值）不在這個文法裡**，理由在
@@ -135,6 +136,25 @@ def _transform(d: list, v: list, t: str) -> tuple[list, list, bool]:
         if n < 1:
             raise ValueError(f"{t!r} 的期數要是正整數")
         dd, out = [], []
+        if _is_monthly(d):
+            # **月頻按日曆回推 N 個月，跟 `diff`／`yoy` 同一套。**（2026-11-11 加）
+            # 原本一律按位置 `v[i - n]`，月頻序列跨過缺月（`CPIAUCSL` 缺 2025-10）時，
+            # 2025-11 的「1 期變動」實際是兩個月，卻照樣標成月增 —— 與 2026-08-09
+            # 修掉的 yoy 是同一類錯，**數字看起來完全正常、不會露餡**。
+            # 封存裡用過的 `pct:` 全在日頻序列上，所以還沒咬到；2026-11-11 的 CPI 發布圖
+            # 因為官方沒有年增率而改畫月增，就是因為這一條只能手算。
+            # 前 N 個月沒有基期就跳過（同 yoy 的「被消耗掉」）；中段找不到基期回 None（圖上斷開）。
+            mp = dict(zip(d, v))
+            first = _shift_months(d[0], -n)
+            for x in d:
+                if x < first:
+                    continue
+                b = _shift_months(x, n)
+                base = mp.get(b)
+                dd.append(x)
+                out.append(None if base in (0, None) or mp[x] is None
+                           else round((mp[x] / base - 1) * 100, 3))
+            return dd, out, True
         for i in range(n, len(v)):
             base = v[i - n]
             dd.append(d[i])
@@ -241,6 +261,16 @@ def selftest() -> int:
     _dd, vv0, _ = _transform(d[:3], [0.0, 5.0, 7.0], "pct:1")
     if vv0 != [None, 40.0]:
         print(f"✗ pct 遇到 0 分母：{vv0}"); ok = False
+    # **月頻 pct 按日曆、不跨缺月**（2026-11-11 回歸，形狀取自真實的 `CPIAUCSL` 缺 2025-10）：
+    # 缺月的下一個月沒有前月可比，必須回 None，不可以拿兩個月前頂替。
+    dg = ["2025-08-01", "2025-09-01", "2025-11-01", "2025-12-01"]
+    dd, vv, _ = _transform(dg, [100.0, 101.0, 103.0, 104.03], "pct:1")
+    if dd != dg[1:] or vv[0] != 1.0 or vv[1] is not None or abs(vv[2] - 1.0) > 1e-9:
+        print(f"✗ 月頻 pct:1 跨缺月：{list(zip(dd, vv))}"); ok = False
+    # 日頻照舊按位置（交易日沒有「缺一天」的概念）。
+    dd, vv, _ = _transform(["2026-11-06", "2026-11-09", "2026-11-10"], [100.0, 110.0, 99.0], "pct:1")
+    if dd != ["2026-11-09", "2026-11-10"] or vv != [10.0, -10.0]:
+        print(f"✗ 日頻 pct:1：{list(zip(dd, vv))}"); ok = False
     try:
         _transform(d, v, "nope"); print("✗ 未知轉換沒有拋錯"); ok = False
     except ValueError:

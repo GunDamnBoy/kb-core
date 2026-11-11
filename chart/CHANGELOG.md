@@ -1,5 +1,46 @@
 # 每日五圖｜重建紀錄
 
+## 2026-11-11（三）｜同一個發布兩把尺、一個按位置數的月增、一條沒人有權處置的待辦
+
+**動到哪些檔**
+- `chart/anchors.json`：`freshness.weekly_release_series` 加 `DCOILWTICO`（附序列頁實測與帳），
+  `weekly_release_series_from` 加 `"DCOILWTICO": "2026-11-11"`。程式沒動 —— 兩個讀者（`checks/chart.py` 的 `_freshness`、
+  `prep_chart._stale`）本來就讀這兩格。
+- `scripts/chart/build_series.py`：`_transform` 的 `pct:N` 遇到月頻序列改按日曆回推 N 個月（缺月的下一期回 None），
+  日頻照舊按位置；`selftest()` 加兩個案例（月頻跨 2025-10 缺口、日頻照舊）；模組說明的文法表同步。
+- `scripts/chart/prefetch.py`：`CORE` 加 `2382.TW`（附需求證據與驗收點）。
+- `skills/chart/SKILL.md`：第 3 步週頻那一段加一句 WTI。
+
+**量測**
+- WTI：FRED 序列頁 `Updated: November 4, 2026, 12:18 PM CST`、`Next Release Date: November 12, 2026`、release「Spot Prices」——
+  與已登錄週頻的 `DCOILBRENTEU` 同一個 release。`_prefetch_history.jsonl` 近 30 輪兩條末日每次同日同步跳動
+  （10-06→10-14→10-20→10-27→11-03）。改前它在 11-03、11-04、11-10、11-11 四輪被判硬失敗；改後 11-11 的 prep 為「0 條硬失敗」。
+- pct：`CPIAUCSL` 實跑，改後 2025-11 回 None、2026-10 為 0.35（與 11-11 cpi-release 手算一致）；改前 2025-11 會印成 0.25 左右的「月增」
+  （實為 2025-09→11 兩個月）。封存裡用過 `pct:` 的 4 期（09-12、10-15、10-16、10-24）全是日頻，結果不變。
+- 2382.TW：`_prefetch_history.jsonl` 的 `last` 自 2026-10-23 起為空（快取末日 10-21），prep「沒有人在管」那一段連印約 20 輪。
+
+**怎麼驗的**
+- `py_compile` 全過；檢查自檢 0 失敗；`build_series --selftest`、`fetch --selftest-cache`、`fetch_tw_price --selftest-offline` 全過。
+- `chart_verify` 2026-11-11：18 PASS · 2 WARN · 0 FAIL（同改前）。回測 11-05、11-01、10-15、09-12、10-24：各 1 FAIL 皆為
+  `series_freshness`（回測時 `now` 取當下，MAIN 已記的形狀），`option_matches_spec` 對用過 `pct:` 的 10-15、10-24 照舊 PASS。
+- `prefetch --list` 含 2382.TW；99 份日檔全可 `json.load`；兩個 repo 零 symlink。
+
+**怎麼倒回去**
+- 三個檔的改前版本在 Mac 的 device_bash 家目錄 `~/*.bak.20261111`（sandbox 外、不進版控）；或照本段逐項反向編輯。
+- 只倒 WTI：刪 anchors 那兩格的 `DCOILWTICO`。
+
+**當時已知的風險**
+- WTI 改用週頻的尺之後，**若 EIA 真的漏發一週**，要到落後 3 期才硬失敗 —— 與布蘭特同一個代價，換掉的是每週三四天的假警報。
+- 2382.TW 加進 CORE 當下沒有實測抓取（排程外不連證交所）；驗收點是 2026-11-12 11:00 的預抓。
+- 月頻 `pct:` 的新路徑目前沒有任何封存用過，第一次實用時仍要對一次手算。
+
+**它藏住的方式**
+- WTI：2026-09-17 加進 CORE 時註解寫「FRED，日頻」，而布蘭特三天前才因為**同一個 release** 改成週頻。兩條並排在同一張帳上、
+  末日每次一起跳，但 prep 每次把 WTI 印成「新的」硬失敗（中間恢復過一兩天，連續計數歸零）——
+  **每週固定響、又每次都被標成新的**，執行報告連寫三期「看明天是否恢復」，11-07 的油價題材因此沒選。
+- pct：yoy 在 2026-08-09 就修成按日曆，而 2026-09-04 加 `pct:` 時抄的是日頻的寫法；selftest 用的月份序列剛好沒有缺口，所以照樣全綠。
+- 2382.TW：prep 把它列在「要嘛加進 CORE、要嘛刪掉、要嘛登錄」，而執行輪次三件都無權做，只能抄進報告。
+
 ## 2026-10-17（六）｜熱力圖標籤錯開半格、一條登錄過的失效序列每天仍在響
 
 **動到哪些檔**

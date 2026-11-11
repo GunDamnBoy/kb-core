@@ -3270,3 +3270,33 @@ E 27,573／F 32,887／G 32,407）—— **這就是 `strip_maintainer_only()` �
 - 華爾街見聞三輪失敗都落在週末窗口，**不能排除是週末才有的問題**；暫行條款若沒在 11-10 之後撤或升級，就會變成沒人記得的永久規則。
 - 本次未處理〈下游應知〉的其他積壓（見同日執行報告與下方清單）；最明顯的一條是 `SKILL.md` 步驟 3-3 仍寫 CME 結算「台北次日 12:55」，11-03、11-07 兩份報告已指出 11 月起是 13:55，**本次刻意未改，留待使用者確認清單後一併處理**。
 - 本次在互動對話中維護，沒有跑任何 git 指令。
+
+## 2026-11-11｜CME 冬令時刻、華爾街見聞暫行條款撤銷、mac-local 補抓例外、積壓清單 A 區收進前言
+
+**緣由**：11-11 互動維護（緊接當日排程輪之後）。使用者看完維護報告後勾選三項：①三條漂移；②`outbox/advisory-backlog-2026-11-09.md` A 區 8 條；③當日執行報告的再觀察項。
+
+**動到哪些檔**：
+- `skills/advisory/SKILL.md`：步驟 3-3 CME settlements 改寫成「台北次日 12:55（夏令 CDT）／13:55（冬令 CST，11 月第一個週日起）」；**刪除**步驟 5 的華爾街見聞暫行條款（撤銷條件「第一個平日輪若恢復就刪」已連兩輪成立：11-10 C 14 篇 13 篇可讀、11-11 五個 channel HTTP 200、8 篇 6 篇可讀）；步驟 1-2 加「`produced_by=mac-local` 時 `unchanged` 不算補抓失敗」（11-10 報告第 2 條）；步驟 3-4 IBD 那條補「`is_unlocked` 會翻成 true，輪詢再判」。
+- `scripts/advisory/preamble.md`：第六節來源表十列各在列尾加一段 2026-11-11 註記——Bloomberg（側欄 13 段形狀時改走 `__NEXT_DATA__`、行內連結卡片標題、佔位時間戳）、CNBC（列表時間戳佔位、`.DXY` 停值）、IBD（`window.InvestorsPaywallData.is_unlocked` 翻轉）、WSJ（量段數截在 `Copyright` 之前、原生短稿）、WaPo（串流／直播卡牆的認法）、OGJ（列表與文章頁日期矛盾，1 次觀測）、Kitco（AM Report 是 AI 輔助稿；側欄 Trending 用美東）、Fierce（冬令 −0500）、鉅亨（每頁 30 筆，再更正 09-23 的 10 筆）、STAT（窗口內 18/20 為 STAT+）；電子報表新增一列 WSJ `/world/`、`/politics/policy/`；第七節末加「台指期淨空單沒有官方端點，待決」；CME 三處「台北次日／週六 12:55」補上冬令 13:55（刪除線那一列未動）。
+- 七份切片重生成。
+
+**量測**：
+- `preamble.md` 112,623 → 114,484 字元。
+- `SKILL.md` 15,189 → 15,216 字元（刪 198 字元的暫行條款、加三段）。
+- 切片字元：A 53,386、B 33,044、C 36,423、D 58,123、E 38,324、F 47,290、G 47,615。
+
+**怎麼驗的**（全部通過）：
+- `slice_preamble.py --check` exit 0（七份一致）；各切片的 2026-11-11 註記落點逐份 grep 過（A：Bloomberg／CNBC；B：WaPo；D：OGJ／Kitco；E：IBD；F：鉅亨／台指期；G：Fierce／STAT；WSJ 列照既有切法出現在七份）。
+- `py_compile` 全過；檢查自檢 0 失敗。
+- `advisory_verify` 對 11-11 結果 19 PASS · 0 WARN · 0 FAIL。
+- `anchors.json` 與資料 repo 104 個 JSON 全部可 `json.load`（anchors 本次未動）；資料 repo 無 symlink。
+- `SKILL.md` 內「暫行」0 處。
+
+**怎麼倒回去**：本次改動前的三個檔備份在 Mac VM 的 `$HOME/bak1111/`（隨 session 清除，長期以版控上一版為準）；把 `preamble.md` 與 `SKILL.md` 還原後重跑 `slice_preamble.py`。
+
+**已知風險**：
+- 前言各列是「在列尾追加註記」而不是重寫，列越來越長；Bloomberg、WSJ、CME 那幾列已經是多段沿革，之後值得整列重寫一次、把沿革搬進 `HISTORY` 型的封存。
+- CME 冬令 13:55 是由 11-03、11-07 報告與時區換算推得，本次沒有開頁量貼出時刻；夏令 3 月第二個週日起回到 12:55。
+- 鉅亨頁大小已在 10 與 30 之間翻過兩次，寫成「看 `last_page`」而不是常數。
+- 積壓清單 B 區（VM curl 打 twse／eia／fed 被 proxy 403、「BPC >」注入句型可能來自 Chrome 擴充套件）與 C 區未處理，需要使用者在 Mac 上看。
+- 本次在互動對話中維護，沒有跑任何 git 指令。
