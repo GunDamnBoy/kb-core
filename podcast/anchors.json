@@ -7,7 +7,7 @@
   "official_transcripts": null,
   "digest": "03:00",
   "tz": "Asia/Taipei",
-  "structural_tradeoff": "台北 03:00 ＝ 美東前一日 15:00，而主要節目集中在台北 04:00–06:30 落地（All-In 約 06:23）。**前一晚的美東晚間集數必定收不到，會出現在明天那一版**——All-In 約在發布後 21 小時進日報。這是設計不是故障，不要追、也不必每天解釋。沒有集數會遺失：podfetch 視窗以 last_run_utc 為起點、日報又會去重。",
+  "structural_tradeoff": "台北 03:00 ＝ 美東前一日 15:00，而主要節目集中在台北 04:00–06:30 落地（All-In 約 06:23）。**前一晚的美東晚間集數必定收不到，會出現在明天那一版**——All-In 約在發布後 21 小時進日報。這是設計不是故障，不要追、也不必每天解釋。**晚到**的集數不會遺失：podfetch 視窗以 last_run_utc 為起點、日報又會去重。**反覆轉錄失敗的集數會**（見 `window.source`）。",
   "source": "podfetch 與 digest 的時點沿用舊制。**`official_transcripts` 改回 null 是 2026-08-22 的訂正：這一步從來沒有被實作出來。** 舊值寫 02:20、註記寫「A 類官方稿搬到 Actions」，但當天全庫查證的結果是——repo 的 `.github/workflows/` 只有 `deploy.yml` 與 `sentinel.yml`，九支 launchd 裡沒有對應工作，全庫 grep `official_transcripts` 沒有任何實作引用。**一個排定了時間卻不存在的步驟，比沒有那一行更糟**：它讓「今天 A 類抓不到官方稿」與「那一步根本不存在」在輸出上完全一樣，而 2026-08-22 那一輪就是這樣——8 集全部退到第二層，其中 macrovoices 與 unhedged 都是 A 類，而執行者以為官方稿由上游負責、沒有去抓。**所以 A 類官方稿現在是 digest 這一輪自己的責任**，做法見 `scripts/podcast/DIGEST-PROMPT.md` 第 1 步之二。哪天真的做了 Actions，再把時間填回來。",
   "official_transcripts_owner": "digest（03:00 那一輪自己抓）",
   "official_transcripts_show_list": "A/B 分類與每一檔的取得方式，唯一的家是 `~/podcast-knowledge-digest/AGENT_BRIEF.md` 第 1 節 —— 那一節在 2026-08-21 的失效橫幅裡被明確保留為權威。**不要抄到這裡來**，理由跟 `_not_here` 那條一樣。"
@@ -22,7 +22,7 @@
    26
   ],
   "itunes_fallback_hours": 26,
-  "source": "視窗兩端由 podfetch（01:00）決定，不是日報（03:00）。**24–26 小時是結果不是設定。** iTunes 退援路徑沒有 last_run_utc 兜底，26 小時就是硬邊界。真正會掉集數的只有一種情況：podfetch 也一起漏跑、而且中斷超過 72 小時。"
+  "source": "視窗兩端由 podfetch（01:00）決定，不是日報（03:00）。**24–26 小時是結果不是設定。** iTunes 退援路徑沒有 last_run_utc 兜底，26 小時就是硬邊界。會掉集數的有**兩種**情況：（一）podfetch 也一起漏跑、而且中斷超過 72 小時；（二）**同一集每天都 FAILED**——不推進 last_run_utc 只保證「下一輪會重試」，不保證重試會成功，滑出 `max_lookback_hours` 之後就永遠不會再進 manifest。（二）**2026-11-25 才寫進來**，而它已經發生過五次：10-27～11-10 的 latentspace 五集每天 `HTTP 400 INVALID_ARGUMENT`，全部遺失、日檔沒有痕跡。處置寫在 `DIGEST-PROMPT.md` 第 1 之一步。"
  },
  "dedup": {
   "same_source_fields": [
@@ -218,7 +218,7 @@
   {
    "tier": 1,
    "name": "官方逐字稿",
-   "note": "A 類永遠優先。**manifest 決定「有哪幾集」，不決定「用哪份全文」**——A 類即使 podfetch 已轉錄仍要去抓官方稿，抓不到才退回，並據實填 source。例外：片長 >120 分鐘直接用 podfetch 稿。"
+   "note": "A 類永遠優先。**manifest 決定「有哪幾集」，不決定「用哪份全文」**——A 類即使 podfetch 已轉錄仍要去抓官方稿，抓不到才退回，並據實填 source。例外：片長 >120 分鐘直接用 podfetch 稿。**例外：manifest 裡 `FAILED` 的集數（沒有 podfetch 稿）不收、不走任何一層**，下一輪會重抓——金句比對基準只認 podfetch 稿，A 類也一樣（2026-11-25，見 `DIGEST-PROMPT.md` 第 1 之一步）。"
   },
   {
    "tier": 2,
@@ -233,7 +233,7 @@
   {
    "tier": 4,
    "name": "精簡摘要",
-   "note": "依節目說明＋WebSearch 公開報導寫約 500 字，source 標註待補與原因，該集 quotes 留空陣列。若某集本來就在窗口邊緣又拿不到全文，**寧可不收錄**並在交付訊息中明講。**第四層佔位（`source` 以 ⚠︎ 開頭且低於下界）不套段數區間**（`checks/podcast.py` 的 `_chars_in_tier`，2026-09-29）——第四層 08-04 走過一次，但那時這道閘門（08-20 才寫）還不存在；閘門上線後沒有任何一天帶過佔位，09-29 第一次需要時才發現 500 字要拆成 20–33 段才過得了。上界照判，低於下界照樣要 `lowerBoundException`。"
+   "note": "依節目說明＋WebSearch 公開報導寫約 500 字，source 標註待補與原因，該集 quotes 留空陣列。若某集本來就在窗口邊緣又拿不到全文，**寧可不收錄**並在交付訊息中明講。**第四層佔位（`source` 以 ⚠︎ 開頭且低於下界）不套段數區間**（`checks/podcast.py` 的 `_chars_in_tier`，2026-09-29）——第四層 08-04 走過一次，但那時這道閘門（08-20 才寫）還不存在；閘門上線後沒有任何一天帶過佔位，09-29 第一次需要時才發現 500 字要拆成 20–33 段才過得了。上界照判，低於下界照樣要 `lowerBoundException`。**不適用於 manifest 的 `FAILED` 集數**（2026-11-25）：那種下一輪會重抓，不收、不寫佔位。"
   }
  ],
  "podfetch_config": {

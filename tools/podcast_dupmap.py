@@ -224,11 +224,20 @@ def main(argv) -> int:
     print("=" * 74)
 
     dirty = 0
+    # **沒有逐字稿的集數不計入 dirty，也不算進分母**（2026-11-25）。舊版用 `e["file"]`
+    # 取檔名，而 podfetch 在 `run_deadline`／`quota_stop` 路徑追加的 FAILED 項目沒有
+    # `file` 鍵 —— 11-25 三集就是這樣，整支 KeyError 崩掉；檔案不存在的也被算成
+    # 「有整段複製」（09-29 記過）。兩件一起修：缺檔另計、在總結行分開講。
+    nofile = []
     for e in eps:
-        path = day / e["file"]
-        if not path.exists():
-            print(f"\n{e['file']}　⚠︎ 檔案不存在（manifest 寫了但沒落地）")
-            dirty += 1
+        fname = e.get("file")
+        path = day / fname if fname else None
+        if e.get("status") == "FAILED" or path is None or not path.exists():
+            why = ((e.get("error") or "").splitlines() or ["（無錯誤訊息）"])[0][:60] if e.get("status") == "FAILED" \
+                else "manifest 寫了但沒落地"
+            print(f"\n{e.get('showKey')}｜{(e.get('title') or '')[:46]}"
+                  f"\n  ⚠︎ 沒有逐字稿（status {e.get('status')}：{why}）—— 未掃描，不計入")
+            nofile.append(e)
             continue
         r = analyse(path, k, min_tokens, coldopen, drop, cyc)
         head = f"\n{e['showKey']}｜{e['title'][:46]}"
@@ -300,8 +309,9 @@ def main(argv) -> int:
                   f" **不要因為某一段髒就判定整集內容不足**")
 
     print("\n" + "=" * 74)
-    print(f"{dirty}／{len(eps)} 集有整段複製或循環重複。"
-          f"　把上面每一集自己那一段原樣貼進它的派工單。")
+    print(f"{dirty}／{len(eps) - len(nofile)} 集有整段複製或循環重複"
+          + (f"（另 {len(nofile)} 集沒有逐字稿、未掃描）" if nofile else "")
+          + "。　把上面每一集自己那一段原樣貼進它的派工單。")
     print("嚴重度「高」的集數，派工單可以額外寫一句「下界例外由你讀完素材自己判」——"
           "**但不要替它預判會不會觸發**。這一行是給你看的，不要貼進派工單。")
     return 0

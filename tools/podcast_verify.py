@@ -16,7 +16,7 @@ podfetch 半夜 01:00 跑，出問題的時候人在睡覺。**判定與執行�
 
 ## 逐字稿在 repo 外面，這支程式不改變那件事
 
-它只讀 manifest，不讀 `.md`、不寫任何東西。
+它讀 manifest 與當日逐字稿 `.md`（只為了 `block_repeats`），不寫任何東西。
 """
 import datetime as dt
 import json
@@ -60,15 +60,21 @@ def main(argv) -> int:
     anchors = json.loads((ROOT / "podcast/anchors.json").read_text())
     k = anchors["quality"]["block_repeat_shingle"]
     repeats = {}
+    missing = []
     for e in manifest.get("episodes") or []:
-        f = root / date / (e.get("file") or "")
-        # 檔案不在就記成 None，**跟「掃過了沒有重複」是兩件事**。
-        repeats[e.get("file")] = (block_repeats(f.read_text(), k)
-                                  if e.get("file") and f.exists() else None)
-    missing = [n for n, v in repeats.items() if v is None]
+        fname = e.get("file")
+        f = root / date / fname if fname else None
+        # 檔案不在就記進 missing，**跟「掃過了沒有重複」是兩件事**。
+        # 沒有 `file` 鍵的（podfetch `run_deadline`／`quota_stop` 路徑的 FAILED）用
+        # showKey-trackId 具名：舊版拿 `e.get("file")` 當鍵，None 會互相蓋掉，
+        # 再拿去 join 就 TypeError、在跑任何檢查之前崩掉（2026-11-25 實例）。
+        if fname and f.exists():
+            repeats[fname] = block_repeats(f.read_text(), k)
+        else:
+            tid = (e.get("appleUrl") or "").partition("i=")[2]
+            missing.append(fname or f"{e.get('showKey')}-{tid}（manifest 無 file 鍵）")
     if missing:
-        print(f"  逐字稿找不到 {len(missing)} 份：{'、'.join(missing[:3])}")
-    repeats = {n: v for n, v in repeats.items() if v is not None}
+        print(f"  逐字稿找不到 {len(missing)} 份：{'、'.join(missing)}")
 
     payload = {
         "manifest": manifest,
