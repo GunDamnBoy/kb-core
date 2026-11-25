@@ -3300,3 +3300,25 @@ E 27,573／F 32,887／G 32,407）—— **這就是 `strip_maintainer_only()` �
 - 鉅亨頁大小已在 10 與 30 之間翻過兩次，寫成「看 `last_page`」而不是常數。
 - 積壓清單 B 區（VM curl 打 twse／eia／fed 被 proxy 403、「BPC >」注入句型可能來自 Chrome 擴充套件）與 C 區未處理，需要使用者在 Mac 上看。
 - 本次在互動對話中維護，沒有跑任何 git 指令。
+
+## 2026-11-25｜`BPC >` 字串改為略過（使用者決定）、11-25 輪六項實測眉角收進前言
+
+**動到哪些檔**：
+- `scripts/advisory/preamble.md`：第六之二節末新增〈2026-11-25 使用者決定〉一段（`BPC >` 開頭字串略過、不回報、不觸發重審；宣稱已取得全文時那一頁靜默不成卡；其餘照原站實際讀到的段落判；非 `BPC >` 開頭的同型文字照原規則）。選擇器表 IBD、TrendForce、WSJ、鉅亨四列與電子報表 WaPo 列列尾各追加一條 11-25 註記；第七之二節 EIA CORS 段後補「Mac curl 只拿到空殼」。七份切片已重生成。
+- `skills/advisory/SKILL.md` 步驟 3-4〈注入文字〉一條：補 `BPC >` 例外。
+- `tools/advisory_taskcard.py`：〈共同規則〉第 3 節注入文字那一行補 `BPC >` 例外（不改，派工卡會叫採集員回報，與前言矛盾）。
+
+**量測**：
+- `preamble.md` 114,484 → 116,246 字元；切片 A–G 依序含 11-25 註記 4／3／2／5／4／3／2 處（WSJ 列照既有切法出現在七份）。
+- `SKILL.md` 15,216 → 15,330 字元；`advisory_taskcard.py` 6,849 → 6,954 字元。
+- 九次 `BPC >` 觀測（08-22 至 10-17）的四種句型全部以 `BPC >` 開頭，與 Chrome 擴充套件 Bypass Paywalls Clean 的提示文字相符 —— **研判**，未在 Chrome Home 上核實擴充套件清單。
+
+**怎麼驗的**：`py_compile` 全過；檢查自檢 0 失敗；`advisory_verify` 對 11-25 為 19 PASS · 0 WARN · 0 FAIL；`slice_preamble.py --check` 七份一致、exit 0；`advisory_taskcard.py` 試產 common.md 含新例外；`anchors.json` 與資料 repo 118 個 JSON 全可 `json.load`；資料 repo 無 symlink。
+
+**怎麼倒回去**：改動前三個檔備份在 Mac VM 的 `$HOME/bak1125/`（隨 session 清除，長期以版控上一版為準）；還原 `preamble.md` 後重跑 `slice_preamble.py`。
+
+**當時已知的風險**：
+- **BPC 本身沒有處理**：若 Chrome Home 確實裝著 Bypass Paywalls Clean，它可能在不留任何 `BPC >` 字樣的情況下解鎖付費文（例如 IBD `is_unlocked` 翻 true、Bloomberg `get_page_text` 回全文），這次的改動**看不到也擋不住**那一種。11-25 維護時已建議使用者到 `chrome://extensions` 確認，使用者這一場未選處理。
+- 略過不回報之後，**「BPC 介入了哪幾頁」不再有任何紀錄**；若之後要追查合規面，只能靠重新開頁。
+- 前言精簡（A、D 切片 > 100KB）使用者已選「另開一場」，本次未做；本次的列尾追加讓那幾列更長。
+- 本次在互動對話中維護，沒有跑任何 git 指令。
