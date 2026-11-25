@@ -26,6 +26,11 @@
 - `tools/dispatch_sentinel.py`、`launchd/com.kenny.kbsentinel.chart.plist`（新，**待使用者安裝與建權杖**）；
   `kbcore/env.py` 的 `REQUIRED_BY_LABEL` 先登記 `com.kenny.kbsentinel.chart: []`（裝之前先登記）。
 - `skills/maintain/chart/MAIN.md`：守望鏈那一段改寫（哨兵實際時刻、dispatch、push≠上線）。
+- **同日改案（使用者選定）**：Mac 端 dispatch 需要使用者自建 GitHub 權杖，改用**不需要權杖**的雲端排程
+  「Chart 上線檢查 1520」（`trig_01HhC8Ko45RTmYTLK5V65BjR`，台北每天 15:20，只讀 Pages 的 `data/index.json`，
+  `days[0].date` 不是今天才推通知到手機）。`tools/dispatch_sentinel.py` 與 plist 保留在版控、**沒有安裝**；
+  `REQUIRED_BY_LABEL` 的登記也留著（登記了沒安裝不會紅）。GitHub 自己的哨兵照舊當備援。
+  實測：雲端容器 `curl` Pages 索引可以讀到（11-25 回 `2026-11-25`、`11/25 11:40`）。
 
 **量測**
 - 部署：`deploy.yml` 近 25 次 —— 11-07 失敗 1 次、11-24 attempt 4 才成功（03:39Z→06:31Z）、11-25 attempt 1–3 失敗、

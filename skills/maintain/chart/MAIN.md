@@ -13,8 +13,9 @@
 
 **守望鏈**：哨兵 `sentinel.yml` 排在台北 15:20 跑在 GitHub 上 ——
 **但 GitHub 排程實測晚 7–12 小時**（2026-11-11 至 11-24 十四次全在 22:00–03:00），
-所以 2026-11-25 起由 Mac 的 `com.kenny.kbsentinel.chart` 在 15:20 用 workflow_dispatch 叫它
-（`tools/dispatch_sentinel.py`，要使用者自建的權杖；沒權杖時只剩晚到的排程）。
+所以 2026-11-25 起由雲端排程「Chart 上線檢查 1520」（`trig_01HhC8Ko45RTmYTLK5V65BjR`）在 15:20
+看線上 `days[0].date`、不是今天就推通知（不需要權杖）。Mac 端的 `tools/dispatch_sentinel.py`＋
+`launchd/com.kenny.kbsentinel.chart.plist` 寫好但**沒有安裝**（要使用者自建權杖才有用）。
 看門狗 `com.kenny.kbwatch.chart` 每四小時（00/04/08/12/16/20）在 Mac 上問哨兵還活著沒。
 **沒有心跳跟「哨兵判綠」在遠端看起來都是「沒有紅字」。**
 
