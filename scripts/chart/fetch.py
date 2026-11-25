@@ -39,6 +39,7 @@ import csv, io, json, os, re, sys, time, urllib.error, urllib.parse, urllib.requ
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _repo  # noqa: E402
+from kbcore.series import cache_filename  # noqa: E402  （_repo 匯入時已把 kb-core 根加進 sys.path）
 REPO = _repo.repo()
 CACHE = os.path.join(REPO, "data", "series")
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -542,8 +543,8 @@ def merge_write(path: str, ident: str, s: dict, today: str) -> tuple[int, list, 
 def cache_path(ident: str) -> str:
     """代號對應的快取檔路徑。**唯一的檔名轉換實作**，補歷史腳本也走它 ——
     `^TWII` → `_TWII.csv` 這種轉換寫錯不會報錯，只會安靜地寫到另一個檔。"""
-    safe = ident.replace("^", "_").replace("=", "-").replace("/", "-")
-    return os.path.join(CACHE, f"{safe}.csv")
+    # 轉換本體 2026-11-25 搬到 `kbcore/series.cache_filename()`（理由在那裡），這裡只接目錄。
+    return os.path.join(CACHE, cache_filename(ident))
 
 
 def get(ident: str, since: str = "2015-01-01", use_cache: bool = True) -> dict:

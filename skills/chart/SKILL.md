@@ -207,7 +207,20 @@ prep 會把它們跟「新的硬失敗」分開印成一行，**你不必在 `ab
 （`weekly_release_series_from`，沒登錄的沿用全域的 `weekly_release_from`）。
 回測跨過那個日期的舊期時，看到的是**那一期當時的尺**，不是現在的尺。
 
-**完成條件**：每條序列都有資料點與末日，且末日通過 `anchors.freshness` 的門檻。
+**沒有 `series` 的圖（grouped_bar／heatmap／scatter／waterfall）要在 `provenance.series_ids`
+列出用到的快取代號**（2026-11-26 起，`anchors.freshness.manual_series_from`）：
+
+```json
+"provenance": {"series_ids": ["SP500", "BAMLH0A0HYM2"], "computed": "…", "inspired_by": {…}}
+```
+
+`chart.manual_series_freshness` 會去 `data/series/` 讀那幾條的末日、照同一套門檻判，
+**沒寫就是硬失敗**。代號照快取檔名前的寫法（`^TWII`、`2330.TW`、`005930.KS`），一條都不能漏 ——
+漏列的那一條不會被量。2026-11-25 那期的散點圖用的是末日 11/23 的 SP500 與高收益 OAS，
+同期折線圖用同末日的序列響了 WARN，**散點圖一聲都沒有**：同一個落後，畫成折線就被量、畫成散點就不被量。
+
+**完成條件**：每條序列都有資料點與末日，且末日通過 `anchors.freshness` 的門檻；
+手工序列的圖都寫了 `provenance.series_ids`。
 
 ### 4. 過一次 QA
 
@@ -324,7 +337,26 @@ publish 的回執從 09-23 起連六期響 `already-published-prewritten`；
 **第一件事是拿 detail 裡那一行去問另一個 repo**——也失敗就壞的是 git 這支程式或
 它的執行環境，不是這個 repo。
 
-**完成條件**：手上有一份回執，且它的 `exit` 有被讀過並依上表處置。
+**`exit 0` 只說到 push 為止，不說網站上線了。**（2026-11-25 加）
+push 之後還有 GitHub Pages 的部署（`chart-of-the-day/.github/workflows/deploy.yml`），
+**它失敗時回執照樣是 `exit 0`**。2026-11-24 部署連敗三次、網站晚三小時才更新；
+11-25 再敗兩次，**兩天都是使用者自己看到網站沒更新才發現**，哨兵與看門狗都沒出聲。
+（部署失敗時 workflow 會自己另開一次全新的執行、最多兩次，仍失敗才開 issue ——
+重跑同一次不會好，另開一次才會，那是 11-25 實測。）
+
+所以拿到 `exit 0` 之後再問一次線上那份（`device_bash` 在 Mac 上連得到 Pages）：
+
+```
+for i in $(seq 1 16); do d=$(curl -s -m 10 "https://gundamnboy.github.io/chart-of-the-day/data/index.json?t=$RANDOM" | python3 -c "import json,sys;print(json.load(sys.stdin)['days'][0]['date'])"); echo "$d"; [ "$d" = "<今天>" ] && break; sleep 30; done
+```
+
+**八分鐘內 `days[0].date` 等於今天才算收工。** 等不到就用 PushNotification 通知使用者，
+內容寫：回執 commit、線上 `days[0].date`、以及 `https://api.github.com/repos/GunDamnBoy/chart-of-the-day/actions/workflows/deploy.yml/runs?per_page=3`
+那三筆的 `conclusion`（失敗時請他到 Actions 頁按「Run workflow」另開一次，**不是**在失敗那一次按 Re-run）。
+這一步只讀不寫，不跑 git、不代為登入任何服務。
+
+**完成條件**：手上有一份回執，且它的 `exit` 有被讀過並依上表處置；
+`exit 0` 時線上 `days[0].date` 已是今天，或已推通知說明為什麼不是。
 
 ### 9. 執行報告
 

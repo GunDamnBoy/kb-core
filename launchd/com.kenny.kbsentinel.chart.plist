@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 每日五圖 · 主動觸發哨兵。安裝位置 ~/Library/LaunchAgents/。
+
+       chart-of-the-day 的 sentinel.yml 排在台北 15:20，判準（MAX_DATE_AGE_H）也是照 15:20 算的，
+       但 GitHub 排程實測晚 7–12 小時（2026-11-11 至 11-24 十四次全在台北 22:00–03:00 才跑）。
+       這一支在 15:20 用 workflow_dispatch 叫它；GitHub 自己的排程留著當備援。
+       判定與開 issue 仍在 GitHub 上，這一支只負責「叫」。理由全文在 tools/dispatch_sentinel.py。
+
+       需要 ~/.config/github/sentinel-dispatch-token（使用者自建、只給 Actions 寫入、權限 600）。
+       沒有權杖時它只寫一行 log、回 12，不影響其他東西。
+       登記：kbcore/env.py 的 REQUIRED_BY_LABEL（空陣列）。 -->
+  <key>Label</key>
+  <string>com.kenny.kbsentinel.chart</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/macmini/.venvs/kb/bin/python</string>
+    <string>/Users/macmini/kb-core/tools/dispatch_sentinel.py</string>
+    <string>chart-of-the-day</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/macmini</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/macmini</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>15</integer>
+    <key>Minute</key><integer>20</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/macmini/outbox/chart/sentinel-dispatch.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macmini/outbox/chart/sentinel-dispatch.log</string>
+</dict>
+</plist>

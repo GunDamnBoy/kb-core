@@ -11,9 +11,17 @@
 | 程式與規格 | `/Users/macmini/kb-core` | 門檻、檢查、取數與出圖程式、流程正本 | `com.kenny.kbcorepush`（每 300 秒，帶閘門） |
 | 已發布的資料 | `/Users/macmini/chart-of-the-day` | `data/`、`charts/`、`index.html` | `com.kenny.kbpublish.chart`（每 60 秒） |
 
-**守望鏈**：哨兵 `sentinel.yml` 每天台北 15:20 跑在 GitHub 上，
+**守望鏈**：哨兵 `sentinel.yml` 排在台北 15:20 跑在 GitHub 上 ——
+**但 GitHub 排程實測晚 7–12 小時**（2026-11-11 至 11-24 十四次全在 22:00–03:00），
+所以 2026-11-25 起由 Mac 的 `com.kenny.kbsentinel.chart` 在 15:20 用 workflow_dispatch 叫它
+（`tools/dispatch_sentinel.py`，要使用者自建的權杖；沒權杖時只剩晚到的排程）。
 看門狗 `com.kenny.kbwatch.chart` 每四小時（00/04/08/12/16/20）在 Mac 上問哨兵還活著沒。
 **沒有心跳跟「哨兵判綠」在遠端看起來都是「沒有紅字」。**
+
+**push 成功不等於網站上線。** push 之後是 GitHub Pages 的 `deploy.yml`，它失敗時回執照樣 `exit 0`
+（2026-11-24、11-25 連兩天 `deploy-pages` 回「No artifacts named github-pages」）。
+**同一次執行按 Re-run 不會好，另開一次 workflow_dispatch 才會** —— 2026-11-25 起 `deploy.yml`
+的 `retry` job 自己另開、最多兩次，仍失敗就開 issue；排程輪次也會在回執之後確認線上 `days[0].date`。
 
 **資料 repo 只放已發布的東西**；門檻是程式的一部分，放進資料 repo 會讓
 「改門檻」跟「改資料」混在同一個歷史裡。

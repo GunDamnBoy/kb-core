@@ -189,7 +189,9 @@
   "source": "日頻落後 ≥2 天警示（subtitle 或 note 必須寫出實際基準日）、≥5 天硬失敗不得發布。月頻是 2026-08-13 加的：CPI／PCE／非農是月頻，7 月觀測值標記為 2026-07-01，在 8/13 那輪一律落後 43 天，照日頻門檻算是硬失敗——**等於同一份規範自己禁止自己**。週頻發布是 2026-08-22 加的，見 weekly_release_source。",
   "known": [
    "FRED 日頻序列比 Yahoo 慢一個交易日"
-  ]
+  ],
+  "manual_series_from": "2026-11-26",
+  "manual_series_source": "**沒有 `series` 的圖（grouped_bar／heatmap／scatter／waterfall）2026-11-26 起要在 `provenance.series_ids` 宣告用到的快取代號**，由 `chart.manual_series_freshness` 讀 `data/series/` 的末日、照本格同一套門檻判（它直接呼叫 `series_freshness` 的實作，不另寫一份）。\n**成因**：`series_freshness` 的 `blind_to` 原本寫著「scatter 的 pts、heatmap 的 matrix 沒有日期軸，這條看不到它們」——那一句是「還沒修」不是「驗不到」。2026-11-25 那期五張有三張是手工序列，slot 4 散點用的 SP500 與高收益 OAS 末日 11/23（落後 2 個交易日），同期 slot 3 用同末日的 FRED 序列響了 WARN，slot 4 一聲都沒有。近 14 期手工序列的圖每期 1–3 張。**同一個落後，畫成折線就被量、畫成散點就不被量。**\n帶生效日是照「新硬規則帶生效日」：之前的封存沒有這個欄位，回測回 SKIPPED。"
  },
  "size": {
   "json_warn_kb": 250,

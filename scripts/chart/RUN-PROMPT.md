@@ -35,8 +35,13 @@
 publish 由 Mac 上的 launchd 每 60 秒接手，**你不要自己跑，也不要跑任何 git 指令**。
 回執在 `~/outbox/chart/<今天>.receipt.json`。
 
-`exit` 的處置：`0` 收工／`10` 改草稿／`11` 見下／
+`exit` 的處置：`0` 先確認線上已是今天再收工（見下）／`10` 改草稿／`11` 見下／
 `12` 停下來回報／`14` 會自己重試／`15` 停下來回報。
+
+**`0` 只說到 push 為止，不說網站上線了**：之後還有 GitHub Pages 的部署，它失敗時回執照樣是 `0`
+（2026-11-24、11-25 連兩天，都是使用者自己發現的）。照 SKILL 第 8 步在八分鐘內確認
+`https://gundamnboy.github.io/chart-of-the-day/data/index.json` 的 `days[0].date` 是今天；
+等不到就 PushNotification 通知，請他到 Actions 頁按「Run workflow」另開一次（不是 Re-run）。
 
 **`14` 而 `stage` 是 `git` 是例外**：那是 `git` 這支指令本身失敗，`detail` 裡有它的
 stderr。人修好之前重試不會好，修好之後下一輪就會自己完成 —— 草稿不必改。
@@ -71,7 +76,7 @@ slot 3 改用更輕的圖型（序列點數少的）→ `reading` 取區間下�
 
 五張圖各自的 slot／theme／kind／序列來源、`about.data_path` 走的是哪一條與為什麼、
 預抓涵蓋率與沒涵蓋到的序列、`chart_verify` 的完整結果（PASS／WARN／FAIL／SKIPPED 各幾條、
-FAIL 與 SKIPPED 逐條列出）、回執的 exit code。
+FAIL 與 SKIPPED 逐條列出）、回執的 exit code、線上 `days[0].date` 是否已是今天。
 
 ## 用量：量它，不要估它
 

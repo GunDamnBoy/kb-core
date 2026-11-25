@@ -500,7 +500,10 @@ register(Check(
         "而週頻那兩條若被寫成手工序列就會照舊硬失敗",
         "**這份週頻清單是人工登錄的**——FRED 改了某條的發布頻率，這裡不會自己知道",
         "**週頻登錄是逐條帶生效日的**（`weekly_release_series_from`），所以同一條序列在生效日前後會得到不同判定。回測跨過那個日期的舊期時，看到的是那一期當時的尺，不是現在的尺",
-        "**只看 timeseries 的 `series`**——scatter 的 pts、heatmap 的 matrix 沒有日期軸，這條看不到它們",
+        # ~~「只看 timeseries 的 series——scatter 的 pts、heatmap 的 matrix 沒有日期軸，這條看不到它們」~~
+        # **2026-11-25 撤回：那是「還沒修」不是「驗不到」**，手工序列的圖改由
+        # `chart.manual_series_freshness` 量（宣告代號、讀快取末日、呼叫同一份 `_freshness`）。
+        "**只看 timeseries 的 `series`**——手工序列的圖交給 `chart.manual_series_freshness`",
         "**第三種序列形狀**——2026-08-21 之前它只認 `data`／`points`，而真實產出是 `dates`／`values`，"
         "於是它對著 13 天封存全綠、一個數字都沒讀到。fixture 現在用真實形狀，但**再冒出第四種鍵名，"
         "它一樣會安靜地全部跳過**；形狀變了要回來改這裡",
@@ -555,6 +558,95 @@ register(Check(
                    {"slug": "w", "series_spec": [{"id": "DTWEXBGS", "name": "美元指數"}],
                     "series": [{"name": "美元指數",
                                 "dates": ["2026-08-19", "2026-08-26"], "values": [1, 2]}]}]}},
+    suite="chart",
+))
+
+
+# ── 8b. 手工序列的新鮮度（2026-11-25 加，生效日 anchors.freshness.manual_series_from）──
+def _manual_freshness(p):
+    """**沒有 `series` 的圖，資料一樣會過期。**
+
+    `chart.series_freshness` 只讀 timeseries 的 `series`，所以 grouped_bar／heatmap／
+    scatter／waterfall 這幾張**從來沒有人量過它們的資料有多舊** —— 那一條的 `blind_to`
+    原本寫著「scatter 的 pts、heatmap 的 matrix 沒有日期軸，這條看不到它們」。
+    **那一句是「還沒修」，不是「驗不到」**：圖沒有日期軸，但算出它的序列有。
+    2026-11-25 那一期五張有三張是手工序列，其中 slot 4 的散點圖用的是末日 11/23
+    （落後 2 個交易日）的 SP500 與高收益 OAS —— 同一期 slot 3 用同樣末日的 FRED 序列響了 WARN，
+    slot 4 一聲都沒有。**同一個落後，畫成折線就被量、畫成散點就不被量。**
+
+    做法：手工圖在 `provenance.series_ids` 宣告用到的快取代號，`systems/chart.build()`
+    去 `data/series/` 讀那幾條的日期（量測，不是自述），**再丟回 `_freshness` 本身判** ——
+    週頻、月頻、交易日、逐條生效日全部沿用同一份實作，不另寫一份門檻邏輯。
+    """
+    F = _A(p, "freshness")
+    since = F.get("manual_series_from") or "9999-12-31"
+    doc = p["doc"]
+    date = doc.get("date", "")
+    if date < since:
+        return skipped(f"生效日 {since} 之前的日檔不要求 provenance.series_ids")
+    cache = p.get("manual_series") or {}
+    missing, absent, synth = [], [], []
+    for c in _charts(doc):
+        if c.get("series"):
+            continue
+        slug = c.get("slug", "?")
+        ids = [x for x in ((c.get("provenance") or {}).get("series_ids") or [])
+               if isinstance(x, str) and x]
+        if not ids:
+            missing.append(slug)
+            continue
+        for sid in ids:
+            dates = cache.get(sid)
+            if not dates:
+                absent.append(f"{slug}／{sid}")
+                continue
+            synth.append({"slug": slug,
+                          "series_spec": [{"id": sid, "name": sid}],
+                          "series": [{"name": sid, "dates": dates}]})
+    if missing:
+        return fail("手工序列的圖沒有寫 provenance.series_ids（用到哪幾條快取代號）："
+                    + "、".join(missing))
+    if absent:
+        return fail("provenance.series_ids 的代號在 data/series 快取裡找不到：" + "、".join(absent))
+    if not synth:
+        return ok()
+    return _freshness({**p, "doc": {"date": date, "charts": synth}})
+
+
+_MF = {"daily_warn_days": 2, "daily_fail_days": 5,
+       "monthly_warn_periods": 2, "monthly_fail_periods": 3,
+       "weekly_warn_periods": 2, "weekly_fail_periods": 3,
+       "weekly_release_from": "2026-01-01",
+       "daily_counts_trading_days": True, "trading_days_from": "2026-08-31",
+       "weekly_release_series": {}, "manual_series_from": "2026-11-26"}
+
+register(Check(
+    id="chart.manual_series_freshness",
+    covers="沒有 `series` 的圖（grouped_bar／heatmap／scatter／waterfall…）必須在 "
+           "`provenance.series_ids` 宣告用到的快取代號；那幾條在 `data/series/` 的末日"
+           "照 `chart.series_freshness` 同一套門檻判（直接呼叫同一份實作）。"
+           "生效日在 anchors.freshness.manual_series_from",
+    blind_to=[
+        "**圖實際用到的末日比快取末日舊**——例如刻意畫到上週五為止的 5 日報酬；"
+        "這條量的是「那幾條序列現在有多新」，不是「圖裡最後一格是哪一天」"
+        "（矩陣與長條沒有日期欄位可讀，那一半只能靠 subtitle 寫出基準日）",
+        "**series_ids 漏列了某一條**——宣告了三條、實際用了四條，第四條不會被量",
+        "**回測舊期時讀的是今天的快取**，跟 `chart.series_freshness` 回測時 `now` 取當下是同一個形狀",
+        "生效日之前的日檔整條跳過（SKIPPED）",
+    ],
+    run=_manual_freshness,
+    # 觸發側：散點圖宣告 A，A 末日 11/18（週三），now 11/26（週四）→ 6 個交易日 → 硬失敗
+    fixture={"anchors": {"freshness": _MF}, "now": "2026-11-26T12:00:00+08:00",
+             "manual_series": {"A": ["2026-11-16", "2026-11-17", "2026-11-18"]},
+             "doc": {"date": "2026-11-26", "charts": [
+                 {"slug": "s", "kind": "scatter", "pts": [[1, 2]],
+                  "provenance": {"series_ids": ["A"]}}]}},
+    # 合格側：同一張圖，A 末日 11/25 → 1 個交易日 → PASS
+    near_miss={"anchors": {"freshness": _MF}, "now": "2026-11-26T12:00:00+08:00",
+               "manual_series": {"A": ["2026-11-23", "2026-11-24", "2026-11-25"]},
+               "doc": {"date": "2026-11-26", "charts": [
+                   {"slug": "s", "kind": "scatter", "pts": [[1, 2]],
+                    "provenance": {"series_ids": ["A"]}}]}},
     suite="chart",
 ))
 

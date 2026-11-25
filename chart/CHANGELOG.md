@@ -1,5 +1,70 @@
 # 每日五圖｜重建紀錄
 
+## 2026-11-25（三）｜push 成功不等於上線、晚 7–12 小時的哨兵、畫成散點就不被量的落後
+
+**起因**：使用者回報「網站今天沒有更新」。回執 exit 0、commit `8c63672` 已在 origin，
+而 Pages 的 `deploy.yml` 在 `actions/deploy-pages@v4` 那一步回「No artifacts named "github-pages" were found」
+（上傳那一步成功）。同一次執行按 Re-run 兩次都同樣失敗；**另開一次 workflow_dispatch 三十秒就上線**。
+回頭查：11-24 同一個錯誤，重跑到第 4 次才過、網站晚約三小時（14:31 才上線）；11-07 也失敗過一次。
+**兩天都是使用者自己發現的** —— 回執、看門狗、哨兵都沒出聲。
+
+**動到哪些檔**
+- `chart-of-the-day/.github/workflows/deploy.yml`（**待使用者推送**，提案檔在 `~/outbox/chart/maint-2026-11-25/deploy.yml`）：
+  `upload-pages-artifact` v3→v5、`deploy-pages` v4→v5；新增 `retry` job（deploy 失敗時用 GITHUB_TOKEN 另開一次
+  workflow_dispatch，最多兩次，仍失敗開 issue）；permissions 加 `actions: write`、`issues: write`；dispatch 加 `retry` input。
+  **沒有直接改工作樹**：`publish.py` 遇到 data 以外的未提交變更會回 exit 15（worktree-dirty），改了不推等於擋住明天的發布。
+- `skills/chart/SKILL.md`：第 8 步加「exit 0 之後八分鐘內確認線上 `days[0].date` 是今天，不是就 PushNotification」；
+  第 3 步加手工序列的圖要寫 `provenance.series_ids`。
+- `scripts/chart/RUN-PROMPT.md` ＋ 雲端排程「Chart daily 1130」（`trig_019WXtHMHaAZxNvwy8hJTQ2j`）prompt 整份取代
+  （`update_trigger` 回「prompt re-signed by Mac mini」，已生效）。
+- `checks/chart.py`：新增 `chart.manual_series_freshness`；`series_freshness` 的 blind_to 撤回
+  「scatter／heatmap 沒有日期軸，這條看不到它們」那一條（那是「還沒修」不是「驗不到」）。
+- `systems/chart.py`：`build()` 加 `manual_series`（`manual_series_dates()` 讀 `data/series/` 的日期欄）。
+- `kbcore/series.py`：新增 `cache_filename()`（快取檔名轉換的唯一實作，從 `fetch.cache_path()` 搬來）與 `read_cache_dates()`；
+  `scripts/chart/fetch.py` 的 `cache_path()` 改呼叫它。
+- `chart/anchors.json`：`freshness.manual_series_from` = 2026-11-26 與 `manual_series_source`。
+- `tools/dispatch_sentinel.py`、`launchd/com.kenny.kbsentinel.chart.plist`（新，**待使用者安裝與建權杖**）；
+  `kbcore/env.py` 的 `REQUIRED_BY_LABEL` 先登記 `com.kenny.kbsentinel.chart: []`（裝之前先登記）。
+- `skills/maintain/chart/MAIN.md`：守望鏈那一段改寫（哨兵實際時刻、dispatch、push≠上線）。
+
+**量測**
+- 部署：`deploy.yml` 近 25 次 —— 11-07 失敗 1 次、11-24 attempt 4 才成功（03:39Z→06:31Z）、11-25 attempt 1–3 失敗、
+  workflow_dispatch（run 45542865401）成功。githubstatus 當時全綠。
+- 哨兵：`sentinel.yml` 排程 `20 7 * * *`，2026-11-11 至 11-24 十四次的建立時刻 14:12Z–19:16Z（晚 6h52m–11h56m）。
+- 手工序列：近 14 期每期 1–3 張圖沒有 `series`；11-25 那期 slot 4（scatter）用的 SP500 與 BAMLH0A0HYM2 末日 11-23。
+
+**怎麼驗的**
+- `py_compile`（tools／checks／systems／kbcore／scripts/chart）全過；檢查自檢 0 失敗（新檢查的 fixture／near_miss 夾在
+  6 個交易日 vs 1 個交易日兩側）；`build_series --selftest`、`fetch --selftest-cache`、`fetch_tw_price --selftest-offline` 全過；
+  `fetch.cache_path` 對 `^TWII`、`GLD`、`CL=F`、`2330.TW` 的檔名與改前相同。
+- 新檢查實測（暫存複本，日期改成 11-26）：不寫 series_ids → FAIL 指名三張；寫了 → WARN 指名 SP500／BAMLH0A0HYM2 落後 2 個交易日
+  （與同期 slot 3 的 WARN 同一把尺）；寫了一個不存在的代號 → FAIL 指名。11-25 與 11-24 封存回 SKIPPED（生效日之前）。
+- `chart_verify` 11-25：17 PASS · 3 WARN · 0 FAIL · 1 SKIPPED（新的那條）。
+- `deploy.yml` 提案以 PyYAML 解析得到 `deploy`、`retry` 兩個 job；**v5 與 retry 還沒在 GitHub 上跑過**，推上去那一次 push 就是第一次實跑。
+- 線上確認那段迴圈在 device_bash 實跑過一次（11-25 回 `2026-11-25`）。
+
+**怎麼倒回去**
+- 改前版本在 Mac 的 device_bash 家目錄 `~/*.bak.20261125`（`systems_chart.py.bak.20261125` 是 systems 那份；
+  **checks/chart.py 的改前版本沒有留到**（備份時兩份同名互蓋），撤回方式是刪掉 `# ── 8b.` 那一整段與
+  `series_freshness` blind_to 裡標 2026-11-25 的三行、把原句「只看 timeseries 的 `series`——scatter 的 pts、
+  heatmap 的 matrix 沒有日期軸，這條看不到它們」放回去）。
+- `deploy.yml` 原檔在 `~/outbox/chart/maint-2026-11-25/deploy.yml.orig`。
+- 排程 prompt 的舊文就是 `~/RUN-PROMPT.md.bak.20261125`，用 `update_trigger` 整份貼回。
+- launchd：`launchctl bootout gui/$(id -u)/com.kenny.kbsentinel.chart` 後刪 plist。
+
+**當時已知的風險**
+- `deploy-pages@v5`／`upload-pages-artifact@v5` 是不是真的修好那個錯誤**沒有證據**，只知道 v4 連兩天壞、另開一次就好；
+  `retry` job 才是保證。v5 的 upload 預設排除 dotfile，`_site/` 裡目前沒有。
+- `retry` 另開的執行會因 `concurrency.cancel-in-progress` 把正在收尾的那一次標成 cancelled —— 那是預期的。
+- 內容守衛（`verify_site_index`）擋下時也會重開兩次才開 issue（多花兩次執行，出口仍對）。
+- `manual_series_freshness` 量的是「那幾條序列現在多新」，**不是圖裡最後一格是哪天**；series_ids 漏列的那一條不會被量（blind_to 已寫）。
+- 哨兵 dispatch 與晚到的排程各跑一次，紅的那天可能出現兩則 issue／留言。
+- **撤回一個錯的判斷**：同一場維護一度報「美股 ETF 快取的除權息口徑混用」——實際上 `prefetch` 每天
+  `use_cache=False` 全量重抓 `adjClose`，各檔「長小數」截止日（MU 10-13、XBI 06-18、FXI 06-12、GLD 無）各自對應最近一次除息，
+  口徑一致。**一個看起來整齊的截止日（四檔都是 09-18）會讓人以為是同一次增量的斷點**，換幾檔看就知道不是。
+- 11-25 那期 `about.run` 寫「FEZ 11/24 收盤與 11/23 逐位相同，疑來源未更新」——**那一句過度推論**：快取顯示這類 ETF 一年本來就有
+  1–6 次逐位相同的收盤，而 `merge_write` 同日以新取到的為準、來源若修正會自己覆蓋。封存不改寫，記在這裡。
+
 ## 2026-11-11（三）｜同一個發布兩把尺、一個按位置數的月增、一條沒人有權處置的待辦
 
 **動到哪些檔**

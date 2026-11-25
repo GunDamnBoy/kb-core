@@ -50,3 +50,31 @@ def is_monthly(dates) -> bool:
         if not isinstance(d, str) or len(d) < 10 or not d[:10].endswith("-01"):
             return False
     return True
+
+
+def cache_filename(ident: str) -> str:
+    """代號對應的快取檔名（不含目錄）。**唯一的檔名轉換實作。**
+
+    2026-11-25 從 `scripts/chart/fetch.cache_path()` 搬到這裡：`systems/chart.build()`
+    要替手工序列的圖查快取末日（`chart.manual_series_freshness`），而它不能 import
+    `fetch.py`（那支在 import 時就要 `CHART_REPO`）。在兩邊各寫一份 `replace` 鏈，
+    就是讓 `^TWII` → `_TWII.csv` 這種「寫錯不會報錯、只會安靜讀到另一個檔」的轉換長出第二份。
+    """
+    safe = ident.replace("^", "_").replace("=", "-").replace("/", "-")
+    return f"{safe}.csv"
+
+
+def read_cache_dates(path) -> list:
+    """讀快取檔的日期欄（跳過 `#` 檔頭與 `date,value` 欄名）。讀不到回空 list。
+
+    只回日期：新鮮度只問末日與頻率，不需要值。格式與 `fetch.read_cache()` 寫的一致。
+    """
+    out = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line[:1].isdigit():
+                    out.append(line[:10])
+    except OSError:
+        return []
+    return out

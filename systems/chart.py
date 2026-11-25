@@ -33,6 +33,7 @@ import json
 from pathlib import Path
 
 from kbcore.repo import day_json
+from kbcore.series import cache_filename, read_cache_dates
 from kbcore.system import System, frozen, register
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -107,6 +108,25 @@ def recent_data_paths(data_dir: Path, date: str, n: int = 14) -> list:
     return out
 
 
+def manual_series_dates(draft: dict, repo: Path) -> dict:
+    """手工序列的圖（沒有 `series` 的那幾張）宣告用到的代號 → 快取裡的日期欄。
+
+    讀的是 `charts[].provenance.series_ids`，查的是 `data/series/<代號>.csv`。
+    **這是量測，不是自述**：圖只宣告「用了誰」，末日由快取回答。
+    快取裡沒有那個代號時值是 `None`（由檢查判失敗，不在這裡吞掉）。
+    理由見 `checks/chart.py` 的 `_manual_freshness`。
+    """
+    out = {}
+    for c in draft.get("charts") or []:
+        if c.get("series"):
+            continue
+        for sid in ((c.get("provenance") or {}).get("series_ids") or []):
+            if isinstance(sid, str) and sid and sid not in out:
+                f = repo / "data" / "series" / cache_filename(sid)
+                out[sid] = read_cache_dates(f) if f.exists() else None
+    return out
+
+
 def build(draft, repo: Path):
     repo = Path(repo)
     date = draft.get("date", "")
@@ -119,6 +139,7 @@ def build(draft, repo: Path):
         # 所以這個長度等於「這份草稿發布後在磁碟上會有多大」。理由見模組 docstring。
         "size_kb": len(day_json(draft).encode()) / 1024,
         "png": png_bytes(draft, repo),
+        "manual_series": manual_series_dates(draft, repo),
         "prefetch": prefetch_status(repo),
         "recent_data_paths": recent_data_paths(repo / "data", date),
         "now": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),

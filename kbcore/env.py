@@ -82,6 +82,10 @@ REQUIRED_BY_LABEL = {
     # 唯一的 import 是標準庫加上同目錄的 `usage_report`（那一支也沒有）——
     # **空陣列是「想過了，答案是零」**（同 `kbfile.research` 與 `kbprefetch.chart`）。
     "com.kenny.kbschedgaps":       [],
+    # 2026-11-25：**裝之前先登記**（同 kbschedgaps）。台北 15:20 用 workflow_dispatch 叫
+    # chart-of-the-day 的哨兵（`tools/dispatch_sentinel.py`），因為 GitHub 排程實測晚 7–12 小時。
+    # 只跑 venv python 的 urllib，沒有 subprocess —— 空陣列是「想過了，答案是零」。
+    "com.kenny.kbsentinel.chart":  [],
     # 2026-08-21：下面四支裡有三支是 08-20／08-21 裝上去的，而**沒有一支被登記進來**。
     # 這個機制是對的（沒登記就 FAIL），漏的是有人去登記 —— 兩件事。
     "com.kenny.kbcorepush":        ["git"],   # push_kbcore.py 自動 commit kb-core
