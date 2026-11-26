@@ -1272,3 +1272,10 @@ OGJ 的兩個日期、注入字串已擴散到 WSJ。
 **週末輪與連假前就不成立**——那幾天能更新的資料最少，撰寫端自然把盯盤押在下週的大事件上。
 所以補在寫 watch 的那一端（SKILL 步驟 6 撰寫規則、BRIEF 第七節），不是放寬 `watch_review` 檢查：
 放寬會讓「全部未決」在平日也合法，那正是這條檢查要擋的形狀。
+
+
+## 2026-11-26：回執 exit 0，網站卻沒更新（步驟 8-1 的緣由）
+
+當輪 receipt `exit 0`、commit `88d3a12`，報告與推播都寫「已發布」。使用者 09:3x 回報網站沒更新：push 觸發的 `pages` run 45726554054 在 `actions/deploy-pages@v4` 失敗（`No artifacts named "github-pages" were found`／`Fetching artifact metadata failed`），上一步 `upload-pages-artifact` 是成功的，研判 GitHub 端暫時性問題；Re-run failed jobs 一次即 success。
+**病因在收工判準**：步驟 8 只讀回執，而回執只記 push，看不到部署。之後 00:20 的 `raw:` commit 不觸發 pages，所以沒有任何東西會自己補上。
+補法放在 SKILL 步驟 8-1（主線讀 Actions API、只對 deploy-pages 那一步的暫時性失敗重跑一次），而不是改 publish.py：後者是程式變更、需要維護端動手；前者今天就生效。若之後改成 publish 或 sentinel 追 pages 結論寫進回執，8-1 可改為讀回執欄位。

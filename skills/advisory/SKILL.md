@@ -285,7 +285,27 @@ publish 每分鐘掃一次，寫 `<outbox>/<今天>.receipt.json`。讀 `exit`�
 - **沒有回執**（publish 根本沒跑）與**回執說失敗**是兩件事。等超過五分鐘沒回執，報告寫「結果待哨兵確認」，不要自己去推。
 - 回執每次 publish 都覆寫同一個，它的 `at` 是「今天最後一次 publish」，不是這一輪落地的時刻。
 
-**完成條件**：手上有回執，`exit` 讀過並依上表處置。
+#### 8-1. 回執 `exit 0` 之後：確認 pages 部署成功
+
+**`exit 0` 只代表 push 成功，不代表網站已更新**（緣由：HISTORY〈2026-11-26〉）。push 會觸發 `pages` 工作流，它失敗時回執看不到。
+用 Chrome 讀（同步驟 1-2 ③ 的讀法，`javascript_tool` 只回傳要的欄位）：
+
+```
+api.github.com/repos/GunDamnBoy/advisory-rewrite/actions/runs?event=push&per_page=5
+```
+
+找 `name=="pages"` 且 `head_sha` 開頭等於回執 `commit` 的那一筆：
+
+| 狀態 | 做什麼 |
+|---|---|
+| `completed`＋`success` | 收工。報告記 run id 與 conclusion |
+| `queued`／`in_progress`，或還沒出現 | 每 60 秒再讀一次，最多 10 分鐘；仍未完成就在報告寫「部署結果待確認」並放進推播第一句 |
+| `completed`＋`failure` | 讀 `jobs_url` 看哪一步失敗。**`actions/deploy-pages` 那一步失敗、而 `upload-pages-artifact` 成功**（GitHub 端暫時性，如 `No artifacts named "github-pages"`／`Fetching artifact metadata failed`）→ 在 run 頁按 **Re-run failed jobs** 一次，等到 `success`（含「驗證線上那份就是剛上傳的那份」那一步）。**其他步驟失敗，或重跑一次仍失敗** → 不再重跑，停下來回報（附 run 網址與錯誤原文），推播第一句寫「網站沒有更新」 |
+
+- 這一步不跑 git、不改草稿、不重推；重跑只是把同一個 commit 再部署一次。
+- 之後的 `raw:` 保底層 commit **不會**觸發 pages，不要等它幫忙補。
+
+**完成條件**：手上有回執，`exit` 讀過並依上表處置；`exit 0` 時另有該 commit 的 `pages` run 為 `success`（或已具名回報為何不是）。
 
 ### 9. 執行報告
 
@@ -297,7 +317,7 @@ publish 每分鐘掃一次，寫 `<outbox>/<今天>.receipt.json`。讀 `exit`�
 - **每一句因果都要指得出今天讀到的哪一個輸出**。指不出來就寫「待查」，不要寫成診斷——錯的待修事項會被下一輪當成事實接手。
   最常見的錯是拿近似觀測下結論：「檔案不在」≠「沒跑」、「最近兩筆」≠「分佈」、「記憶中的程式碼」≠「現在的檔案」。
 
-**通知**：產出成功且無異常時，發一則簡短推播（篇數、驗證、commit）；有任何需要使用者動手或判斷的事，放在推播第一句。
+**通知**：產出成功且無異常時，發一則簡短推播（篇數、驗證、commit、pages 部署結果）。**只有 pages run 為 `success` 才能寫「已發布／網站已更新」**；有任何需要使用者動手或判斷的事，放在推播第一句。
 
 ---
 
