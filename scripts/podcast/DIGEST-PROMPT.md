@@ -492,7 +492,20 @@ publish 每 60 秒跑一次，所以 90 秒之後回執該在了；還沒在就�
 （那一種特定成因現在由 publish 自己擋，回 `15 @ worktree-dirty`；
 這條規則留給**其他還沒有人擋過的 14**。）
 
-**8. 收工**　`exit 0` 就結束這一輪。
+**7 之一. `exit 0` 之後查一次 Pages 部署**（2026-11-26 新增）。**`exit 0 @ pushed` 只代表 commit 推上了 GitHub，不代表網站更新了**——
+11-26 那一輪回執 `exit 0`、commit `d7a3aaf` 也在 `main` 上，但 Deploy to GitHub Pages 的 `actions/deploy-pages` 找不到剛上傳的 artifact 而失敗，
+網站停在前一天，回報卻寫「已發布」，是使用者自己發現的。
+做法（在 `device_bash` 或本機 `Bash` 跑，**只讀公開 API，不跑 git、不需要 GitHub 權限**）：推送後等約 90 秒，
+`curl -s "https://api.github.com/repos/GunDamnBoy/podcast-knowledge-digest/actions/runs?per_page=5&head_sha=<完整 commit 雜湊>"`
+（完整雜湊讀 `podcast-knowledge-digest/.git/refs/heads/main`，那是讀檔、不是 git 指令），看 `Deploy to GitHub Pages` 那一筆：
+`in_progress`／`queued` 就再等 90 秒（最多兩次）；`success` 之後再帶 cache-buster 讀一次
+`https://gundamnboy.github.io/podcast-knowledge-digest/data/index.json?cb=<時間戳>`，確認 `days[0].date` 是今天。
+**`failure`、等兩次仍未完成、或線上 `days[0]` 不是今天，就用 PushNotification 通知使用者**，內容寫明 run 連結、失敗步驟與錯誤訊息原文，並附一句處置：
+**請到 Actions →「Deploy to GitHub Pages」→「Run workflow」開一個新的 run，不要在原 run 上按 Re-run**——
+artifact 掛在 run 上，11-26 在原 run 重跑時第一次那份其實存在，於是同名 artifact 變兩個，`deploy-pages` 回 `Multiple artifacts named "github-pages"`，重跑幾次都一樣。
+這一輪自己**不要嘗試重跑**（沒有權限，排程輪次也不准用瀏覽器）。回報的回執那一項同時寫部署結果。
+
+**8. 收工**　`exit 0` 且部署成功就結束這一輪。
 
 **Word 報告不在這一輪做。** 它由 launchd 的 `com.kenny.kbdocx.podcast`
 在 **04:00／07:00／10:00／13:00** 從**已發布的 JSON** 機械轉出 —— 那段全程不需要 LLM，
@@ -589,7 +602,7 @@ publish 每 60 秒跑一次，所以 90 秒之後回執該在了；還沒在就�
   外加**近 7 天的合計條數**（下限見 `anchors.observations.review_rolling_7d_min`）。
 - **循環重複的三個偵測訊號各跑了沒有**（行數 ÷ 總字數、原地打轉、末端時間戳溢出片長），
   以及各自的結果。**「乾淨」要說是哪一種訊號判的**，不要只寫「工具說乾淨」。
-- **這一輪的回執結果**：`exit` 值、`stage`、以及非 `0` 時的 `detail` 原文。
+- **這一輪的回執結果**：`exit` 值、`stage`、以及非 `0` 時的 `detail` 原文。**另寫 Pages 部署結果**（第 7 之一步：run 的 `conclusion` 與線上 `days[0]`），`exit 0` 不等於網站已更新。
   `exit 0` 就寫一句「`exit 0`，已發布，commit `<雜湊>`」。
 
 **最後附一份用量回顧**：總有效 token、各子代理的用量與來回次數、主迴圈的輪數。
